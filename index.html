@@ -278,6 +278,16 @@
   .voteModeBtn.vmTEAM b { background:linear-gradient(90deg, #ff7d6e 0 50%, #79bcff 50% 100%); -webkit-background-clip:text; background-clip:text; color:transparent; }
   .voteModeBtn:hover b, .voteModeBtn.selected b { text-shadow:0 0 16px rgba(255,255,255,.35); }
 
+  /* sandbox picker */
+  .sbRow { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:4px; }
+  .sbRow .sbBtn { flex:1 1 120px; }
+  .sbGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:6px; margin-bottom:4px; }
+  .sbBtn { cursor:pointer; padding:8px 10px; background:rgba(44,242,255,.05); border:1px solid rgba(44,242,255,.3); color:#eafcff;
+    text-transform:uppercase; letter-spacing:2px; font-size:11px; text-align:left; }
+  .sbBtn small { display:block; color:#8fa3bd; letter-spacing:1px; font-size:10px; }
+  .sbBtn.sel { background:rgba(255,154,60,.18); border-color:var(--orange); box-shadow:0 0 14px rgba(255,154,60,.25); }
+  .sbBtn:hover { background:rgba(44,242,255,.12); }
+
 
   /* ============ PREMIUM PRESENTATION PASS ============ */
   #menu.mainMenu { isolation:isolate; }
@@ -539,6 +549,7 @@
       </div>
 
       <button class="btn modeBtn" id="startBtn"><span>Solo</span><small>15 waves</small></button>
+      <button class="btn modeBtn" id="sandboxBtn"><span>Sandbox</span><small>any gun · any map · spawn anything</small></button>
       <button class="btn red modeBtn" id="mpBtn"><span>LAN MATCH</span><small>FFA · RED v BLUE</small></button>
       <button class="btn menuSecondary" id="skinsBtn">Character Skins</button>
       <button class="btn menuSecondary" id="settingsBtn">Settings</button>
@@ -577,7 +588,23 @@
     <div id="skinGrid" class="skinGrid"></div>
     <div class="settingsActions">
       <button class="btn" id="skinsBackBtn">Back</button>
-      <button class="btn red" id="progressResetBtn">Reset Progress</button>
+    </div>
+  </div>
+</div>
+
+<div id="sandboxPanel" class="hidden" style="position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; background:rgba(4,8,14,.82); backdrop-filter:blur(6px);">
+  <div class="settingsPanel" style="width:min(980px,95vw); max-height:94vh; overflow:auto;">
+    <div class="settingsTitle">SANDBOX</div>
+    <div class="settingsSub">Alone in the rift. Pick a map, take any weapon, spawn any hostiles — they can't hurt you here. Press B in-game to reopen.</div>
+    <div class="settingsTitle" style="font-size:16px; margin-top:10px;">MAP</div>
+    <div id="sbMaps" class="sbRow"></div>
+    <div class="settingsTitle" style="font-size:16px; margin-top:6px;">ARSENAL</div>
+    <div id="sbWeapons" class="sbGrid"></div>
+    <div class="settingsTitle" style="font-size:16px; margin-top:6px;">SPAWN HOSTILES <span id="sbQueueCount" style="color:#8fa3bd;">— queue empty</span></div>
+    <div id="sbEnemies" class="sbRow"></div>
+    <div class="settingsActions">
+      <button class="btn" id="sbBackBtn">Back</button>
+      <button class="btn red" id="sbDeployBtn">DEPLOY</button>
     </div>
   </div>
 </div>

@@ -5,7 +5,7 @@ A 15-wave solo survival + LAN deathmatch shooter that runs in your browser.
 ## Current features
 - Saved progression: XP, levels, credits, total kills, solo wave records, LAN wins
 - 16 character skins in the shop, with saved unlocks and LAN-visible selected skins
-- 50-weapon arsenal: rifles, SMGs, LMGs, pistols, shotguns, DMRs, snipers, rail/exotic weapons
+- 52-weapon arsenal: rifles, SMGs, LMGs, pistols, shotguns, DMRs, snipers, rail/exotic weapons — plus a **flamethrower**, **grenade launcher**, and **rocket launcher** (real flying projectiles with splash damage)
 - Solo waves: **every kill instantly rolls you to a random loaded weapon** plus a rarity roll
 - **LAN Gun Ladder: everyone gets the same weapon at the same score** — kills promote you one tier, and rarity steps up with your tier
 - **Knife combat (key 2):** 25 damage flat to the body or head — but a **backstab is an instant kill**. Shanks in LAN steal a point: the victim drops one score and one gun tier (never below 0). Kill 30 is a **golden-shank-only** final tier with extra speed and damage
@@ -18,6 +18,7 @@ A 15-wave solo survival + LAN deathmatch shooter that runs in your browser.
 - Boss enemies every 5 solo waves, including the NEMESIS boss on waves 5, 10, and 15
 - Expanded enemy factions: Rift Marauders, Void Brood, Black Iron, Eclipse Drones, Corp Sentinels, Neon Cult, and Blackout Lords
 - Execution finishers: press **F** near weakened enemies for a cinematic bonus kill
+- **Sandbox mode** — a solo playground with no waves and no incoming damage: pick any of the 5 maps, any of the 52 weapons, and spawn any of the 8 hostile types from the box. Press **B** in-game to reopen it and live-swap gear, maps, or monsters
 - Animated reloads with weapon drop/cant, magazine movement, pump/bolt action, and staged reload sounds
 - Slides are networked — other players see you slide, not just speed past
 - Cinematic enemy animation: full-body locomotion, idle breathing, hit reactions, melee slash windups, ranged recoil, brute slam telegraphs, visible hands/claws/feet/gun muzzles
@@ -27,7 +28,7 @@ A 15-wave solo survival + LAN deathmatch shooter that runs in your browser.
 - **Two LAN modes, both in the lobby vote:** after every map ballot, a second ballot picks **FREE FOR ALL** (first player to 30 kills) or **RED v BLUE** (auto-balanced squads, no friendly fire, teammates glow in your color — but the win still belongs to one runner: first to 30 kills takes the round). Nobody's vote? FFA by default.
 - **Sprint and slide in any direction** — strafe-runs and sideways slides are just as fast as forward ones
 - **Hold-to-crouch (C)** — move slower and quieter with a tighter spread for precision shots; teammates and enemies see you crouch too
-- **Keybind for firing (X)** — hold-to-fire, semi-auto re-arms per press, and knife swings all work without ever touching the mouse; rebindable like everything else
+- **Keybind for firing (E)** — hold-to-fire, semi-auto re-arms per press, and knife swings all work without ever touching the mouse; rebindable like everything else (old X saves migrate automatically)
 - **5 maps: FORGE, NEXUS, DUSK YARD, COLD STORAGE, and RIFT DOCKS** — map votes always offer a rotating 3 of the 5, each with a generated blueprint picture of its layout
 - Brief deathcam/spectate of the killer before respawn
 - **Redeploys come in loaded:** respawning instantly tops off your mag and cancels any reload — no pressing R the second you land
@@ -83,7 +84,7 @@ A 15-wave solo survival + LAN deathmatch shooter that runs in your browser.
 |-----|--------|
 | W A S D | Move |
 | Mouse | Aim |
-| Left click **or X** | Fire / knife swing (hold for full-auto; the X bind is great for touchpads) |
+| Left click **or E** | Fire / knife swing (hold for full-auto; the E bind is great for touchpads) |
 | Right click or CTRL (hold) | Aim down sights / sniper scope |
 | 1 | Gun |
 | 2 | Knife — 25 dmg, backstab = instant kill (+5% speed; golden +15%) |

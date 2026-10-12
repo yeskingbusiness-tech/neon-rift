@@ -20,7 +20,7 @@ function saveSettings(){ localStorage.setItem('neonRiftSettings', JSON.stringify
 /* ---- rebindable keys ---- */
 const DEFAULT_BINDS = {
   fwd:'KeyW', back:'KeyS', left:'KeyA', right:'KeyD',
-  jump:'Space', sprint:'ShiftLeft', slide:'KeyQ', crouch:'KeyC', fire:'KeyX',
+  jump:'Space', sprint:'ShiftLeft', slide:'KeyQ', crouch:'KeyC', fire:'KeyE',
   reload:'KeyR', nade:'KeyG', finisher:'KeyF',
   gun:'Digit1', knife:'Digit2', ads:'ControlLeft',
 };
@@ -36,6 +36,11 @@ SETTINGS.binds = { ...DEFAULT_BINDS, ...SETTINGS.binds };
 if ((SETTINGS.bindVersion || 0) < 2){
   if (SETTINGS.binds.slide === 'KeyC') SETTINGS.binds.slide = 'KeyQ';
   SETTINGS.bindVersion = 2;
+}
+// binds v3: fire moved X→E; only touch saves still sitting on the old default
+if ((SETTINGS.bindVersion || 0) < 3){
+  if (SETTINGS.binds.fire === 'KeyX') SETTINGS.binds.fire = 'KeyE';
+  SETTINGS.bindVersion = 3;
   saveSettings();
 }
 function bindCode(id){ return SETTINGS.binds[id] ?? DEFAULT_BINDS[id]; }
@@ -56,21 +61,21 @@ function assignBind(id, code){
 
 const SKINS = [
   { id:'rift',     name:'Rift Runner',    desc:'Standard black/cyan combat shell',      color:0x2c6eff, eye:0x2cf2ff, cost:0,    level:1 },
-  { id:'crimson',  name:'Crimson Ghost',  desc:'Red assault armor for close fights',    color:0xb72a3a, eye:0xff3b57, cost:250,  level:2 },
-  { id:'cobalt',   name:'Cobalt Wraith',  desc:'Deep blue recon shell',                 color:0x22409a, eye:0x66aaff, cost:350,  level:2 },
-  { id:'ember',    name:'Ember Jackal',   desc:'Scorched orange raider plating',        color:0x9a4a1f, eye:0xff9a3c, cost:450,  level:3 },
-  { id:'jade',     name:'Jade Ronin',     desc:'Temple green duelist frame',            color:0x1f7a5a, eye:0x66ffc2, cost:600,  level:4 },
-  { id:'solar',    name:'Solar Warden',   desc:'Gold reactive plating',                 color:0xc87922, eye:0xffd040, cost:650,  level:4 },
-  { id:'void',     name:'Void Specter',   desc:'Black violet stealth frame',            color:0x3d246a, eye:0xd040ff, cost:900,  level:5 },
-  { id:'hornet',   name:'Circuit Hornet', desc:'Hazard yellow shock trooper',           color:0x8a7418, eye:0xffea66, cost:1050, level:6 },
-  { id:'toxic',    name:'Toxic Phantom',  desc:'Green biohazard glow suit',             color:0x287a42, eye:0x8fe08a, cost:1250, level:7 },
-  { id:'siren',    name:'Plasma Siren',   desc:'Magenta nightclub combat shell',        color:0x8a1f6a, eye:0xff5ad0, cost:1450, level:8 },
-  { id:'arctic',   name:'Arctic Neon',    desc:'White/blue high contrast shell',        color:0x9eb9d6, eye:0x66eaff, cost:1700, level:9 },
-  { id:'ghost',    name:'Ghost Protocol', desc:'Pale grey special-operations frame',    color:0x8a94a6, eye:0xeafcff, cost:1900, level:10 },
-  { id:'obsidian', name:'Obsidian Shade', desc:'Matte black shell with power conduits', color:0x15161c, eye:0x2cf2ff, cost:2100, level:11 },
-  { id:'royal',    name:'Royal Blackout', desc:'Prestige purple-gold operator',         color:0x5a36a0, eye:0xff9a3c, cost:2400, level:12 },
-  { id:'nemesis',  name:'Nemesis Shell',  desc:'Blackened red breach armor',            color:0x3a1216, eye:0xff2020, cost:2800, level:13 },
-  { id:'aurum',    name:'Aurum Prime',    desc:'Gilded champion frame of the rift',     color:0x8a6a1f, eye:0xffe680, cost:3200, level:14 },
+  { id:'crimson',  name:'Crimson Ghost',  desc:'Red assault armor for close fights',    color:0xb72a3a, eye:0xff3b57, cost:250,  level:4 },
+  { id:'cobalt',   name:'Cobalt Wraith',  desc:'Deep blue recon shell',                 color:0x22409a, eye:0x66aaff, cost:350,  level:5 },
+  { id:'ember',    name:'Ember Jackal',   desc:'Scorched orange raider plating',        color:0x9a4a1f, eye:0xff9a3c, cost:450,  level:6 },
+  { id:'jade',     name:'Jade Ronin',     desc:'Temple green duelist frame',            color:0x1f7a5a, eye:0x66ffc2, cost:600,  level:8 },
+  { id:'solar',    name:'Solar Warden',   desc:'Gold reactive plating',                 color:0xc87922, eye:0xffd040, cost:650,  level:9 },
+  { id:'void',     name:'Void Specter',   desc:'Black violet stealth frame',            color:0x3d246a, eye:0xd040ff, cost:900,  level:11 },
+  { id:'hornet',   name:'Circuit Hornet', desc:'Hazard yellow shock trooper',           color:0x8a7418, eye:0xffea66, cost:1050, level:13 },
+  { id:'toxic',    name:'Toxic Phantom',  desc:'Green biohazard glow suit',             color:0x287a42, eye:0x8fe08a, cost:1250, level:15 },
+  { id:'siren',    name:'Plasma Siren',   desc:'Magenta nightclub combat shell',        color:0x8a1f6a, eye:0xff5ad0, cost:1450, level:17 },
+  { id:'arctic',   name:'Arctic Neon',    desc:'White/blue high contrast shell',        color:0x9eb9d6, eye:0x66eaff, cost:1700, level:19 },
+  { id:'ghost',    name:'Ghost Protocol', desc:'Pale grey special-operations frame',    color:0x8a94a6, eye:0xeafcff, cost:1900, level:21 },
+  { id:'obsidian', name:'Obsidian Shade', desc:'Matte black shell with power conduits', color:0x15161c, eye:0x2cf2ff, cost:2100, level:23 },
+  { id:'royal',    name:'Royal Blackout', desc:'Prestige purple-gold operator',         color:0x5a36a0, eye:0xff9a3c, cost:2400, level:25 },
+  { id:'nemesis',  name:'Nemesis Shell',  desc:'Blackened red breach armor',            color:0x3a1216, eye:0xff2020, cost:2800, level:27 },
+  { id:'aurum',    name:'Aurum Prime',    desc:'Gilded champion frame of the rift',     color:0x8a6a1f, eye:0xffe680, cost:3200, level:30 },
 ];
 function xpForLevel(level){ return level <= 1 ? 0 : Math.floor(120 * Math.pow(level-1, 1.65) + 80 * (level-1)); }
 function levelFromXp(xp){ let lvl = 1; while (lvl < 99 && xp >= xpForLevel(lvl+1)) lvl++; return lvl; }
@@ -319,6 +324,8 @@ const SFX = {
   respawn(){ playTone(360, 900, 0.16, 0.28, 'sine'); playNoise(0.12, 1800, 1, 0.18, 'bandpass'); },
   bodyBreak(){ playNoise(0.32, 520, 0.9, 0.65); playTone(140, 55, 0.25, 0.28, 'sawtooth'); },
   explode(){ playNoise(0.5, 400, 0.5, 0.9); playTone(100, 25, 0.4, 0.6, 'sine'); },
+  flame(){ playNoise(0.16, 620, 0.3, 0.22, 'lowpass'); playNoise(0.1, 160, 0.25, 0.14, 'lowpass'); },
+  launch(){ playTone(150, 55, 0.14, 0.5, 'sine'); playNoise(0.14, 900, 0.6, 0.45, 'bandpass'); },
 };
 
 /* ================= WORLD GEOMETRY ================= */
@@ -880,7 +887,7 @@ const _botRay = new THREE.Vector3(), _botDir = new THREE.Vector3();
 let mode = 'solo';   // 'solo' (waves) or 'dm' (LAN deathmatch)
 const SOLO_FINAL_WAVE = 15;
 const S = {
-  started:false, paused:true, dead:false, victory:false,
+  started:false, paused:true, dead:false, victory:false, sandbox:false,
   wave:0, score:0, kills:0, deaths:0, shotsFired:0, shotsHit:0, headshots:0,
   longestStreak:0, cashEarned:0, xpEarned:0, weaponKills:{},
   toSpawn:[], spawnTimer:0, intermission:3, startTime:0,
@@ -1055,7 +1062,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Escape') pauseGame();
 });
 
-$('startBtn').addEventListener('click', () => { mode = 'solo'; setMap(MAP_NAMES[(Math.random()*MAP_NAMES.length)|0]); savePlayerName(); showDeploySequence('solo'); startGame(); });
+$('startBtn').addEventListener('click', () => { S.sandbox = false; mode = 'solo'; setMap(MAP_NAMES[(Math.random()*MAP_NAMES.length)|0]); savePlayerName(); showDeploySequence('solo'); startGame(); });
 function requestLAN(){
   const el = $('callsign');
   const typed = String(el ? el.value : '').trim();          // LAN requires a callsign — no ghosting in as a default name
@@ -1069,7 +1076,7 @@ function requestLAN(){
     }
     return;
   }
-  mode = 'dm';
+  S.sandbox = false; mode = 'dm';
   savePlayerName();
   connectNet();
   $('objective').innerHTML = '';
@@ -1223,10 +1230,6 @@ function renderSkinGrid(){
 }
 $('skinsBtn').addEventListener('click', () => { updateProgressUI(); $('skinsMenu').classList.remove('hidden'); });
 $('skinsBackBtn').addEventListener('click', () => $('skinsMenu').classList.add('hidden'));
-$('progressResetBtn').addEventListener('click', () => {
-  if (!confirm('Reset all saved progress, credits, levels, and skins?')) return;
-  Object.assign(PROGRESS, defaultProgress()); saveProgress(); applyLocalSkinAppearance(); updateProgressUI();
-});
 updateProgressUI();
 
 /* surface runtime errors on screen instead of failing silently */
@@ -1273,7 +1276,6 @@ const WEAPON_BLUEPRINTS = [
   ['GLACIER-80',         'LMG',     true,  26, 600, 80, 240, .020, .0070, .014, .065, 1,  'rifle',   130, false],
   ['MAELSTROM SMG',      'SMG',     true,  15,1150, 45, 270, .024, .0110, .008, .034, 1,  'rifle',    84, false],
   ['RONIN CQB',          'SMG',     true,  19, 840, 32, 192, .018, .0080, .010, .043, 1,  'rifle',    96, false],
-  ['THUNDERCLAP',        'SHOTGUN', false, 18,  64,  6,  30, .064, .0470, .045, .170, 5,  'shotgun',  44, false],
   ['SUNPIKE-14',         'SNIPER',  false,140,  44,  5,  30, .045, .0004, .055, .205, 1,  'sniper',  260, true ],
   ['HORIZON SCOUT',      'DMR',     false, 50, 300, 16,  96, .009, .0018, .017, .075, 1,  'rifle',   175, false],
   ['ODIN ASSAULT',       'RIFLE',   true,  31, 500, 30, 150, .014, .0035, .017, .075, 1,  'rifle',   145, false],
@@ -1291,10 +1293,15 @@ const WEAPON_BLUEPRINTS = [
   ['FURNACE QUAD',       'SHOTGUN', false, 44,  52,  4,  24, .072, .0500, .052, .200, 4,  'shotgun',  42, false],
   ['MIRAGE PDW',         'SMG',     true,  17,1000, 44, 264, .021, .0095, .008, .036, 1,  'rifle',    88, false],
   ['PROTOCOL ZERO',      'EXOTIC',  false,155,  48,  4,  24, .035, .0005, .060, .220, 1,  'sniper',  275, true ],
+  // --- specials: kind hits at 15th slot, splash def at 16th ---
+  ['HELLFIRE MK-7',      'HEAVY',   true,   5, 900, 90, 270, .030, .0200, .004, .020, 1,  'flame',   13, false, 'flame'],
+  ['LOBBER GL',          'LAUNCHER',false, 55,  80,  4,  24, .030, .0100, .050, .180, 1,  'launch', 200, false, 'gl', { r:4.5, dmg:45 }],
+  ['ATLAS ROCKET',       'LAUNCHER',false, 85,  45,  1,  12, .010, .0020, .080, .240, 1,  'launch', 240, false, 'rocket', { r:5.5, dmg:60 }],
 ];
 const WEAPONS = WEAPON_BLUEPRINTS.map((b, i) => ({
   name:b[0], slot:b[1], auto:b[2], dmg:b[3], rpm:b[4], mag:b[5], reserve:b[6],
   spread:b[7], adsSpread:b[8], recoil:b[9], kick:b[10], pellets:b[11], sfx:b[12], range:b[13], scoped:!!b[14],
+  kind:b[15] || 'hitscan', splash:b[16] || null,
   index:i, accent:[0x2cf2ff,0xff9a3c,0xff3b57,0x8fe08a,0xd040ff,0xffd040][i % 6],
   darkAccent:[0x0d6670,0x7a3a10,0x701929,0x1f6a38,0x4e196a,0x745c14][i % 6]
 }));
@@ -1781,11 +1788,11 @@ function knifeStrike(){
    one tier; getting shanked costs you one point and one tier. The final
    tier (29+) locks you to the golden knife — the 30th kill is knife-only. */
 const GUN_LADDER = [
-  43, 20,  2, 22, 44, 23,           // pistols
-   9,  8,  7, 48, 36, 30, 31, 37,   // smgs
-  17, 18, 39, 19,  1, 16, 32,       // shotguns
-  24, 26,  6, 38, 35, 45,           // rifles
-  47, 15,                           // heavy hitters
+  42, 20,  2, 22, 43, 23,           // pistols
+   9,  8,  7, 47, 30, 31, 36,       // smgs
+  17, 18, 38, 19,  1, 16,           // shotguns
+  24, 26,  6, 37, 34, 44,           // rifles
+  49, 50, 51, 15,                   // specials & heavy hitters: flamer → grenades → rockets → rail sniper
 ];
 const FINAL_TIER_SCORE = 29;
 function ladderRarity(sc){
@@ -1954,6 +1961,20 @@ function fireWeapon(){
   let anyHit = false, anyKill = false;
   const spread = (adsT > 0.5 ? w.adsSpread : w.spread) * (currentRarity.spread || 1) * (player.grounded ? (player.crouched ? 0.62 : 1) : 1.7);   // crouching steadies your aim
 
+  // launchers lob real projectiles instead of hitscan
+  if (w.kind === 'gl' || w.kind === 'rocket'){
+    camera.getWorldDirection(_dir);
+    _dir.x += rand(-spread, spread); _dir.y += rand(-spread, spread); _dir.z += rand(-spread, spread);
+    _dir.normalize();
+    spawnPlayerProjectile(_origin, _dir, w);
+    spawnSmoke(flash.position, 2);
+    if (net.on)
+      netSend({ t:'shoot', w:weaponIndex, o:[+flash.position.x.toFixed(2), +flash.position.y.toFixed(2), +flash.position.z.toFixed(2)],
+                p:[+(_origin.x + _dir.x * 40).toFixed(2), +(_origin.y + _dir.y * 40).toFixed(2), +(_origin.z + _dir.z * 40).toFixed(2)] });
+    updateAmmoHUD();
+    return;
+  }
+
   for (let p = 0; p < w.pellets; p++){
     camera.getWorldDirection(_dir);
     _dir.x += rand(-spread, spread); _dir.y += rand(-spread, spread); _dir.z += rand(-spread, spread);
@@ -1986,7 +2007,8 @@ function fireWeapon(){
     }
 
     _hitPoint.copy(_origin).addScaledVector(_dir, hitDist);
-    spawnTracer(flash.position, _hitPoint);
+    if (w.kind === 'flame') spawnFlameJet(flash.position, _dir, hitDist);   // cone of embers, not bullet tracers
+    else spawnTracer(flash.position, _hitPoint);
     if (net.on && p === 0)
       netSend({ t:'shoot', w:weaponIndex, o:[+flash.position.x.toFixed(2), +flash.position.y.toFixed(2), +flash.position.z.toFixed(2)],
                 p:[+_hitPoint.x.toFixed(2), +_hitPoint.y.toFixed(2), +_hitPoint.z.toFixed(2)] });
@@ -2012,8 +2034,7 @@ function fireWeapon(){
       spawnSparks(_hitPoint, hitDestructible.explosive ? 0xff9a3c : 0x2cf2ff, hitDestructible.explosive ? 14 : 8);
       damageDestructible(hitDestructible, dmg, _hitPoint);
     } else if (hitDist < w.range - 0.01){
-      spawnSparks(_hitPoint, 0x9ab0cc, 5);
-      spawnSmoke(_hitPoint, 1);
+      if (w.kind !== 'flame'){ spawnSparks(_hitPoint, 0x9ab0cc, 5); spawnSmoke(_hitPoint, 1); }
     }
   }
 
@@ -2062,6 +2083,101 @@ function spawnExplosion(pos){
   spawnSparks(pos, 0xff4060, 10);
   spawnSmoke(pos, 5);
   SFX.explode();
+}
+
+/* ================= FLAME JET + PLAYER PROJECTILES (launchers) ================= */
+const FLAME_COLORS = [0xff4a1a, 0xff8020, 0xffc040];
+function spawnFlameJet(from, dir, dist){
+  const reach = Math.min(dist, 14);
+  for (let i = 0; i < 7; i++){
+    const d = ((i + 1) / 7) * reach;
+    const mat = new THREE.MeshBasicMaterial({ color:FLAME_COLORS[(Math.random() * 3) | 0], transparent:true, opacity:0.95, blending:THREE.AdditiveBlending, depthWrite:false });
+    const m = new THREE.Mesh(sparkGeo, mat);
+    m.position.set(from.x + dir.x * d + rand(-0.28, 0.28), from.y + dir.y * d + rand(-0.22, 0.22), from.z + dir.z * d + rand(-0.28, 0.28));
+    m.scale.setScalar(rand(0.8, 2.2));
+    scene.add(m);
+    particles.push({ mesh:m, vel:new THREE.Vector3(dir.x * rand(2, 5) + rand(-1.4, 1.4), dir.y * rand(2, 5) + rand(-0.6, 2.2), dir.z * rand(2, 5) + rand(-1.4, 1.4)), life:rand(0.16, 0.38), maxLife:0.38, grav:2, type:'spark' });
+  }
+}
+
+const playerShots = [];   // { mesh, vel, grav, kind, splash, dmg, life, direct }
+function spawnPlayerProjectile(origin, dir, w){
+  const big = w.kind === 'rocket';
+  const mat = new THREE.MeshBasicMaterial({ color: big ? 0xff5a20 : 0xffd050 });
+  const m = new THREE.Mesh(new THREE.SphereGeometry(big ? 0.12 : 0.085, 8, 8), mat);
+  m.position.copy(origin).addScaledVector(dir, 0.9);
+  scene.add(m);
+  playerShots.push({ mesh:m, vel:dir.clone().multiplyScalar(big ? 36 : 25), grav: big ? 0 : 11, kind:w.kind, splash:w.splash, dmg:w.dmg, life:6, direct:null, disc:true });
+}
+const _psDir = new THREE.Vector3(), _psUp = new THREE.Vector3(0, 1.45, 0), _psC = new THREE.Vector3();
+function explodePlayerShot(ps, point){
+  const pos = point || ps.mesh.position.clone();
+  window.__lastBoom = { x:+pos.x.toFixed(2), y:+pos.y.toFixed(2), z:+pos.z.toFixed(2), direct:!!ps.direct, kind:ps.kind, r:ps.splash.r };
+  spawnExplosion(pos);
+  if (ps.kind === 'rocket'){ SFX.bigBoom(); spawnSparks(pos, 0xffd040, 12); }
+  const r = ps.splash.r, mult = currentRarity.dmg || 1;
+  for (const e of enemies){
+    if (e.dead) continue;
+    const d = e.group.position.distanceTo(pos); if (d > r + 0.4) continue;
+    const direct = ps.direct === e;
+    const dmg = ((direct ? ps.dmg : 0) + ps.splash.dmg * (direct ? 1 : Math.max(0.2, 1 - d / r))) * mult;
+    spawnDamagePopup(e.group.position.clone().add(_psUp), Math.round(dmg), false);
+    damageEnemy(e, dmg);
+  }
+  if (net.on) for (const rp of net.players.values()){
+    if (isTeammate(rp)) continue;
+    const d = rp.group.position.distanceTo(pos); if (d > r + 0.4) continue;
+    const direct = ps.direct === rp.id;
+    const dmg = ((direct ? ps.dmg : 0) + ps.splash.dmg * (direct ? 1 : Math.max(0.2, 1 - d / r))) * mult;
+    netSend({ t:'hit', target:rp.id, dmg:Math.round(dmg) });
+    spawnDamagePopup(rp.group.position.clone().add(_psUp), Math.round(dmg), false);
+  }
+  if (ps.direct && net.on) showHitmarker(true);
+  for (const dd of destructibles){
+    if (dd.broken) continue;
+    if (dd.mesh.position.distanceTo(pos) <= r + 0.6) damageDestructible(dd, (ps.dmg + ps.splash.dmg) * 0.5, pos);
+  }
+  const camD = camera.position.distanceTo(pos);
+  if (camD < 12) player.shake = Math.min(player.shake + (1 - camD / 12) * 0.45, 0.7);
+  flashTimer = Math.max(flashTimer, 0.1); flashLight.intensity = Math.max(flashLight.intensity, 7);
+}
+function stepPlayerShots(dt){
+  for (let i = playerShots.length - 1; i >= 0; i--){
+    const ps = playerShots[i];
+    ps.vel.y -= ps.grav * dt;
+    const from = ps.mesh.position;
+    const seg = ps.vel.length() * dt;
+    _psDir.copy(ps.vel).normalize();
+    const wall = castWorld(from, _psDir, seg + 0.16);
+    let hitAt = null;
+    if (wall < seg + 0.15){
+      hitAt = from.clone().addScaledVector(_psDir, Math.max(0, wall - 0.02));
+    } else if (from.y + ps.vel.y * dt <= 0.12){
+      hitAt = from.clone(); hitAt.y = 0.1;                       // the floor counts as a face
+    } else {
+      from.addScaledVector(ps.vel, dt);
+      for (const e of enemies){
+        if (e.dead) continue;
+        _psC.set(e.group.position.x, e.group.position.y + 1.0, e.group.position.z);   // aim at chest height, not the feet
+        if (_psC.distanceToSquared(from) < 1.5 * 1.5){ hitAt = _psC.clone(); ps.direct = e; window.__dbgPsHit = { tx:+_psC.x.toFixed(2), tz:+_psC.z.toFixed(2) }; break; }
+      }
+      if (!hitAt && net.on) for (const rp of net.players.values()){
+        if (isTeammate(rp)) continue;
+        _psC.set(rp.group.position.x, rp.group.position.y + 1.0, rp.group.position.z);
+        if (_psC.distanceToSquared(from) < 1.4 * 1.4){ hitAt = _psC.clone(); ps.direct = rp.id; break; }
+      }
+    }
+    ps.life -= dt;
+    if (hitAt || ps.life <= 0){
+      explodePlayerShot(ps, hitAt);
+      scene.remove(ps.mesh); ps.mesh.geometry.dispose(); ps.mesh.material.dispose();
+      playerShots.splice(i, 1);
+    } else if (Math.random() < 0.55){
+      const mat = new THREE.MeshBasicMaterial({ color: ps.kind === 'rocket' ? 0xff9a3c : 0xffe080, transparent:true, opacity:0.6, blending:THREE.AdditiveBlending, depthWrite:false });
+      const m = new THREE.Mesh(sparkGeo, mat); m.position.copy(ps.mesh.position); scene.add(m);
+      particles.push({ mesh:m, vel:new THREE.Vector3(rand(-0.4, 0.4), rand(-0.4, 0.4), rand(-0.4, 0.4)), life:rand(0.15, 0.3), maxLife:0.3, grav:0, type:'spark' });
+    }
+  }
 }
 
 const popups = [];
@@ -2260,7 +2376,7 @@ function registerKill(){
   S.longestStreak = Math.max(S.longestStreak || 0, streak);
   const wn = knifeMode ? currentKnifeDef().name : CW().name;
   S.weaponKills[wn] = (S.weaponKills[wn] || 0) + 1;
-  if (mode === 'solo') rotateWeaponForKill();       // LAN uses the shared ladder instead (synced from server scores)
+  if (mode === 'solo' && !S.sandbox) rotateWeaponForKill();   // sandbox keeps the weapon you picked       // LAN uses the shared ladder instead (synced from server scores)
   if (streak < 2) return;
   const table = { 2:['DOUBLE KILL',100], 3:['TRIPLE KILL',250], 4:['QUAD KILL',400], 5:['MEGA KILL',600] };
   const [txt, bonus] = table[streak] || ['RAMPAGE ×' + streak, 750];
@@ -2825,6 +2941,7 @@ function updateEnemies(dt, now){
 }
 
 function updateProjectiles(dt){
+  stepPlayerShots(dt);
   for (let i = projectiles.length-1; i >= 0; i--){
     const pr = projectiles[i];
     pr.life -= dt;
@@ -3351,6 +3468,7 @@ function matchStatsHtml(label='RUN COMPLETE'){
 }
 function damagePlayer(dmg, fromPos){
   if (S.dead || S.paused) return;
+  if (S.sandbox) return;            // sandbox hosts can get chewed on, never hurt
   if (mode === 'dm' && player.invuln > 0) return;
   player.hp -= dmg;
   player.lastDamage = performance.now();
@@ -3420,6 +3538,7 @@ function waveComposition(n){
   return capped;
 }
 function updateWaves(dt){
+  if (S.sandbox) return;            // a sandbox has no waves — only what you spawn in
   // Solo is a 15-wave mission. LAN Deathmatch is the only mode that uses the first-to-30-kills rule.
   if (mode === 'solo' && S.wave >= SOLO_FINAL_WAVE && S.toSpawn.length === 0 && enemies.length === 0){
     soloVictory();
@@ -3454,6 +3573,102 @@ function updateWaves(dt){
     }
   }
 }
+
+/* ================= SANDBOX MODE ================= */
+// Alone in the rift: pick any map, any weapon, spawn any hostile. No waves, no incoming damage, no arsenal rotation.
+const SB = { map: MAP_NAMES[0], weapon: 42, queue: [] };
+function renderSbMaps(){
+  const box = $('sbMaps'); if (!box) return;
+  box.innerHTML = '';
+  for (const m of MAP_NAMES){
+    const b = document.createElement('button');
+    b.className = 'sbBtn' + (SB.map === m ? ' sel' : '');
+    b.textContent = m;
+    b.onclick = () => { SB.map = m; renderSbMaps(); SFX.vote(); };
+    box.appendChild(b);
+  }
+}
+function renderSbWeapons(){
+  const box = $('sbWeapons'); if (!box) return;
+  box.innerHTML = '';
+  WEAPONS.forEach((w, i) => {
+    const b = document.createElement('button');
+    b.className = 'sbBtn' + (SB.weapon === i ? ' sel' : '');
+    b.innerHTML = `${i + 1}. ${w.name}<small>${w.slot} · DMG ${w.dmg}${w.pellets > 1 ? '×' + w.pellets : ''}</small>`;
+    b.onclick = () => { SB.weapon = i; renderSbWeapons(); SFX.vote(); };
+    box.appendChild(b);
+  });
+}
+function renderSbEnemies(){
+  const box = $('sbEnemies'); if (!box) return;
+  box.innerHTML = '';
+  for (const key of Object.keys(ENEMY_TYPES)){
+    const t = ENEMY_TYPES[key];
+    const b = document.createElement('button');
+    b.className = 'sbBtn';
+    b.innerHTML = `+ ${t.name}${t.boss ? ' ☠' : ''}<small>${t.faction} · ${t.hp} HP</small>`;
+    b.onclick = () => { SB.queue.push(key); renderSbEnemies(); SFX.vote(); };
+    box.appendChild(b);
+  }
+  const tally = {};
+  for (const q of SB.queue) tally[q] = (tally[q] || 0) + 1;
+  const labels = Object.entries(tally).map(([k, n]) => `${n}× ${ENEMY_TYPES[k].name}`);
+  const lbl = $('sbQueueCount');
+  if (lbl){
+    lbl.textContent = labels.length ? '— ' + labels.join(' · ') : '— queue empty';
+    lbl.style.color = labels.length ? '#ff9a3c' : '#8fa3bd';
+  }
+}
+function openSandboxPanel(){
+  renderSbMaps(); renderSbWeapons(); renderSbEnemies();
+  $('sandboxPanel').classList.remove('hidden');
+  if (S.sandbox && S.started && !S.dead){
+    S.paused = true; locked = false; mouseL = mouseR = false; canvas.style.cursor = 'crosshair';
+    $('paused').classList.add('hidden');
+    try { document.exitPointerLock(); } catch(e){}
+  }
+}
+function closeSandboxPanel(){
+  $('sandboxPanel').classList.add('hidden');
+  if (S.sandbox && S.started && !S.dead){ S.paused = false; fallbackMode = true; locked = true; canvas.style.cursor = 'none'; }
+}
+function sandboxApplyPick(){
+  knifeMode = 0;
+  switchWeapon(SB.weapon, { force:true, roll:true });
+  const w = CW(); w.ammo = w.mag; w.res = w.reserve; w.cool = 0; w.reloading = 0;
+  updateAmmoHUD(); showWeaponRoll(w);
+}
+function deploySandbox(){
+  const inGame = S.sandbox && S.started;
+  closeSandboxPanel();
+  if (inGame){
+    if (currentMapName !== SB.map) setMap(SB.map);
+    sandboxApplyPick();
+    for (const t of SB.queue) spawnEnemy(t);
+    SB.queue = []; renderSbEnemies();
+    updateTopHUD();
+    showBanner('SANDBOX UPDATED');
+    return;
+  }
+  mode = 'solo'; S.sandbox = true;
+  setMap(SB.map);
+  savePlayerName();
+  showDeploySequence('solo');
+  startGame();
+  player.hp = player.maxHp;                                           // this place can't hurt you, but come in whole anyway
+  sandboxApplyPick();
+  for (const t of SB.queue) spawnEnemy(t);
+  SB.queue = []; renderSbEnemies();
+  addKillFeed(null, 'SANDBOX — THEY CAN\'T HURT YOU // B REOPENS THE BOX');
+  showBanner('SANDBOX');
+  updateTopHUD();
+}
+$('sandboxBtn').addEventListener('click', () => openSandboxPanel());
+$('sbBackBtn').addEventListener('click', () => closeSandboxPanel());
+$('sbDeployBtn').addEventListener('click', () => deploySandbox());
+addEventListener('keydown', e => {
+  if (e.code === 'KeyB' && S.sandbox && S.started && !S.dead && !net.voteActive) openSandboxPanel();
+});
 
 /* ================= HUD ================= */
 let dmgVignette = 0;
@@ -3649,7 +3864,7 @@ function updateTopHUD(){
   } else {
     $('modeLbl').textContent = 'WAVE';
     $('hostilesLbl').textContent = 'HOSTILES';
-    $('waveVal').textContent = S.wave || '—';
+    $('waveVal').textContent = S.sandbox ? 'SB' : (S.wave || '—');
     $('hostilesVal').textContent = enemies.filter(e=>!e.dead).length + S.toSpawn.length;
     $('scoreVal').textContent = S.score;
     $('killsVal').textContent = S.kills;
@@ -4026,4 +4241,11 @@ window.__dbg = { player, S, camera, enemies, net, keys, spawnEnemy, fireWeapon, 
   get knifeMode(){ return knifeMode; },
   getKnifeState(){ return { mode:knifeMode, golden:knifeGolden(), locked:knifeLocked(), def:currentKnifeDef() }; },
   resetKnifeTimers(){ knifeSwingT = knifeSwingCd = 0; },
-  getAdsT(){ return adsT; } };
+  getAdsT(){ return adsT; },
+  get playerShotsCt(){ return playerShots.length; },
+  get particlesCt(){ return particles.length; },
+  SB, deploySandbox, openSandboxPanel, damagePlayer, damageEnemy,
+  raycaster, _origin, _dir, _hitPoint,
+  get weaponIndex(){ return weaponIndex; },
+  setWeapon(i){ knifeMode = 0; switchWeapon(i, { force:true, roll:true }); currentRarity = RARITIES[0]; updateAmmoHUD(); },
+  fireOnce(){ switchT = 0; const w = CW(); w.cool = 0; w.reloading = 0; fireWeapon(); } };
