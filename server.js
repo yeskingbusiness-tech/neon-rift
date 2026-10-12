@@ -27,16 +27,22 @@ const server = http.createServer((req, res) => {
 /* ---- multiplayer relay + round system ---- */
 const wss = new WebSocket.Server({ server });
 let nextId = 1;
-const players = new Map();   // id -> { ws, name, state, score, deaths, vote, invulnUntil }
+const players = new Map();   // id -> { ws, name, state, score, deaths, vote, modeVote, team, invulnUntil }
 
 const ROUND_LIMIT = 30;
-const MAPS = ['FORGE', 'NEXUS', 'DUSK YARD'];
+const MAPS = ['FORGE', 'NEXUS', 'DUSK YARD', 'COLD STORAGE', 'RIFT DOCKS'];
+const MODE_CHOICES = ['FFA', 'TEAM'];
+const MODE_NAMES = { FFA:'FREE FOR ALL', TEAM:'RED v BLUE' };
+let gameMode = 'ffa';           // decided by the lobby's mode vote before every round
+const TEAM_NAMES = ['', 'RED TEAM', 'BLUE TEAM'];
 let currentMap = MAPS[0];
 let roundNo = 0;
 let roundActive = false;
 let voteChoices = [];
 let voteTimer = null;
 let voteEndsAt = 0;
+let votePhase = null;           // null | 'map' | 'mode' — two ballots per break: pick the map, then pick the game mode
+let pendingMap = null;          // map the lobby settled on while the mode vote runs
 
 function safeName(v, id){ return String(v || ('RIFT-' + id)).toUpperCase().replace(/[<>]/g, '').slice(0, 14); }
 function send(ws, o){ if (ws.readyState === 1) ws.send(JSON.stringify(o)); }
@@ -46,17 +52,24 @@ function broadcast(o, exceptId){
     if (id !== exceptId && p.ws.readyState === 1) p.ws.send(s);
 }
 function scoreList(){
-  return [...players].map(([id, p]) => ({ id, name:p.name, score:p.score || 0, deaths:p.deaths || 0 }))
+  return [...players].map(([id, p]) => ({ id, name:p.name, score:p.score || 0, deaths:p.deaths || 0, team:p.team || 0 }))
     .sort((a,b) => (b.score - a.score) || (a.deaths - b.deaths) || a.name.localeCompare(b.name));
+}
+function teamTotals(){
+  const totals = { red:0, blue:0 };
+  if (gameMode === 'team') for (const p of players.values()) (p.team === 2 ? totals.blue += p.score || 0 : p.team === 1 ? totals.red += p.score || 0 : 0);
+
+  return totals;
 }
 function voteCounts(){
   const counts = {};
+  if (votePhase === 'mode'){ for (const m of MODE_CHOICES) counts[m] = 0; for (const p of players.values()) if (counts[p.modeVote] !== undefined) counts[p.modeVote]++; return counts; }
   for (const m of voteChoices) counts[m] = 0;
   for (const p of players.values()) if (counts[p.vote] !== undefined) counts[p.vote]++;
   return counts;
 }
-function pickChoices(){
-  const pool = MAPS.filter(m => m !== currentMap);
+function pickChoices(exclude){
+  const pool = MAPS.filter(m => m !== exclude);
   while (pool.length < 3) pool.push(...MAPS);
   const choices = [];
   while (choices.length < Math.min(3, MAPS.length)){
@@ -66,9 +79,15 @@ function pickChoices(){
   }
   return choices;
 }
-function broadcastScore(){ broadcast({ t:'score', scores:scoreList(), limit:ROUND_LIMIT, round:roundNo, map:currentMap, active:roundActive }); }
+function broadcastScore(){ broadcast({ t:'score', scores:scoreList(), limit:ROUND_LIMIT, round:roundNo, map:currentMap, active:roundActive, mode:(gameMode || 'ffa'), totals:teamTotals() }); }
 function chooseVoteWinner(){
   const counts = voteCounts();
+  // mode ballot: an empty ballot means nobody cared — keep ffa, not a coin flip nobody asked for
+  if (votePhase === 'mode'){
+    const ffa = counts.FFA || 0, team = counts.TEAM || 0;
+    if (!ffa && !team) return 'FFA';
+    return ffa === team ? (Math.random() < 0.5 ? 'FFA' : 'TEAM') : ffa > team ? 'FFA' : 'TEAM';
+  }
   let best = voteChoices[(Math.random() * voteChoices.length) | 0] || MAPS[(Math.random()*MAPS.length)|0], bestCount = counts[best] || 0;
   for (const m of voteChoices){
     const c = counts[m] || 0;
@@ -78,60 +97,98 @@ function chooseVoteWinner(){
 }
 function scheduleVoteEnd(){
   if (voteTimer) clearTimeout(voteTimer);
-  voteTimer = setTimeout(() => startRound(chooseVoteWinner()), Math.max(500, voteEndsAt - Date.now()));
+  voteTimer = setTimeout(closeVotePhase, Math.max(500, voteEndsAt - Date.now()));
 }
-function openVote({ initial=false, winnerId=0, winnerName='ROUND COMPLETE' } = {}){
+let voteCtx = { initial:false, winnerId:0, winnerName:'ROUND COMPLETE', winTeam:0 };   // carried from phase 'map' into phase 'mode'
+function openVote({ initial=false, winnerId=0, winnerName='ROUND COMPLETE', winTeam=0 } = {}){
   if (voteTimer){ clearTimeout(voteTimer); voteTimer = null; }
   roundActive = false;
-  voteChoices = initial ? [...MAPS].sort(() => Math.random() - 0.5) : pickChoices();
-  for (const p of players.values()) p.vote = null;
+  votePhase = 'map';
+  pendingMap = null;
+  voteCtx = { initial, winnerId, winnerName, winTeam };
+  voteChoices = pickChoices(initial ? null : currentMap);   // always 3 of the 5 maps, cycling
+  for (const p of players.values()){ p.vote = null; p.modeVote = null; }
   voteEndsAt = Date.now() + 10000;
   scheduleVoteEnd();
-  broadcast({ t:'roundOver', winnerId, winnerName: initial ? 'STARTING MAP' : winnerName, scores:scoreList(), choices:voteChoices, counts:voteCounts(), limit:ROUND_LIMIT, map:currentMap, voteEndsAt, initial });
+  console.log(new Date().toISOString().slice(11,19), `[vote] map phase open (${initial ? 'initial' : 'next'}), choices=${voteChoices.join(',')}`);
+  broadcast({ t:'roundOver', winnerId, winnerName: initial ? 'STARTING MAP' : winnerName, winTeam, scores:scoreList(), choices:voteChoices, counts:voteCounts(), limit:ROUND_LIMIT, map:currentMap, voteEndsAt, initial, mode:(gameMode || 'ffa'), totals:teamTotals(), phase:'map', now:Date.now() });
+}
+function closeVotePhase(){
+  if (voteTimer){ clearTimeout(voteTimer); voteTimer = null; }
+  if (votePhase === 'map'){                       // map settled → same lobby now picks the mode
+    pendingMap = chooseVoteWinner();
+    votePhase = 'mode';
+    voteEndsAt = Date.now() + 6000;
+    scheduleVoteEnd();
+    console.log(new Date().toISOString().slice(11,19), `[vote] map decided: ${pendingMap}; mode phase open`);
+    broadcast({ t:'modeVote', map:pendingMap, choices:MODE_CHOICES, counts:voteCounts(), voteEndsAt, now:Date.now() });
+    return;
+  }
+  if (votePhase !== 'mode') return;
+  // mode decided → lock it in, (re)balance squads if it's teams, then kick off the round
+  gameMode = chooseVoteWinner() === 'TEAM' ? 'team' : 'ffa';
+  votePhase = null; voteChoices = []; voteEndsAt = 0;
+  if (gameMode === 'team'){
+    const ids = [...players.keys()];
+    for (let i = ids.length - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; [ids[i], ids[j]] = [ids[j], ids[i]]; }
+    ids.forEach((pid, i) => { players.get(pid).team = (i % 2) + 1; });   // shuffled 1,2,1,2… = balanced RED/BLUE
+  } else for (const p of players.values()) p.team = 0;
+  broadcast({ t:'modeDecided', mode:gameMode, modeName:gameMode === 'team' ? MODE_NAMES.TEAM : MODE_NAMES.FFA, map:pendingMap || currentMap });
+  for (const [pid, p] of players){ send(p.ws, { t:'mode', mode:gameMode, team:p.team || 0, teamName:TEAM_NAMES[p.team] || '' }); broadcast({ t:'team', id:pid, team:p.team || 0 }, pid); }
+  console.log(new Date().toISOString().slice(11,19), `[vote] mode decided: ${gameMode}; launching round`);
+  setTimeout(() => startRound(pendingMap), 1400);
 }
 function ensureInitialVote(){
-  if (players.size > 0 && !roundActive && voteChoices.length === 0) openVote({ initial:true, winnerName:'STARTING MAP' });
+  if (players.size > 0 && !roundActive && !votePhase) openVote({ initial:true, winnerName:'STARTING MAP' });
 }
 function resetEmptyLobby(){
   if (voteTimer){ clearTimeout(voteTimer); voteTimer = null; }
   roundActive = false;
   voteChoices = [];
   voteEndsAt = 0;
+  votePhase = null;
+  pendingMap = null;
   roundNo = 0;
+  gameMode = 'ffa';
   currentMap = MAPS[(Math.random() * MAPS.length) | 0];
 }
 function startRound(map){
+  if (!players.size){ votePhase = null; return; }   // lobby emptied during the ballots — never launch a ghost round
   if (voteTimer){ clearTimeout(voteTimer); voteTimer = null; }
   currentMap = map || currentMap;
   roundNo++;
   roundActive = true;
   voteChoices = [];
   voteEndsAt = 0;
+  votePhase = null;
   for (const p of players.values()){
-    p.score = 0; p.deaths = 0; p.vote = null; p.state = null; p.invulnUntil = Date.now() + 1500;
+    p.score = 0; p.deaths = 0; p.vote = null; p.modeVote = null; p.state = null; p.invulnUntil = Date.now() + 1500;
+    p.lastHitFrom = 0; p.lastHitKnife = false; p.lastHitAt = 0;
   }
-  broadcast({ t:'roundStart', map:currentMap, round:roundNo, limit:ROUND_LIMIT, scores:scoreList() });
-  console.log(`[round] ${roundNo} started on ${currentMap}`);
+  broadcast({ t:'roundStart', map:currentMap, round:roundNo, limit:ROUND_LIMIT, scores:scoreList(), mode:gameMode, totals:teamTotals() });
+  console.log(new Date().toISOString().slice(11,19), `[round] ${roundNo} started on ${currentMap} (${gameMode})`);
 }
 function finishRound(winnerId){
   if (!roundActive) return;
+  // Same win rule in both modes: ONE runner hits 30 kills. Team play only means no friendly fire.
   const winner = players.get(winnerId);
-  openVote({ initial:false, winnerId, winnerName:winner ? winner.name : 'ARENA' });
-  console.log(`[round] ${winner ? winner.name : winnerId} reached ${ROUND_LIMIT} and won round ${roundNo}; voting open`);
+  openVote({ initial:false, winnerId, winnerName:winner ? winner.name : 'ARENA', winTeam:(winner && (gameMode === 'team')) ? winner.team : 0 });
+  console.log(new Date().toISOString().slice(11,19), `[round] ${winner ? winner.name : winnerId} reached ${ROUND_LIMIT} and won round ${roundNo}; voting open`);
 }
 function welcomeState(id){
   return {
-    t:'welcome', id, map:currentMap, round:roundNo, limit:ROUND_LIMIT, active:roundActive,
-    scores:scoreList(), voteChoices, voteCounts:voteCounts(), voteEndsAt, winnerName:(!roundActive && voteChoices.length ? (roundNo === 0 ? 'STARTING MAP' : 'ROUND COMPLETE') : ''),
-    players:[...players].filter(([pid]) => pid !== id).map(([pid, q]) => ({ id:pid, name:q.name, skin:q.skin || 'rift', state:q.state, score:q.score || 0, deaths:q.deaths || 0 }))
+    t:'welcome', id, map:currentMap, round:roundNo, limit:ROUND_LIMIT, active:roundActive, mode:(gameMode || 'ffa'), totals:teamTotals(),
+    scores:scoreList(), voteChoices: votePhase === 'mode' ? MODE_CHOICES : voteChoices, voteCounts:voteCounts(), voteEndsAt,
+    phase: votePhase, pendingMap, winnersName:(!roundActive && votePhase ? voteCtx.winnerName : ''), now:Date.now(),
+    players:[...players].filter(([pid]) => pid !== id).map(([pid, q]) => ({ id:pid, name:q.name, skin:q.skin || 'rift', state:q.state, score:q.score || 0, deaths:q.deaths || 0, team:q.team || 0 }))
   };
 }
 
 wss.on('connection', ws => {
   const id = nextId++;
-  const p = { ws, name:'RIFT-' + id, skin:'rift', state:null, score:0, deaths:0, vote:null, invulnUntil:Date.now()+1500 };
+  const p = { ws, name:'RIFT-' + id, skin:'rift', state:null, score:0, deaths:0, vote:null, team:0, invulnUntil:Date.now()+1500, lastHitFrom:0, lastHitKnife:false, lastHitAt:0 };
   players.set(id, p);
-  console.log(`[+] player ${id} connected (${players.size} online)`);
+  console.log(new Date().toISOString().slice(11,19), `[+] player ${id} connected (${players.size} online)`);
   ensureInitialVote();
 
   send(ws, welcomeState(id));
@@ -142,7 +199,18 @@ wss.on('connection', ws => {
       case 'hello':
         p.name = safeName(m.name, id);
         p.skin = String(m.skin || 'rift').replace(/[^a-z0-9_-]/gi, '').slice(0, 24) || 'rift';
-        broadcast({ t:'join', id, name:p.name, skin:p.skin, score:p.score, deaths:p.deaths }, id);
+        // mode no longer locks from a button — the lobby votes it in before every round.
+        // joining mid team round: slot into the shorthanded squad
+        if (gameMode === 'team' && roundActive && !p.team){
+          let red = 0, blue = 0;
+          for (const q of players.values()) if (q.team === 1) red++; else if (q.team === 2) blue++;
+          p.team = red <= blue ? 1 : 2;
+          console.log(new Date().toISOString().slice(11,19), `[team] ${p.name} → ${TEAM_NAMES[p.team]} (${red}v${blue})`);
+        }
+        if (gameMode !== 'team') p.team = 0;
+        send(p.ws, { t:'mode', mode:(gameMode || 'ffa'), team:p.team || 0, teamName:TEAM_NAMES[p.team] || MODE_NAMES.FFA });
+        broadcast({ t:'join', id, name:p.name, skin:p.skin, score:p.score, deaths:p.deaths, team:p.team }, id);
+        broadcast({ t:'team', id, team:p.team }, id);
         broadcastScore();
         break;
       case 'skin':
@@ -159,17 +227,30 @@ wss.on('connection', ws => {
       case 'hit': {
         if (!roundActive) break;
         const tgt = players.get(m.target);
-        if (tgt && (tgt.invulnUntil || 0) <= Date.now()) send(tgt.ws, { t:'hit', from:id, dmg:Math.min(Number(m.dmg) || 0, 200) });
+        if (tgt && gameMode === 'team' && p.team && tgt.team === p.team) break;   // team mode: no friendly fire (or friendly shanks)
+        if (tgt && (tgt.invulnUntil || 0) <= Date.now()){
+          // track the most recent hit so a kill can be attributed as a shank (demotion rules)
+          tgt.lastHitFrom = id;
+          tgt.lastHitKnife = !!m.knife;
+          tgt.lastHitBackstab = !!m.bs;
+          tgt.lastHitAt = Date.now();
+          send(tgt.ws, { t:'hit', from:id, dmg:Math.min(Number(m.dmg) || 0, 200), knife:!!m.knife });
+        }
         break;
       }
       case 'kill': {
         const killerId = Number(m.by) || 0;
         const killer = players.get(killerId);
+        let knifeKill = false, backstab = false, demoted = false;
         if (roundActive){
           p.deaths = (p.deaths || 0) + 1;
+          knifeKill = !!(killer && killerId !== id && p.lastHitFrom === killerId && p.lastHitKnife && (Date.now() - (p.lastHitAt || 0)) < 2500);
+          backstab = knifeKill && !!p.lastHitBackstab;
+          if (knifeKill && p.score > 0){ p.score -= 1; demoted = true; }   // shanked: lose a point, drop a gun tier (never below 0)
           if (killer && killerId !== id) killer.score = (killer.score || 0) + 1;
+          p.lastHitKnife = false; p.lastHitBackstab = false; p.lastHitFrom = 0;
         }
-        broadcast({ t:'kill', victim:id, by:killerId, names:{ v:p.name, k:killer ? killer.name : 'ARENA' }, scores:scoreList(), limit:ROUND_LIMIT });
+        broadcast({ t:'kill', victim:id, by:killerId, knife:knifeKill, bs:backstab, demoted, names:{ v:p.name, k:killer ? killer.name : 'ARENA' }, kteam: killer ? killer.team : 0, vteam: p.team, scores:scoreList(), limit:ROUND_LIMIT, mode:(gameMode || 'ffa'), totals:teamTotals() });
         broadcastScore();
         if (roundActive && killer && killer.score >= ROUND_LIMIT) finishRound(killerId);
         break;
@@ -179,9 +260,12 @@ wss.on('connection', ws => {
         break;
       case 'vote': {
         const choice = String(m.map || '');
-        if (!roundActive && voteChoices.includes(choice)){
+        if (roundActive) break;
+        if (votePhase === 'mode'){
+          if (MODE_CHOICES.includes(choice)){ p.modeVote = choice; broadcast({ t:'voteUpdate', phase:'mode', choices:MODE_CHOICES, counts:voteCounts(), voter:id, map:choice, voteEndsAt, now:Date.now() }); }
+        } else if (votePhase === 'map' && voteChoices.includes(choice)){
           p.vote = choice;
-          broadcast({ t:'voteUpdate', choices:voteChoices, counts:voteCounts(), voter:id, map:choice, voteEndsAt });
+          broadcast({ t:'voteUpdate', phase:'map', choices:voteChoices, counts:voteCounts(), voter:id, map:choice, voteEndsAt, now:Date.now() });
         }
         break;
       }

@@ -17,14 +17,60 @@ function loadSettings(){
 const SETTINGS = loadSettings();
 function saveSettings(){ localStorage.setItem('neonRiftSettings', JSON.stringify(SETTINGS)); }
 
+/* ---- rebindable keys ---- */
+const DEFAULT_BINDS = {
+  fwd:'KeyW', back:'KeyS', left:'KeyA', right:'KeyD',
+  jump:'Space', sprint:'ShiftLeft', slide:'KeyQ', crouch:'KeyC', fire:'KeyX',
+  reload:'KeyR', nade:'KeyG', finisher:'KeyF',
+  gun:'Digit1', knife:'Digit2', ads:'ControlLeft',
+};
+const BIND_LABELS = {
+  fwd:'Move Forward', back:'Move Back', left:'Strafe Left', right:'Strafe Right',
+  jump:'Jump', sprint:'Sprint', slide:'Slide (hold sprint)', crouch:'Crouch (hold)', fire:'Fire / Swing',
+  reload:'Reload', nade:'Throw Grenade', finisher:'Finisher',
+  gun:'Weapon — Gun', knife:'Weapon — Knife', ads:'Aim / Scope (hold)',
+};
+if (!SETTINGS.binds || typeof SETTINGS.binds !== 'object') SETTINGS.binds = {};
+SETTINGS.binds = { ...DEFAULT_BINDS, ...SETTINGS.binds };
+// binds v2: slide moved C→Q and crouch took C; migrate old saves so they don't collide
+if ((SETTINGS.bindVersion || 0) < 2){
+  if (SETTINGS.binds.slide === 'KeyC') SETTINGS.binds.slide = 'KeyQ';
+  SETTINGS.bindVersion = 2;
+  saveSettings();
+}
+function bindCode(id){ return SETTINGS.binds[id] ?? DEFAULT_BINDS[id]; }
+function bindDown(id){ return !!keys[bindCode(id)]; }
+function friendlyKeyName(code){
+  if (!code) return 'UNBOUND';
+  return code.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'NUM ')
+    .replace(/^Control/, 'CTRL').replace(/^Shift/, 'SHIFT').replace(/^Alt/, 'ALT')
+    .replace('Left', ' L').replace('Right', ' R').toUpperCase();
+}
+function assignBind(id, code){
+  if (!BIND_LABELS[id] || !code) return;
+  for (const other of Object.keys(DEFAULT_BINDS))   // a key can only drive one action
+    if (other !== id && SETTINGS.binds[other] === code) SETTINGS.binds[other] = '';
+  SETTINGS.binds[id] = code;
+  saveSettings();
+}
+
 const SKINS = [
-  { id:'rift',    name:'Rift Runner',    desc:'Standard black/cyan combat shell', color:0x2c6eff, eye:0x2cf2ff, cost:0,    level:1 },
-  { id:'crimson', name:'Crimson Ghost',  desc:'Red assault armor for close fights', color:0xb72a3a, eye:0xff3b57, cost:250,  level:2 },
-  { id:'solar',   name:'Solar Warden',   desc:'Gold reactive plating',             color:0xc87922, eye:0xffd040, cost:650,  level:4 },
-  { id:'void',    name:'Void Specter',   desc:'Black violet stealth frame',        color:0x3d246a, eye:0xd040ff, cost:900,  level:5 },
-  { id:'toxic',   name:'Toxic Phantom',  desc:'Green biohazard glow suit',         color:0x287a42, eye:0x8fe08a, cost:1250, level:7 },
-  { id:'arctic',  name:'Arctic Neon',    desc:'White/blue high contrast shell',    color:0x9eb9d6, eye:0x66eaff, cost:1700, level:9 },
-  { id:'royal',   name:'Royal Blackout', desc:'Prestige purple-gold operator',     color:0x5a36a0, eye:0xff9a3c, cost:2400, level:12 },
+  { id:'rift',     name:'Rift Runner',    desc:'Standard black/cyan combat shell',      color:0x2c6eff, eye:0x2cf2ff, cost:0,    level:1 },
+  { id:'crimson',  name:'Crimson Ghost',  desc:'Red assault armor for close fights',    color:0xb72a3a, eye:0xff3b57, cost:250,  level:2 },
+  { id:'cobalt',   name:'Cobalt Wraith',  desc:'Deep blue recon shell',                 color:0x22409a, eye:0x66aaff, cost:350,  level:2 },
+  { id:'ember',    name:'Ember Jackal',   desc:'Scorched orange raider plating',        color:0x9a4a1f, eye:0xff9a3c, cost:450,  level:3 },
+  { id:'jade',     name:'Jade Ronin',     desc:'Temple green duelist frame',            color:0x1f7a5a, eye:0x66ffc2, cost:600,  level:4 },
+  { id:'solar',    name:'Solar Warden',   desc:'Gold reactive plating',                 color:0xc87922, eye:0xffd040, cost:650,  level:4 },
+  { id:'void',     name:'Void Specter',   desc:'Black violet stealth frame',            color:0x3d246a, eye:0xd040ff, cost:900,  level:5 },
+  { id:'hornet',   name:'Circuit Hornet', desc:'Hazard yellow shock trooper',           color:0x8a7418, eye:0xffea66, cost:1050, level:6 },
+  { id:'toxic',    name:'Toxic Phantom',  desc:'Green biohazard glow suit',             color:0x287a42, eye:0x8fe08a, cost:1250, level:7 },
+  { id:'siren',    name:'Plasma Siren',   desc:'Magenta nightclub combat shell',        color:0x8a1f6a, eye:0xff5ad0, cost:1450, level:8 },
+  { id:'arctic',   name:'Arctic Neon',    desc:'White/blue high contrast shell',        color:0x9eb9d6, eye:0x66eaff, cost:1700, level:9 },
+  { id:'ghost',    name:'Ghost Protocol', desc:'Pale grey special-operations frame',    color:0x8a94a6, eye:0xeafcff, cost:1900, level:10 },
+  { id:'obsidian', name:'Obsidian Shade', desc:'Matte black shell with power conduits', color:0x15161c, eye:0x2cf2ff, cost:2100, level:11 },
+  { id:'royal',    name:'Royal Blackout', desc:'Prestige purple-gold operator',         color:0x5a36a0, eye:0xff9a3c, cost:2400, level:12 },
+  { id:'nemesis',  name:'Nemesis Shell',  desc:'Blackened red breach armor',            color:0x3a1216, eye:0xff2020, cost:2800, level:13 },
+  { id:'aurum',    name:'Aurum Prime',    desc:'Gilded champion frame of the rift',     color:0x8a6a1f, eye:0xffe680, cost:3200, level:14 },
 ];
 function xpForLevel(level){ return level <= 1 ? 0 : Math.floor(120 * Math.pow(level-1, 1.65) + 80 * (level-1)); }
 function levelFromXp(xp){ let lvl = 1; while (lvl < 99 && xp >= xpForLevel(lvl+1)) lvl++; return lvl; }
@@ -261,7 +307,7 @@ const SFX = {
   hit(){ playTone(2200, 1800, 0.045, 0.28, 'square'); },
   kill(){ playTone(1400, 2600, 0.12, 0.3, 'square'); playNoise(0.3, 700, 0.8, 0.5); },
   hurt(){ playTone(90, 40, 0.25, 0.7, 'sine'); playNoise(0.18, 500, 0.6, 0.4); },
-  step(){ playNoise(0.07, rand(300,450), 0.7, 0.18); },
+  step(vol=1){ playNoise(0.07, rand(300,450), 0.7, 0.18 * vol); },
   jump(){ playNoise(0.1, 600, 0.8, 0.2); },
   land(){ playNoise(0.12, 350, 0.7, 0.35); },
   enemyShot(){ playTone(1200, 300, 0.14, 0.22, 'sawtooth'); playNoise(0.1, 2000, 1, 0.15,'bandpass'); },
@@ -324,7 +370,7 @@ function addSolid(cx, cz, w, d, h, mat, { y0=0, glow=null, visual=true } = {}){
 }
 
 let currentMapName = 'FORGE';
-const MAP_NAMES = ['FORGE','NEXUS','DUSK YARD'];
+const MAP_NAMES = ['FORGE','NEXUS','DUSK YARD','COLD STORAGE','RIFT DOCKS'];
 let activeSpawnPoints = [[40,0],[-40,0],[0,40],[0,-40],[34,34],[-34,34],[34,-34],[-34,-34]];
 let activePickupLayout = [[-20,0,'health'],[20,0,'health'],[0,-28,'health'],[0,0,'ammo'],[28,28,'ammo'],[-28,-28,'ammo'],[0,28,'health'],[28,-14,'ammo']];
 let mapLampPositions = [];
@@ -540,11 +586,11 @@ function addLamp(x,z,color=0x2cf2ff){
   mapLampPositions.push([x,z,color]);
 }
 function buildForgeLayout(){
-  // corner towers
+  // corner towers (inset from the perimeter so bots and players can route around them)
   for (const [sx,sz] of [[1,1],[1,-1],[-1,1],[-1,-1]]){
-    addSolid(sx*36, sz*36, 7, 7, 4.2, MAT.wall, { glow:MAT.cyanGlow });
-    addSolid(sx*31.5, sz*36, 2.2, 3, 1.1, MAT.crate);
-    addSolid(sx*36, sz*31.5, 3, 2.2, 2.1, MAT.crate);
+    addSolid(sx*32, sz*32, 7, 7, 4.2, MAT.wall, { glow:MAT.cyanGlow });
+    addSolid(sx*27.5, sz*32, 2.2, 3, 1.1, MAT.crate);
+    addSolid(sx*32, sz*27.5, 3, 2.2, 2.1, MAT.crate);
   }
   addSolid(0, 0, 11, 11, 1.0, MAT.dark, { glow:MAT.cyanGlow });
   for (const [sx,sz] of [[1,1],[1,-1],[-1,1],[-1,-1]]) addSolid(sx*4.6, sz*4.6, 1.1, 1.1, 4.4, MAT.dark);
@@ -567,7 +613,7 @@ function buildForgeLayout(){
     addSolid(x, z, w, d, h, MAT.dark, { glow:MAT.orangeGlow });
   for (const [x,z] of [[-20,20],[20,-20],[20,20],[-20,-20]]) addLamp(x,z,0x2cf2ff);
   addForgeDressing();
-  activeSpawnPoints = [[40,0],[-40,0],[0,40],[0,-40],[34,34],[-34,34],[34,-34],[-34,-34]];
+  activeSpawnPoints = [[40,0],[-40,0],[0,40],[0,-40],[27,27],[-27,27],[27,-27],[-27,-27]];
   activePickupLayout = [[-20,0,'health'],[20,0,'health'],[0,-28,'health'],[0,0,'ammo'],[28,28,'ammo'],[-28,-28,'ammo'],[0,28,'health'],[28,-14,'ammo']];
 }
 function buildNexusLayout(){
@@ -599,6 +645,72 @@ function buildDuskYardLayout(){
   activeSpawnPoints = [[40,22],[-40,-22],[40,-22],[-40,22],[0,40],[0,-40],[36,0],[-36,0]];
   activePickupLayout = [[0,0,'ammo'],[-24,0,'health'],[24,0,'health'],[0,26,'ammo'],[0,-26,'ammo'],[-34,22,'health'],[34,-22,'health'],[34,22,'ammo'],[-34,-22,'ammo']];
 }
+function addColdStorageDressing(){
+  addRotatingRing(0,0,5.6,3.6,0x66eaff,1.1); addRotatingRing(0,0,5.95,2.2,0x2cf2ff,-1.4);
+  addBeacon(0,14,0x66eaff,2.6); addBeacon(0,-14,0x66eaff,2.6);
+  for (const [x,z] of [[-24,-9],[24,9],[-24,9],[24,-9]]) addDestructibleProp(x,z,'crate');
+  for (const [x,z] of [[-8,-30],[8,30],[30,-8],[-30,8]]) addDestructibleProp(x,z,'barrel');
+  addWorldSign('COLD STORAGE', -40.9, 3.3, -12, Math.PI/2, '#66eaff', 'FREEZER AISLES 12-B');
+  addWorldSign('KEEP FROZEN', 12, 3.3, 40.9, Math.PI, '#2cf2ff', 'THERMAL LOCK ENGAGED');
+  for (const [x,z] of [[-36,0],[36,0]]) addPipe(x,z,9,'z');
+  addWeather('data', 320);
+}
+function buildColdStorageLayout(){
+  // chilled warehouse: raised freezer hub, twin rack aisles, vault corners, blue frost lighting
+  addSolid(0, 0, 12, 12, 0.9, MAT.dark, { glow:MAT.cyanGlow });
+  addSolid(0, 0, 5.0, 5.0, 3.0, MAT.wall, { y0:0.9, glow:MAT.cyanGlow });
+  for (const sx of [-1,1]){
+    addSolid(sx*13, -12, 2.8, 16, 3.4, MAT.crate2, { glow:MAT.cyanGlow });
+    addSolid(sx*13,  12, 2.8, 16, 3.4, MAT.crate2, { glow:MAT.cyanGlow });
+    addSolid(sx*25, 0, 2.8, 22, 4.2, MAT.wall, { glow:MAT.orangeGlow });
+    addSolid(sx*25, -25, 8, 3.2, 1.1, MAT.crate);
+    addSolid(sx*25, 25, 8, 3.2, 1.1, MAT.crate);
+  }
+  for (const [sx,sz] of [[1,1],[1,-1],[-1,1],[-1,-1]]){
+    addSolid(sx*33, sz*33, 7, 7, 4.6, MAT.wall, { glow:MAT.cyanGlow });
+    addSolid(sx*25, sz*33, 2, 6, 1.2, MAT.crate2);
+  }
+  for (const [x,z,w,d,h] of [[-6,21,4,2,1.15],[6,-21,4,2,1.15],[21,-6,2,4,1.15],[-21,6,2,4,1.15]]) addSolid(x,z,w,d,h,MAT.dark,{glow:MAT.orangeGlow});
+  for (const [x,z,c] of [[0,18,0x66eaff],[0,-18,0x66eaff],[18,0,0xff9a3c],[-18,0,0xff9a3c],[33,33,0x66eaff],[-33,-33,0x66eaff]]) addLamp(x,z,c);
+  addColdStorageDressing();
+  activeSpawnPoints = [[38,0],[-38,0],[0,38],[0,-38],[30,30],[-30,30],[30,-30],[-30,-30]];
+  activePickupLayout = [[0,14,'health'],[0,-14,'health'],[14,0,'ammo'],[-14,0,'ammo'],[33,0,'health'],[-33,0,'health'],[0,0,'ammo'],[0,33,'ammo'],[0,-33,'health']];
+}
+function addCrane(x,z){
+  addSolid(x, z-9, 1.2, 1.2, 6.8, MAT.dark);
+  addSolid(x, z+9, 1.2, 1.2, 6.8, MAT.dark);
+  addSolid(x, z, 1.0, 20, 0.7, MAT.dark, { y0: 6.1, glow: MAT.orangeGlow });
+}
+function addRiftDocksDressing(){
+  addCrane(-26,-26); addCrane(26,26);
+  addRotatingRing(0,34,4.6,3.4,0xff9a3c,0.8);
+  addBeacon(0,-34,0xff9a3c,2.6); addBeacon(0,34,0x2cf2ff,2.6);
+  for (const [x,z] of [[-12,0],[12,0],[-34,-12],[34,12]]) addDestructibleProp(x,z,'crate');
+  for (const [x,z] of [[-6,-24],[6,24],[24,-20],[-24,20]]) addDestructibleProp(x,z,'barrel');
+  addWorldSign('RIFT DOCKS', -40.9, 3.4, 12, Math.PI/2, '#2cf2ff', 'CONTAINER BERTH 7');
+  addWorldSign('NO MANIFEST', 12, 3.4, -40.9, 0, '#ff9a3c', 'BLACKOUT RAIN FRONT');
+  const l1 = new THREE.SpotLight(0x2cf2ff, 2.8, 64, 0.3, 0.45, 1.2); l1.position.set(-30,9,30); l1.target.position.set(0,0,0); worldGroup.add(l1); worldGroup.add(l1.target);
+  const l2 = new THREE.SpotLight(0xff9a3c, 2.4, 58, 0.32, 0.45, 1.2); l2.position.set(30,9,-30); l2.target.position.set(0,0,0); worldGroup.add(l2); worldGroup.add(l2.target);
+  worldAnim.push({ spot:l1, target:l1.target, center:new THREE.Vector3(0,0,0), radius:20, speed:0.5, phase:1.2 });
+  worldAnim.push({ spot:l2, target:l2.target, center:new THREE.Vector3(0,0,0), radius:18, speed:-0.6, phase:3.1 });
+  addWeather('rain', 540);
+}
+function buildRiftDocksLayout(){
+  // rain-slick dockside: long container lanes, gantry cranes, pier cover
+  for (const [x,z,w,d,h] of [[0,-14,26,3,3.0],[0,14,26,3,3.0]]) addSolid(x,z,w,d,h,MAT.crate2,{glow:MAT.orangeGlow});
+  addSolid(0, 0, 4, 10, 1.2, MAT.dark, { glow:MAT.cyanGlow });
+  addSolid(0, 0, 2.4, 4, 2.8, MAT.wall, { y0:1.2, glow:MAT.cyanGlow });
+  for (const sx of [-1,1]){
+    addSolid(sx*20, 0, 6, 14, 1.5, MAT.crate, { glow:MAT.cyanGlow });
+    addSolid(sx*30, 0, 3.4, 24, 3.6, MAT.wall, { glow:MAT.orangeGlow });
+    addSolid(sx*12, -28, 10, 2.6, 2.4, MAT.crate2, { glow:MAT.cyanGlow });
+    addSolid(sx*12, 28, 10, 2.6, 2.4, MAT.crate2, { glow:MAT.cyanGlow });
+  }
+  for (const [x,z,c] of [[-20,-14,0xff9a3c],[20,14,0xff9a3c],[20,-14,0x2cf2ff],[-20,14,0x2cf2ff],[0,36,0x2cf2ff],[0,-36,0xff9a3c]]) addLamp(x,z,c);
+  addRiftDocksDressing();
+  activeSpawnPoints = [[38,-20],[-38,20],[38,20],[-38,-20],[0,34],[0,-34],[34,0],[-34,0]];
+  activePickupLayout = [[0,0,'ammo'],[-20,7,'health'],[20,-7,'health'],[0,22,'ammo'],[0,-22,'ammo'],[-34,20,'health'],[34,-20,'health'],[34,20,'ammo'],[-34,-20,'ammo']];
+}
 function buildMap(name='FORGE'){
   currentMapName = (name || 'FORGE').toUpperCase();
   clearWorld();
@@ -606,6 +718,8 @@ function buildMap(name='FORGE'){
   addPerimeter();
   if (currentMapName === 'NEXUS') buildNexusLayout();
   else if (currentMapName === 'DUSK YARD') buildDuskYardLayout();
+  else if (currentMapName === 'COLD STORAGE') buildColdStorageLayout();
+  else if (currentMapName === 'RIFT DOCKS') buildRiftDocksLayout();
   else { currentMapName = 'FORGE'; buildForgeLayout(); }
 }
 function setMap(name){
@@ -616,6 +730,51 @@ function setMap(name){
   if (typeof enemies !== 'undefined') enemies.length = 0;
   showBanner(currentMapName);
   const mapEl = $('mapName'); if (mapEl) mapEl.textContent = currentMapName;
+}
+
+/* map vote thumbnails: a top-down blueprint render of each arena, generated once
+   from the real solid data so every map offers a true picture of itself */
+const MAP_THUMBS = {};
+const MAP_THUMB_TINT = { 'FORGE':'#ff9a2c', 'NEXUS':'#2cf2ff', 'DUSK YARD':'#b06cff', 'COLD STORAGE':'#9fd8ff', 'RIFT DOCKS':'#2c9fff' };
+function blueprintThumb(mapName){
+  const canvas = document.createElement('canvas'); canvas.width = 360; canvas.height = 220;
+  const g = canvas.getContext('2d');
+  const tint = MAP_THUMB_TINT[mapName] || '#2cf2ff';
+  const grd = g.createLinearGradient(0, 0, 0, 220);
+  grd.addColorStop(0, '#0a1522'); grd.addColorStop(1, '#05090f');
+  g.fillStyle = grd; g.fillRect(0, 0, 360, 220);
+  g.strokeStyle = 'rgba(44,242,255,0.07)'; g.lineWidth = 1;
+  for (let x = 0; x <= 360; x += 18){ g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 220); g.stroke(); }
+  for (let y = 0; y <= 220; y += 18){ g.beginPath(); g.moveTo(0, y); g.lineTo(360, y); g.stroke(); }
+  const pad = 16, sx = (360 - pad*2) / (ARENA*2), sz = (220 - pad*2) / (ARENA*2);
+  const X = wx => pad + (wx + ARENA)*sx, Z = wz => pad + (wz + ARENA)*sz;
+  g.strokeStyle = tint; g.globalAlpha = .55; g.lineWidth = 2;
+  g.strokeRect(X(-ARENA), Z(-ARENA), ARENA*2*sx, ARENA*2*sz);
+  g.globalAlpha = 1;
+  for (const s of solids){
+    const height = s.max.y - s.min.y;
+    g.fillStyle = height >= 6 ? tint : height >= 2.2 ? 'rgba(150,220,255,.55)' : 'rgba(120,160,190,.42)';
+    g.globalAlpha = height >= 6 ? .85 : .75;
+    g.fillRect(X(s.min.x), Z(s.min.z), (s.max.x - s.min.x)*sx, (s.max.z - s.min.z)*sz);
+    if (height >= 6){ g.globalAlpha = .22; g.fillStyle = '#fff'; g.fillRect(X(s.min.x), Z(s.min.z), (s.max.x - s.min.x)*sx, Math.max(1.5, (s.max.z - s.min.z)*sz*.18)); }
+  }
+  g.globalAlpha = 1; g.fillStyle = '#ffd040';
+  for (const [px, pz] of activeSpawnPoints){ g.beginPath(); g.arc(X(px), Z(pz), 2.2, 0, 7); g.fill(); }
+  g.fillStyle = tint; g.font = '900 15px Consolas, monospace'; g.textAlign = 'left'; g.textBaseline = 'top';
+  g.fillText(mapName, pad, 9);
+  return canvas.toDataURL('image/png');
+}
+function generateMapThumbnails(){
+  if (generateMapThumbnails.done) return MAP_THUMBS;
+  generateMapThumbnails.done = true;
+  const keep = currentMapName;
+  for (const m of MAP_NAMES){ setMap(m); MAP_THUMBS[m] = blueprintThumb(m); }
+  setMap(keep);
+  return MAP_THUMBS;
+}
+function thumbFor(map){
+  if (!Object.keys(MAP_THUMBS).length) generateMapThumbnails();
+  return MAP_THUMBS[map] || '';
 }
 const lampGlows = [];
 function addLampGlows(){
@@ -665,6 +824,23 @@ function groundHeight(pos, feetY){
   }
   return g;
 }
+/* push a point out of any solid it overlaps (used to keep bots from spawning inside walls) */
+function resolvePenetration(p, r){
+  for (const s of solids){
+    if (s.min.y > 0.6) continue;
+    const exMinX = s.min.x - r, exMaxX = s.max.x + r;
+    const exMinZ = s.min.z - r, exMaxZ = s.max.z + r;
+    if (p.x > exMinX && p.x < exMaxX && p.z > exMinZ && p.z < exMaxZ){
+      const dx1 = p.x - exMinX, dx2 = exMaxX - p.x;
+      const dz1 = p.z - exMinZ, dz2 = exMaxZ - p.z;
+      const m = Math.min(dx1, dx2, dz1, dz2);
+      if (m === dx1) p.x = exMinX; else if (m === dx2) p.x = exMaxX;
+      else if (m === dz1) p.z = exMinZ; else p.z = exMaxZ;
+    }
+  }
+  p.x = clamp(p.x, -ARENA+1, ARENA-1);
+  p.z = clamp(p.z, -ARENA+1, ARENA-1);
+}
 // ray vs world AABBs; returns distance or Infinity
 const _tmpInv = new THREE.Vector3();
 function castWorld(origin, dir, maxDist){
@@ -684,7 +860,8 @@ function castWorld(origin, dir, maxDist){
     let tzmin = (s.min.z - origin.z) * _tmpInv.z, tzmax = (s.max.z - origin.z) * _tmpInv.z;
     if (tzmin > tzmax){ const q = tzmin; tzmin = tzmax; tzmax = q; }
     if (tmin > tzmax || tzmin > tmax) continue;
-    tmin = Math.max(tmin, tzmin);
+    tmin = Math.max(tmin, tzmin); tmax = Math.min(tmax, tzmax);
+    if (tmin <= 0 && tmax > 0) return 0.06;   // origin is inside the solid — treat as blocked so bots sense the wall
     if (tmin > 0 && tmin < best) best = tmin;
   }
   return best;
@@ -697,6 +874,7 @@ function hasLOS(a, b){
   _segDir.multiplyScalar(1/dist);
   return castWorld(a, _segDir, dist) >= dist - 0.01;
 }
+const _botRay = new THREE.Vector3(), _botDir = new THREE.Vector3();
 
 /* ================= GAME STATE ================= */
 let mode = 'solo';   // 'solo' (waves) or 'dm' (LAN deathmatch)
@@ -729,20 +907,37 @@ const slideDir = new THREE.Vector3();
 const keys = {};
 let mouseL = false, mouseR = false, locked = false;
 
+let captureBindAction = null;   // non-null while the settings menu waits for a key press
+function actionForCode(code){
+  for (const id of Object.keys(DEFAULT_BINDS)) if (bindCode(id) === code) return id;
+  return null;
+}
 addEventListener('keydown', e => {
   keys[e.code] = true;
+  if (captureBindAction){
+    e.preventDefault(); e.stopPropagation();
+    if (e.code !== 'Escape') assignBind(captureBindAction, e.code);
+    captureBindAction = null;
+    renderBindList();
+    return;
+  }
+  if (e.code === bindCode('ads')) e.preventDefault();         // keep CTRL from triggering browser shortcuts while aiming
   if (net.voteActive && ['Digit1','Digit2','Digit3'].includes(e.code)){
     const idx = Number(e.code.slice(-1)) - 1;
     castMapVote(net.voteChoices[idx]);
     return;
   }
   if (!locked || S.dead) return;
-  if (e.code === 'KeyR') tryReload();
-  // Weapon switching is intentionally disabled: kills are the only way to roll a new weapon.
-  if (e.code === 'KeyG') throwGrenade();
-  if (e.code === 'KeyC') trySlide();
-  if (e.code === 'KeyF') tryFinisher();
-});
+  const action = actionForCode(e.code);
+  // Manual gun switching stays disabled: guns only advance through kills. The knife slot (key 2) is always available.
+  if (action === 'reload') tryReload();
+  else if (action === 'nade') throwGrenade();
+  else if (action === 'slide') trySlide();
+  else if (action === 'finisher') tryFinisher();
+  else if (action === 'gun') equipGunSlot();
+  else if (action === 'knife') equipKnifeSlot();
+  else if (action === 'jump') player.jumpBufferT = 0.14;
+}, { capture:false });
 addEventListener('keyup', e => keys[e.code] = false);
 addEventListener('mousedown', e => {
   // keep trying to engage a real pointer lock whenever the user clicks in-game
@@ -798,9 +993,11 @@ function enableFallback(){
 function showDeploySequence(kind='solo'){
   const ov = $('deployOverlay'); if (!ov) return;
   const title = $('deployTitle'), sub = $('deploySub');
+  const arsenalLbl = $('deployArsenalLbl');
+  if (arsenalLbl) arsenalLbl.textContent = kind === 'dm' ? 'Shared gun ladder protocol' : 'Random arsenal protocol';
   if (title) title.textContent = kind === 'dm' ? 'LAN BLACKOUT' : 'SOLO DEPLOY';
   if (sub) sub.textContent = kind === 'dm'
-    ? `Round ${net.round || 1} // map ${currentMapName} // first operator to ${net.limit || 30} eliminations wins`
+    ? `Round ${net.round || 1} // map ${currentMapName} // shared gun ladder // kill 30 is golden-shank only`
     : `Wave mission // map ${currentMapName} // Nemesis signatures at waves 5, 10, and 15`;
   ov.classList.remove('hidden','fadeOut','show');
   void ov.offsetWidth;
@@ -859,14 +1056,27 @@ addEventListener('keydown', e => {
 });
 
 $('startBtn').addEventListener('click', () => { mode = 'solo'; setMap(MAP_NAMES[(Math.random()*MAP_NAMES.length)|0]); savePlayerName(); showDeploySequence('solo'); startGame(); });
-$('mpBtn').addEventListener('click', () => {
+function requestLAN(){
+  const el = $('callsign');
+  const typed = String(el ? el.value : '').trim();          // LAN requires a callsign — no ghosting in as a default name
+  if (!typed){
+    if (el){
+      el.classList.add('needName');
+      el.placeholder = 'ENTER A NAME FIRST';
+      el.value = '';
+      el.focus();
+      setTimeout(() => el.classList.remove('needName'), 900);
+    }
+    return;
+  }
   mode = 'dm';
   savePlayerName();
   connectNet();
   $('objective').innerHTML = '';
   showDeploySequence('dm');
   startGame();
-});
+}
+$('mpBtn').addEventListener('click', () => requestLAN());
 
 function resumeGame(){
   initAudio();
@@ -929,12 +1139,32 @@ function bindRange(id, outId, transform, label){
     saveSettings();
   });
 }
-$('settingsBtn').addEventListener('click', () => { updateSettingsUI(); $('settingsMenu').classList.remove('hidden'); });
-$('settingsBackBtn').addEventListener('click', () => $('settingsMenu').classList.add('hidden'));
+$('settingsBtn').addEventListener('click', () => { updateSettingsUI(); renderBindList(); $('settingsMenu').classList.remove('hidden'); });
+$('settingsBackBtn').addEventListener('click', () => { captureBindAction = null; $('settingsMenu').classList.add('hidden'); });
 $('settingsResetBtn').addEventListener('click', () => {
   Object.assign(SETTINGS, DEFAULT_SETTINGS);
-  applyRuntimeSettings(); saveSettings(); updateSettingsUI();
+  SETTINGS.binds = { ...DEFAULT_BINDS };
+  captureBindAction = null;
+  applyRuntimeSettings(); saveSettings(); updateSettingsUI(); renderBindList();
 });
+/* ---- keybind changer ---- */
+function renderBindList(){
+  const list = $('bindList'); if (!list) return;
+  list.innerHTML = '';
+  for (const id of Object.keys(BIND_LABELS)){
+    const row = document.createElement('div');
+    row.className = 'bindRow';
+    const waiting = captureBindAction === id;
+    row.innerHTML = `<span>${BIND_LABELS[id]}</span><button class="bindKey${waiting ? ' waiting' : ''}" type="button">${waiting ? 'PRESS ANY KEY…' : friendlyKeyName(bindCode(id))}</button>`;
+    row.querySelector('button').addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      captureBindAction = captureBindAction === id ? null : id;
+      renderBindList();
+    });
+    list.appendChild(row);
+  }
+}
+renderBindList();
 bindRange('sensRange', 'sensVal', v => SETTINGS.sens = v / 100, v => v + '%');
 bindRange('fovRange', 'fovVal', v => SETTINGS.fov = v, v => String(v));
 bindRange('volumeRange', 'volumeVal', v => SETTINGS.volume = v / 100, v => v + '%');
@@ -1058,7 +1288,7 @@ const WEAPON_BLUEPRINTS = [
   ['SCORPION TMP',       'PISTOL',  true,  14,1080, 32, 192, .024, .0110, .007, .030, 1,  'pistol',   80, false],
   ['VALKYRIE-34',        'RIFLE',   true,  25, 600, 34, 170, .012, .0032, .012, .055, 1,  'rifle',   132, false],
   ['LANCER RAIL',        'RAIL',    false, 96,  90,  6,  36, .018, .0008, .035, .145, 1,  'sniper',  260, true ],
-  ['FURNACE QUAD',       'SHOTGUN', false, 22,  52,  4,  24, .072, .0500, .052, .200, 4,  'shotgun',  42, false],
+  ['FURNACE QUAD',       'SHOTGUN', false, 44,  52,  4,  24, .072, .0500, .052, .200, 4,  'shotgun',  42, false],
   ['MIRAGE PDW',         'SMG',     true,  17,1000, 44, 264, .021, .0095, .008, .036, 1,  'rifle',    88, false],
   ['PROTOCOL ZERO',      'EXOTIC',  false,155,  48,  4,  24, .035, .0005, .060, .220, 1,  'sniper',  275, true ],
 ];
@@ -1332,10 +1562,10 @@ function buildFirstPersonArms(){
   const rFore = armBox(.082,.088,.45,armMats.sleeve,.145,-.267,-.128,g); rFore.rotation.set(-.38,-.13,-.15);
   const rWrist = armBox(.084,.070,.135,armMats.sleeve,.092,-.226,-.026,g); rWrist.rotation.set(-.18,-.07,-.10);
   const rHand = armBox(.104,.062,.128,armMats.glove,.054,-.198,.038,g); rHand.rotation.set(-.08,-.05,-.08);
-  armBox(.084,.012,.20,armMats.plate,-.135,-.213,-.245,g).rotation.set(-.08,.04,.08);
-  armBox(.084,.012,.20,armMats.plate,.145,-.216,-.205,g).rotation.set(-.08,-.04,-.08);
+  const lPlate = armBox(.084,.012,.20,armMats.plate,-.135,-.213,-.245,g); lPlate.rotation.set(-.08,.04,.08);
+  const rPlate = armBox(.084,.012,.20,armMats.plate,.145,-.216,-.205,g); rPlate.rotation.set(-.08,-.04,-.08);
   bakeArmBases(g);
-  g.userData = { lFore, lWrist, lHand, lThumb, lFingerA, lFingerB, lFingerC, rFore, rWrist, rHand };
+  g.userData = { lFore, lWrist, lHand, lThumb, lFingerA, lFingerB, lFingerC, lPlate, rFore, rWrist, rHand, rPlate };
   return g;
 }
 const armsRoot = buildFirstPersonArms();
@@ -1380,18 +1610,18 @@ function switchWeapon(i, opts={}){
   switchT = opts.roll ? 0.48 : 0.3;
   adsT = 0;
   mouseR = false;
-  gunModels.forEach((g,k) => g.visible = k === i);
+  updateWeaponVisibility();
   if (!opts.silent) (opts.roll ? SFX.reloadBolt() : SFX.reload1());
   updateAmmoHUD();
 }
-function showWeaponRoll(w){
+function showWeaponRoll(w, tierLabel='RANDOMIZED'){
   const el = $('weaponRoll');
   const rc = '#' + currentRarity.color.toString(16).padStart(6,'0');
   if (el){
-    el.innerHTML = `<span>RANDOMIZED // <b style="color:${rc}">${currentRarity.name}</b></span><b>${w.name}</b><small>${w.slot} // ${weaponIndex+1}/${WEAPONS.length} // DMG ×${currentRarity.dmg.toFixed(2)}</small>`;
+    el.innerHTML = `<span>${tierLabel} // <b style="color:${rc}">${currentRarity.name}</b></span><b>${w.name}</b><small>${w.slot} // TIER ${mode === 'dm' ? Math.min((net.myScore||0)+1, 30) : weaponIndex+1} // DMG ×${currentRarity.dmg.toFixed(2)}</small>`;
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
   }
-  addKillFeed(null, `ARSENAL ROTATED &nbsp;⟶&nbsp; <b style="color:${rc}">${currentRarity.name}</b> ${w.name}`);
+  addKillFeed(null, `ARSENAL ${tierLabel === 'RANDOMIZED' ? 'ROTATED' : 'ADVANCED'} &nbsp;⟶&nbsp; <b style="color:${rc}">${currentRarity.name}</b> ${w.name}`);
 }
 function rotateWeaponForKill(){
   if (WEAPONS.length <= 1) return;
@@ -1407,6 +1637,196 @@ function rotateWeaponForKill(){
   updateAmmoHUD();
   showWeaponRoll(w);
 }
+
+/* ================= KNIFE (key 2) ================= */
+const KNIFE_DEFS = [
+  { name:'RIPPER SHANK', dmg:25,  backstab:99999, golden:false, speedMul:1.05 },
+  { name:'GOLDEN SHANK', dmg:50,  backstab:99999, golden:true,  speedMul:1.15 },
+];
+const BS_DOT = -0.35;               // attacker must sit inside the victim's rear 140° cone for a backstab
+const KNIFE_CODE = 100;            // replicated weapon slot: 100 = knife, 101 = golden knife
+let knifeMode = 0;                 // 0 = gun, 1 = knife
+let knifeSwingT = 0, knifeSwingCd = 0, knifeSwingId = 0;
+function knifeGolden(){ return mode === 'dm' && (net.myScore || 0) >= FINAL_TIER_SCORE; }
+function knifeLocked(){ return knifeGolden(); }       // final tier is knife-only
+function currentKnifeDef(){ return KNIFE_DEFS[knifeGolden() ? 1 : 0]; }
+
+function buildKnifeModel(golden){
+  const g = new THREE.Group();
+  const steel = new THREE.MeshStandardMaterial({ color: golden ? 0xd8b13c : 0xb8c4d4, roughness:.26, metalness:.92 });
+  const dark  = new THREE.MeshStandardMaterial({ color: golden ? 0x4a3512 : 0x2e3440, roughness:.7, metalness:.4 });
+  const glow  = new THREE.MeshBasicMaterial({ color: golden ? 0xffe680 : 0x2cf2ff });
+  const handle = box(.045,.15,.085, dark, 0,-.115,.075, g); handle.rotation.x = -.12;
+  box(.088,.026,.05, dark, 0,-.028,.048, g);                                    // guard
+  const blade = box(.03,.30,.058, steel, 0,.135,.012, g); blade.rotation.x = .06;
+  const tip = box(.03,.06,.058, steel, 0,.316,-.006, g); tip.rotation.x = .5;
+  const edge = box(.011,.30,.012, glow, .018,.135,-.004, g); edge.rotation.x = .06;
+  tagPart(g,'blade',blade); tagPart(g,'edge',edge); tagPart(g,'tip',tip);
+  return prepareGunModel(g);
+}
+const knifeModels = [buildKnifeModel(false), buildKnifeModel(true)];
+knifeModels[0].name = 'knifeNormal';
+knifeModels[1].name = 'knifeGolden';
+// reverse grip: canted forward so the blade reads as a knife, not a baton
+knifeModels.forEach(m => { m.visible = false; m.scale.setScalar(.8); m.position.set(-.02,.07,.02); m.rotation.set(.12,.3,.5); gunRoot.add(m); });
+
+function updateWeaponVisibility(){
+  gunModels.forEach((g,k) => g.visible = knifeMode ? false : k === weaponIndex);
+  const golden = knifeGolden() ? 1 : 0;
+  knifeModels.forEach((m,i) => m.visible = knifeMode && i === golden);
+}
+function equipGunSlot(){
+  if (!knifeMode) return;
+  if (knifeLocked()){ addKillFeed(null, 'FINAL TIER — <b style="color:#ffd040">GOLDEN SHANK</b> ONLY'); return; }
+  knifeMode = 0;
+  switchT = Math.max(switchT, 0.2);
+  knifeSwingT = knifeSwingCd = 0;
+  updateWeaponVisibility(); updateAmmoHUD(); SFX.reload1();
+}
+function equipKnifeSlot(){
+  if (knifeMode) return;
+  knifeMode = 1; mouseR = false; adsT = 0;
+  switchT = Math.max(switchT, 0.2);
+  updateWeaponVisibility(); updateAmmoHUD(); SFX.reloadBolt();
+}
+function tryKnifeSwing(){
+  if (!S.started || S.paused || S.dead || !knifeMode) return;
+  if (knifeSwingCd > 0 || knifeSwingT > 0) return;
+  knifeSwingId++;
+  knifeSwingT = 0.42; knifeSwingCd = 0.575;                             // 15% more cooldown (was 0.5s)
+  setTimeout(() => playNoise(0.04, 1500, 0.55, 0.14), 110);          // whoosh at the strike frame
+  setTimeout(knifeStrike, 150);                                       // connect at the mid-swing contact frame
+  gunKick = Math.min(gunKick + 0.03, 0.22);                           // tiny forward punch
+  if (net.on){
+    netSend({ t:'shoot', w:knifeGolden() ? 101 : 100,
+      o:[+player.pos.x.toFixed(2), +(player.pos.y+1.3).toFixed(2), +player.pos.z.toFixed(2)],
+      p:[+player.pos.x.toFixed(2), +(player.pos.y+1.3).toFixed(2), +player.pos.z.toFixed(2)] });
+  }
+}
+function isBackstab(fx, fz, vx, vz){
+  // fx/fz = victim's visual forward, v = unit vector from victim to attacker
+  const vl = Math.hypot(vx, vz) || 1;
+  return (fx*vx + fz*vz) / vl < BS_DOT;
+}
+function knifeStrike(){
+  if (!S.started || S.dead || S.paused || !knifeMode) return;
+  const def = currentKnifeDef();
+  const range = 3.0, minDot = 0.42;
+  const fx = -Math.sin(player.yaw) * Math.cos(player.pitch), fy = Math.sin(player.pitch), fz = -Math.cos(player.yaw) * Math.cos(player.pitch);
+  let anyHit = false, anyKill = false;
+  for (const e of enemies){
+    if (e.dead) continue;
+    const tp = e.group.position;
+    const dx = tp.x - player.pos.x, dy = (tp.y + 1.1*e.type.scale) - (player.pos.y+1.5), dz = tp.z - player.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > range + e.radius) continue;
+    const len = Math.sqrt(dx*dx+dy*dy+dz*dz) || 1;
+    if ((dx*fx+dy*fy+dz*fz)/len < minDot && d > 1.1) continue;
+    anyHit = true;
+    const eth = e.group.rotation.y;
+    const bs = isBackstab(-Math.sin(eth), -Math.cos(eth), player.pos.x - tp.x, player.pos.z - tp.z);
+    const dmg = bs ? def.backstab : def.dmg;
+    if (bs){
+      spawnSparks(new THREE.Vector3(tp.x, tp.y + 1.1*e.type.scale, tp.z), 0xff7040, 22);
+      spawnDamagePopup(new THREE.Vector3(tp.x, tp.y + 1.5*e.type.scale, tp.z), 999, true);
+      addKillFeed(null, `<b style="color:#ffd040">⚔ BACKSTAB!</b> ${e.type && e.type.name ? e.type.name : 'HOSTILE'} — ONE HIT`);
+      SFX.kill();
+    } else {
+      spawnSparks(new THREE.Vector3(tp.x, tp.y + 1.1*e.type.scale, tp.z), knifeGolden() ? 0xffe680 : 0xffd040, 10);
+      spawnDamagePopup(new THREE.Vector3(tp.x, tp.y + 1.5*e.type.scale, tp.z), dmg, false);
+      SFX.hit();
+    }
+    if (damageEnemy(e, dmg)) anyKill = true;
+  }
+  if (net.on){
+    for (const rp of net.players.values()){
+      if (!rp.group.visible || isTeammate(rp)) continue;
+      const tp = rp.group.position;
+      const dx = tp.x - player.pos.x, dy = (tp.y + 1.1) - (player.pos.y+1.5), dz = tp.z - player.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > range) continue;
+      const len = Math.sqrt(dx*dx+dy*fy+dz*dz) || 1;
+      if ((dx*fx+dy*fy+dz*fz)/len < minDot && d > 1.1) continue;
+      anyHit = true;
+      const bs = isBackstab(-Math.sin(rp.yaw), -Math.cos(rp.yaw), player.pos.x - tp.x, player.pos.z - tp.z);
+      const dmg = bs ? 200 : def.dmg;                 // server caps dmg at 200 — enough to drop 100 hp instantly
+      if (bs){
+        spawnSparks(new THREE.Vector3(tp.x, tp.y + 1.15, tp.z), 0xff7040, 24);
+        spawnDamagePopup(new THREE.Vector3(tp.x, tp.y + 1.55, tp.z), dmg, true);
+        SFX.kill();
+      } else {
+        spawnSparks(new THREE.Vector3(tp.x, tp.y + 1.15, tp.z), knifeGolden() ? 0xffe680 : 0xffd040, 12);
+        spawnDamagePopup(new THREE.Vector3(tp.x, tp.y + 1.55, tp.z), dmg, false);
+        SFX.hit();
+      }
+      netSend({ t:'hit', target:rp.id, dmg, knife:true, bs:bs || undefined });
+    }
+  }
+  for (const dd of destructibles){
+    if (dd.broken) continue;
+    const tp = dd.mesh.position;
+    const dx = tp.x - player.pos.x, dz = tp.z - player.pos.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > range + 0.8) continue;
+    const len = dist || 1;
+    if ((dx*fx+dz*fz)/len < minDot*0.6 && dist > 1.2) continue;
+    anyHit = true;
+    damageDestructible(dd, def.dmg, tp.clone());
+  }
+  if (anyHit) showHitmarker(anyKill);
+}
+
+/* ================= SHARED GUN LADDER (LAN DM) =================
+   Every player gets the same weapon at the same score. Kills promote you
+   one tier; getting shanked costs you one point and one tier. The final
+   tier (29+) locks you to the golden knife — the 30th kill is knife-only. */
+const GUN_LADDER = [
+  43, 20,  2, 22, 44, 23,           // pistols
+   9,  8,  7, 48, 36, 30, 31, 37,   // smgs
+  17, 18, 39, 19,  1, 16, 32,       // shotguns
+  24, 26,  6, 38, 35, 45,           // rifles
+  47, 15,                           // heavy hitters
+];
+const FINAL_TIER_SCORE = 29;
+function ladderRarity(sc){
+  return sc >= 27 ? RARITIES[4] : sc >= 21 ? RARITIES[3] : sc >= 14 ? RARITIES[2] : sc >= 6 ? RARITIES[1] : RARITIES[0];
+}
+function equipLadderTier(sc, { quiet=false } = {}){
+  sc = clamp(sc|0, 0, FINAL_TIER_SCORE + 1);
+  if (sc >= FINAL_TIER_SCORE){
+    knifeMode = 1; mouseR = false; adsT = 0;
+    switchT = Math.max(switchT, 0.22);
+    updateWeaponVisibility(); updateAmmoHUD();
+    if (!quiet){
+      showBanner('FINAL TIER — GOLDEN SHANK');
+      addKillFeed(null, 'FINAL TIER ⟶ <b style="color:#ffd040">GOLDEN SHANK</b> ONLY // +15% SPEED');
+      SFX.reloadBolt();
+    }
+    return;
+  }
+  knifeMode = 0;
+  currentRarity = ladderRarity(sc);
+  switchWeapon(GUN_LADDER[clamp(sc, 0, GUN_LADDER.length-1)], { force:true, roll:true });
+  const w = CW();
+  w.ammo = w.mag; w.res = w.reserve; w.cool = 0; w.reloading = 0;
+  updateWeaponVisibility(); updateAmmoHUD();
+  if (!quiet) showWeaponRoll(w, `TIER ${sc + 1}`);
+}
+function syncLadderWeapon(){
+  if (mode !== 'dm') return;
+  const me = (net.scores || []).find(p => p.id === net.id);
+  const sc = me ? (me.score || 0) : 0;
+  if (net.myScore === undefined || net.myScore < 0){ net.myScore = sc; equipLadderTier(sc, { quiet:true }); return; }
+  if (sc === net.myScore) return;
+  const promoted = sc > net.myScore;
+  net.myScore = sc;
+  if (!promoted){
+    showBanner('KNIFED — DEMOTED');
+    addKillFeed(null, `<b>KNIFED!</b> DEMOTED BACK TO ${sc} // ONE TIER LOST`);
+  }
+  equipLadderTier(sc);
+}
+
 function reloadDuration(w){
   if (w.slot === 'LMG') return 2.45;
   if (w.slot === 'SHOTGUN') return 2.05;
@@ -1417,7 +1837,7 @@ function reloadDuration(w){
 }
 function tryReload(){
   const w = CW();
-  if (w.reloading > 0 || w.ammo === w.mag || w.res <= 0) return;
+  if (knifeMode || w.reloading > 0 || w.ammo === w.mag || w.res <= 0) return;
   const dur = reloadDuration(w);
   w.reloading = dur;
   w.reloadTime = dur;
@@ -1484,6 +1904,23 @@ function animateFirstPersonArms(w, hSpeed){
   if (a.rWrist){ a.rWrist.position.z = a.rWrist.userData.basePos.z + bolt*.045 - gunKick*.025; a.rWrist.rotation.x = a.rWrist.userData.baseRot.x - bolt*.24 + gunKick*.35; }
   if (a.lFore){ a.lFore.rotation.z = a.lFore.userData.baseRot.z + reloadLean*.22; a.lFore.rotation.x = a.lFore.userData.baseRot.x - reloadLean*.12; }
   if (a.rFore){ a.rFore.rotation.x = a.rFore.userData.baseRot.x - bolt*.25 + gunKick*.45; }
+  // knife stance: the support arm (which normally grips the gun) tucks away entirely —
+  // including its forearm armor plate, which is a separate mesh — and the dominant
+  // hand rises onto the knife grip with a closed wrist. The armor plates read as
+  // floating shards in this pose, so both plates hide while knifing.
+  for (const part of [a.lWrist, a.lHand, a.lThumb, a.lFingerA, a.lFingerB, a.lFingerC, a.lPlate, a.rPlate]) if (part) part.visible = !knifeMode;
+  if (knifeMode){
+    if (a.rHand){ // fist wraps the knife handle, angled with the blade
+      a.rHand.position.y = a.rHand.userData.basePos.y + 0.185; a.rHand.position.z = a.rHand.userData.basePos.z + 0.022; a.rHand.position.x = a.rHand.userData.basePos.x - 0.012;
+      a.rHand.rotation.x = a.rHand.userData.baseRot.x + 0.32; a.rHand.rotation.y = a.rHand.userData.baseRot.y + 0.30; a.rHand.rotation.z = a.rHand.userData.baseRot.z + 0.50;
+    }
+    if (a.rWrist){ // cuff trails the fist
+      a.rWrist.position.x = a.rWrist.userData.basePos.x - 0.002; a.rWrist.position.y = a.rWrist.userData.basePos.y + 0.106; a.rWrist.position.z = a.rWrist.userData.basePos.z + 0.076;
+      a.rWrist.rotation.x = a.rWrist.userData.baseRot.x + 0.32; a.rWrist.rotation.y = a.rWrist.userData.baseRot.y + 0.25; a.rWrist.rotation.z = a.rWrist.userData.baseRot.z + 0.40;
+    }
+    if (a.rFore) a.rFore.rotation.x = a.rFore.userData.baseRot.x + 0.22;
+    if (a.lFore) a.lFore.visible = false;
+  } else if (a.lFore) a.lFore.visible = true;
 }
 
 /* ---- shooting ---- */
@@ -1515,7 +1952,7 @@ function fireWeapon(){
 
   camera.getWorldPosition(_origin);
   let anyHit = false, anyKill = false;
-  const spread = (adsT > 0.5 ? w.adsSpread : w.spread) * (currentRarity.spread || 1) * (player.grounded ? 1 : 1.7);
+  const spread = (adsT > 0.5 ? w.adsSpread : w.spread) * (currentRarity.spread || 1) * (player.grounded ? (player.crouched ? 0.62 : 1) : 1.7);   // crouching steadies your aim
 
   for (let p = 0; p < w.pellets; p++){
     camera.getWorldDirection(_dir);
@@ -1530,7 +1967,7 @@ function fireWeapon(){
     let hitEnemy = null, hitNetId = null, hitDestructible = null, hitDist = worldDist, headshot = false;
     const meshes = [];
     for (const e of enemies) if (!e.dead) meshes.push(e.group);
-    if (net.on) for (const rp of net.players.values()) meshes.push(rp.group);
+    if (net.on) for (const rp of net.players.values()){ if (isTeammate(rp)) continue; meshes.push(rp.group); }
     for (const d of destructibles) if (!d.broken) { meshes.push(d.mesh); if (d.glow) meshes.push(d.glow); }
     const hits = raycaster.intersectObjects(meshes, true);
     if (hits.length){
@@ -1696,6 +2133,7 @@ function spawnPlayerPieces(pos, color=0x2c6eff){
 const grenadesLive = [];
 function throwGrenade(){
   if (!S.started || S.paused || S.dead || player.grenades <= 0) return;
+  if (knifeLocked()){ addKillFeed(null, 'FINAL TIER — <b style="color:#ffd040">GOLDEN SHANK</b> ONLY'); return; }
   player.grenades--;
   updateAmmoHUD();
   SFX.reload1();
@@ -1730,6 +2168,7 @@ function explodeAt(pos){
   }
   // hurt rival players in deathmatch
   if (net.on) for (const [pid, rp] of net.players){
+    if (isTeammate(rp)) continue;
     const d = rp.group.position.distanceTo(pos);
     if (d < R) netSend({ t:'hit', target:pid, dmg:Math.round(120 * (1 - d/R)) });
   }
@@ -1819,9 +2258,9 @@ let streak = 0, streakT = 0;
 function registerKill(){
   streak++; streakT = 4;
   S.longestStreak = Math.max(S.longestStreak || 0, streak);
-  const wn = CW().name;
+  const wn = knifeMode ? currentKnifeDef().name : CW().name;
   S.weaponKills[wn] = (S.weaponKills[wn] || 0) + 1;
-  rotateWeaponForKill();
+  if (mode === 'solo') rotateWeaponForKill();       // LAN uses the shared ladder instead (synced from server scores)
   if (streak < 2) return;
   const table = { 2:['DOUBLE KILL',100], 3:['TRIPLE KILL',250], 4:['QUAD KILL',400], 5:['MEGA KILL',600] };
   const [txt, bonus] = table[streak] || ['RAMPAGE ×' + streak, 750];
@@ -1958,6 +2397,7 @@ function spawnEnemy(typeName){
   }
   const group = buildEnemyMesh(t);
   group.position.set(best[0] + rand(-2,2), 0, best[1] + rand(-2,2));
+  resolvePenetration(group.position, 0.55*t.scale);   // never spawn inside cover
   scene.add(group);
   const { bg, fg } = makeBarSprites();
   group.add(bg, fg);
@@ -1968,6 +2408,7 @@ function spawnEnemy(typeName){
     barBg:bg, barFg:fg, hurtT:0, meleeCd:0, moveBlend:0, strafeBlend:0,
     attackT:0, attackDur:0, attackKind:'idle', lastAttackKind:'idle', lastAttackT:0, attackFlashT:0, spawnT:0.55, _attackQueued:false,
     strafeDir: Math.random() > .5 ? 1 : -1, strafeT: rand(1,3),
+    avoidT:0, avoidDirX:0, avoidDirZ:0, senseT:rand(0,.25), stuckT:0, progT:0, _px:null, _pz:null,
   };
   group.traverse(o => o.userData.enemy = e);
   enemies.push(e);
@@ -2257,6 +2698,44 @@ function updateEnemies(dt, now){
       mvz +=  dirX * e.strafeDir * 0.7;
     }
     if (e.executing){ mvx = 0; mvz = 0; }
+
+    /* ---- smarter navigation: sense walls ahead, route around, recover when stuck ---- */
+    e.senseT = (e.senseT ?? rand(0, .25)) - dt;
+    e.avoidT = Math.max(0, (e.avoidT || 0) - dt);
+    const wantsMove = (mvx*mvx + mvz*mvz) > 0.01;
+    if (e.senseT <= 0 && wantsMove && !e.executing){
+      e.senseT = 0.22;
+      // sample the wall straight ahead at chest height; steer around it before getting pinned
+      _botRay.set(p.x, Math.min(0.9*t.scale, 1.2), p.z);
+      const il = Math.hypot(mvx, mvz) || 1;
+      _botDir.set(mvx/il, 0, mvz/il);
+      const clear = castWorld(_botRay, _botDir, 2.6);
+      if (clear < 2.6) e.avoidT = 0; // force a fresh route pick below
+      if (clear < 2.6){
+        // fan of candidate escape directions, prefer the one closest to the player with open space
+        const baseAng = Math.atan2(dirX, dirZ);
+        let bestAng = null, bestScore = -1;
+        for (const off of [0.6, -0.6, 1.15, -1.15, 1.75, -1.75, 2.4, -2.4, Math.PI]){
+          const a = baseAng + off;
+          const cx = Math.sin(a), cz = Math.cos(a);
+          _botDir.set(cx, 0, cz);
+          const free = castWorld(_botRay, _botDir, 3.4);
+          const score = free - Math.abs(off) * 0.5;
+          if (score > bestScore){ bestScore = score; bestAng = a; }
+          if (free >= 3.4 && Math.abs(off) <= 1.2) break;   // good enough, take it
+        }
+        if (bestAng !== null){
+          e.avoidDirX = Math.sin(bestAng); e.avoidDirZ = Math.cos(bestAng);
+          e.avoidT = rand(0.6, 1.05);
+          if (!t.melee && (Math.random() < 0.5)) e.strafeDir *= -1;
+        }
+      }
+    }
+    if (e.avoidT > 0 && !e.executing){
+      // detour override: move along the escape vector instead of beelining into the wall
+      mvx = e.avoidDirX || 0; mvz = e.avoidDirZ || 0;
+      if (!t.melee){ mvx += -mvz * e.strafeDir * 0.15; mvz += e.avoidDirX * e.strafeDir * 0.15; }
+    }
     // separation
     for (const o of enemies){
       if (o === e || o.dead) continue;
@@ -2270,25 +2749,47 @@ function updateEnemies(dt, now){
     e.strafeBlend = lerp(e.strafeBlend || 0, (!t.melee && los && dist < 24 ? e.strafeDir : 0), 1 - Math.exp(-6*dt));
     e.animT += dt * (2.0 + t.speed * 2.25 * e.moveBlend);
     if (ml > 0.01){
-      p.x += (mvx/ml) * t.speed * dt;
-      p.z += (mvz/ml) * t.speed * dt;
-    }
-    // collide with solids (reuse player routine with enemy radius)
-    const saveR = e.radius;
-    for (const s of solids){
-      if (s.max.y < 0.6) continue;
-      const exMinX = s.min.x - saveR, exMaxX = s.max.x + saveR;
-      const exMinZ = s.min.z - saveR, exMaxZ = s.max.z + saveR;
-      if (p.x > exMinX && p.x < exMaxX && p.z > exMinZ && p.z < exMaxZ && s.min.y < 1){
-        const dx1 = p.x - exMinX, dx2 = exMaxX - p.x;
-        const dz1 = p.z - exMinZ, dz2 = exMaxZ - p.z;
-        const m = Math.min(dx1, dx2, dz1, dz2);
-        if (m === dx1) p.x = exMinX; else if (m === dx2) p.x = exMaxX;
-        else if (m === dz1) p.z = exMinZ; else p.z = exMaxZ;
-      }
+      // axis-separated movement: slide along walls instead of wedging into them
+      const step = t.speed * dt, nx = (mvx/ml) * step, nz = (mvz/ml) * step;
+      const blocked = (x, z) => {
+        for (const s of solids){
+          if (s.max.y < 0.6 || s.min.y >= 1) continue;
+          if (x > s.min.x - e.radius && x < s.max.x + e.radius && z > s.min.z - e.radius && z < s.max.z + e.radius) return true;
+        }
+        return false;
+      };
+      if (!blocked(p.x + nx, p.z + nz)){ p.x += nx; p.z += nz; }
+      else if (!blocked(p.x + nx, p.z)){ p.x += nx; }                    // slide along z-face
+      else if (!blocked(p.x, p.z + nz)){ p.z += nz; }                    // slide along x-face
+      // fully boxed in: the stuck watchdog below will detour / shove out
     }
     p.x = clamp(p.x, -ARENA+1, ARENA-1);
     p.z = clamp(p.z, -ARENA+1, ARENA-1);
+
+    // stuck watchdog: if the bot wanted to move but barely progressed, force a new detour
+    e.progT = (e.progT || 0) + dt;
+    if (e.progT >= 0.4){
+      const moved = Math.hypot(p.x - (e._px ?? p.x), p.z - (e._pz ?? p.z));
+      const expected = (t.melee ? 0.5 : 0.35);
+      const intended = (mvx*mvx + mvz*mvz) > 0.01;
+      if (intended && moved < expected && e.spawnT <= 0){
+        e.stuckT = (e.stuckT || 0) + 0.4;
+        if (e.stuckT >= 0.4){
+          e.stuckT = 0;
+          e.avoidT = 0;                                        // force re-pick of the escape route
+          e.senseT = 0;
+          e.strafeDir *= -1;
+          resolvePenetration(p, e.radius);                     // shove out if wedged inside a solid
+          if (Math.random() < 0.35){                           // hard nudge out of corners after repeated attempts
+            e.avoidDirX = rand(-1, 1); e.avoidDirZ = rand(-1, 1);
+            const al = Math.hypot(e.avoidDirX, e.avoidDirZ) || 1;
+            e.avoidDirX /= al; e.avoidDirZ /= al;
+            e.avoidT = rand(0.7, 1.1);
+          }
+        }
+      } else if (moved >= expected) e.stuckT = 0;
+      e._px = p.x; e._pz = p.z; e.progT = 0;
+    }
 
     // cinematic full-body animation: locomotion, idle breathing, hurt reaction, weapon recoil, melee/slam windups
     animateEnemyCinematic(e, t, e.animT, dist);
@@ -2424,30 +2925,42 @@ function updatePickups(dt, now){
 
 /* ================= LAN MULTIPLAYER ================= */
 const net = { on:false, ws:null, id:0, players:new Map(), sendT:0, lastHitBy:0,
-  scores:[], limit:30, round:1, currentMap:'FORGE', voteChoices:[], voteCounts:{}, voteEndsAt:0, voteActive:false, roundOver:false,
-  spectateId:0, spectateT:0 };
+  scores:[], limit:30, round:1, currentMap:'FORGE', voteChoices:[], voteCounts:{}, voteEndsAt:0, voteEndsLocal:0, votePhase:'map', voteActive:false, roundOver:false, pendingMap:'',
+  spectateId:0, spectateT:0, myScore:-1,
+  dmMode:'ffa', myTeam:0, teamTotals:{ red:0, blue:0 }, __voteSecs:-1 };
+const TEAM_COLORS = ['', '#ff5040', '#4aa0ff'];
+const TEAM_NAMES = ['', 'RED TEAM', 'BLUE TEAM'];
+function otherTeam(t){ return t === 1 ? 2 : 1; }
+function isTeammate(rp){ return net.dmMode === 'team' && net.myTeam && rp.team === net.myTeam; }
+function fmtTeamTag(t){ return t ? `<span style="color:${TEAM_COLORS[t]}">${TEAM_NAMES[t]}</span>` : ''; }
+function fmtColoredName(name, t){ return net.dmMode === 'team' && t ? `<span style="color:${TEAM_COLORS[t]}">${name}</span>` : name; }
 
 function cleanPlayerName(v){ return String(v || 'RIFT-OPS').toUpperCase().replace(/[<>]/g,'').slice(0,14); }
 function savePlayerName(){
   const el = $('callsign');
   if (!el) return cleanPlayerName(PROGRESS.name);
-  PROGRESS.name = cleanPlayerName(el.value || PROGRESS.name || 'RIFT-OPS');
-  el.value = PROGRESS.name;
+  const typed = el.value.trim();
+  PROGRESS.name = cleanPlayerName(typed || PROGRESS.name || 'RIFT-OPS');
+  if (typed) el.value = PROGRESS.name;   // solo may ghost a name behind the scenes, but never writes one into the box for the player
   saveProgress();
   return PROGRESS.name;
 }
 function netName(){ return savePlayerName(); }
 const nameInput = $('callsign');
 if (nameInput){
-  nameInput.value = cleanPlayerName(PROGRESS.name || 'RIFT-OPS');
-  nameInput.addEventListener('input', () => { PROGRESS.name = cleanPlayerName(nameInput.value || 'RIFT-OPS'); saveProgress(); });
+  // restore a saved custom callsign, but never ghost-fill the default — LAN requires typing one
+  nameInput.value = (PROGRESS.name && PROGRESS.name !== 'RIFT-OPS') ? cleanPlayerName(PROGRESS.name) : '';
+  nameInput.addEventListener('input', () => {
+    nameInput.classList.remove('needName');
+    if (nameInput.value.trim()){ PROGRESS.name = cleanPlayerName(nameInput.value); saveProgress(); }
+  });
   nameInput.addEventListener('blur', savePlayerName);
 }
-function makeNameSprite(text){
+function makeNameSprite(text, color='#2cf2ff'){
   const c = document.createElement('canvas'); c.width = 256; c.height = 64;
   const g = c.getContext('2d');
   g.font = 'bold 30px Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.shadowColor = '#2cf2ff'; g.shadowBlur = 10; g.fillStyle = '#eafcff';
+  g.shadowColor = color; g.shadowBlur = 10; g.fillStyle = '#eafcff';
   g.fillText(text, 128, 32);
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:new THREE.CanvasTexture(c), transparent:true, depthWrite:false }));
   sp.scale.set(2.2, 0.55, 1);
@@ -2477,12 +2990,24 @@ function buildThirdPersonWeaponModel(w){
   g.scale.setScalar(pistol ? .9 : .78);
   return g;
 }
+function buildThirdPersonKnife(golden){
+  const g = new THREE.Group();
+  const steel = new THREE.MeshStandardMaterial({ color: golden ? 0xd8b13c : 0xb8c4d4, roughness:.28, metalness:.9 });
+  const dark = new THREE.MeshStandardMaterial({ color: golden ? 0x4a3512 : 0x1c222c, roughness:.7, metalness:.4 });
+  const glow = new THREE.MeshBasicMaterial({ color: golden ? 0xffe680 : 0x2cf2ff });
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(.035,.36,.05), steel); blade.rotation.x = 1.35; blade.position.set(0,.04,-.15); g.add(blade);
+  const edge = new THREE.Mesh(new THREE.BoxGeometry(.012,.34,.014), glow); edge.rotation.x = 1.35; edge.position.set(.02,.042,-.155); g.add(edge);
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(.05,.16,.07), dark); grip.rotation.x = 1.35; grip.position.set(0,-.02,.05); g.add(grip);
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0,.09,-.32); g.add(muzzle); g.userData.muzzle = muzzle;
+  g.traverse(o => { if (o.isMesh){ o.castShadow = true; o.userData.netGun = true; } });
+  return g;
+}
 function setRemoteWeapon(rp, idx){
-  idx = clamp(idx|0, 0, WEAPONS.length-1);
+  idx = clamp(idx|0, 0, 101);
   if (rp.weaponIndex === idx && rp.weaponModel) return;
   if (rp.weaponModel) rp.weaponRoot.remove(rp.weaponModel);
   rp.weaponIndex = idx;
-  rp.weaponModel = buildThirdPersonWeaponModel(WEAPONS[idx]);
+  rp.weaponModel = idx >= 100 ? buildThirdPersonKnife(idx === 101) : buildThirdPersonWeaponModel(WEAPONS[idx]);
   rp.weaponRoot.add(rp.weaponModel);
   rp.muzzle = rp.weaponModel.userData.muzzle;
   rp.weaponRoot.traverse(o => { if (o.isMesh){ o.userData.netId = rp.id; } });
@@ -2515,8 +3040,8 @@ function setRemoteSkin(rp, skinId){
   rp.skinDef = skinDef(rp.skin);
   applyAvatarSkin(rp.group, rp.skin);
 }
-function addRemotePlayer(id, name, skinId='rift'){
-  if (net.players.has(id)){ const rp0 = net.players.get(id); setRemoteSkin(rp0, skinId || rp0.skin || 'rift'); return rp0; }
+function addRemotePlayer(id, name, skinId='rift', team=0){
+  if (net.players.has(id)){ const rp0 = net.players.get(id); setRemoteSkin(rp0, skinId || rp0.skin || 'rift'); setRemoteTeam(rp0, team || rp0.team || 0); return rp0; }
   const group = buildEnemyMesh(avatarTypeForSkin(skinId));
   cleanupPlayerAvatar(group);
   group.traverse(o => { o.userData.netId = id; });
@@ -2526,15 +3051,43 @@ function addRemotePlayer(id, name, skinId='rift'){
   weaponRoot.position.set(0.08, 1.24, -0.54);
   weaponRoot.rotation.set(-0.12, 0.02, -0.02);
   group.add(weaponRoot);
+  // team shoulder light — the floating partner-look without re-skinning anyone
+  const teamPad = new THREE.Mesh(new THREE.BoxGeometry(.62,.05,.14), new THREE.MeshBasicMaterial({ color:0x000000 }));
+  teamPad.position.set(0, 1.52, .16);
+  teamPad.visible = false;
+  group.add(teamPad);
   group.position.set(0, -80, 0);   // hidden until first state arrives
   scene.add(group);
-  const rp = { id, name:name || 'PLAYER', skin:skinId || 'rift', skinDef:skinDef(skinId || 'rift'), group, tag, weaponRoot, weaponModel:null, weaponIndex:-1, muzzle:null,
+  const rp = { id, name:name || 'PLAYER', skin:skinId || 'rift', skinDef:skinDef(skinId || 'rift'), group, tag, weaponRoot, teamPad, team:0, weaponModel:null, weaponIndex:-1, muzzle:null,
     target:new THREE.Vector3(0,-80,0), yaw:0, yawT:0, lastPos:new THREE.Vector3(), speed:0, animT:0, fireT:0, deadT:0 };
   setRemoteSkin(rp, skinId || 'rift');
   setRemoteWeapon(rp, 0);
+  setRemoteTeam(rp, team);
   group.traverse(o => { if (o.isMesh) o.userData.netId = id; });
   net.players.set(id, rp);
   return rp;
+}
+function setRemoteTeam(rp, team){
+  const prev = rp.team || 0;
+  rp.team = team || 0;
+  if (rp.teamPad){
+    rp.teamPad.visible = !!rp.team && net.dmMode === 'team';
+    if (rp.team) rp.teamPad.material.color.set(TEAM_COLORS[rp.team]);
+  }
+  // redraw the nametag tinted by team (or back to cyan when squads dissolve)
+  if ((rp.team && net.dmMode === 'team' && rp.team !== prev) || (!rp.team && prev)){
+    rp.group.remove(rp.tag);
+    rp.tag = makeNameSprite(rp.name, rp.team ? TEAM_COLORS[rp.team] : '#2cf2ff');
+    rp.tag.position.y = 2.45; rp.group.add(rp.tag);
+  }
+}
+function updateTeamHUD(){
+  const chip = $('teamChip');
+  if (!chip) return;
+  // squads never race to a collective score — the chip only reminds you WHICH side can't hurt you
+  if (mode !== 'dm' || net.dmMode !== 'team'){ chip.classList.add('hidden'); return; }
+  chip.classList.remove('hidden');
+  chip.innerHTML = `<b class="${net.myTeam===1?'you-red':'you-blue'}">YOU ARE ${TEAM_NAMES[net.myTeam] || 'ON A TEAM'}</b>`;
 }
 function removeRemotePlayer(id){
   const rp = net.players.get(id);
@@ -2548,11 +3101,13 @@ function connectNet(){
   let ws;
   try { ws = new WebSocket(proto + location.host); } catch (e){ addKillFeed(null, 'MULTIPLAYER UNAVAILABLE'); return; }
   net.ws = ws;
-  ws.onopen = () => { net.on = true; netSend({ t:'hello', name:netName(), skin:PROGRESS.skin }); addKillFeed(null, 'CONNECTED — LAN DEATHMATCH'); };
+  ws.onopen = () => { net.on = true; net.dmMode = 'ffa'; net.myTeam = 0; net.teamTotals = { red:0, blue:0 }; netSend({ t:'hello', name:netName(), skin:PROGRESS.skin }); addKillFeed(null, 'CONNECTED — VOTE MAP & MODE'); };
   ws.onerror = () => addKillFeed(null, 'LAN CONNECTION FAILED');
   ws.onclose = () => {
     if (net.on) addKillFeed(null, 'DISCONNECTED FROM SERVER');
     net.on = false;
+    net.dmMode = 'ffa'; net.myTeam = 0; net.teamTotals = { red:0, blue:0 };
+    updateTeamHUD();
     for (const id of [...net.players.keys()]) removeRemotePlayer(id);
   };
   ws.onmessage = ev => {
@@ -2561,26 +3116,43 @@ function connectNet(){
       case 'welcome':
         net.id = m.id;
         net.limit = m.limit || 30; net.round = m.round || 1; net.scores = m.scores || []; net.currentMap = m.map || 'FORGE';
+        net.dmMode = m.mode || 'ffa'; net.teamTotals = m.totals || net.teamTotals;
+        net.myScore = -1;
         if (currentMapName !== net.currentMap) setMap(net.currentMap);
-        for (const p of m.players){ const rp = addRemotePlayer(p.id, p.name, p.skin || 'rift'); if (p.state) applyNetState(rp, p.state); }
+        for (const p of m.players){ const rp = addRemotePlayer(p.id, p.name, p.skin || 'rift', p.team || 0); if (p.state) applyNetState(rp, p.state); }
+        syncLadderWeapon();
         respawnDMPlayer(true);
         updateScoreboardHUD();
-        if (!m.active && m.voteChoices && m.voteChoices.length) showMapVote(m.winnerName || 'STARTING MAP', m.voteChoices, m.voteCounts || {}, m.voteEndsAt || 0);
+        updateTeamHUD();
+        if (!m.active){
+          if (m.phase === 'mode') showModeVote(m.pendingMap || m.map || 'MAP', m.voteCounts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0));
+          else if (m.voteChoices && m.voteChoices.length) showMapVote(m.winnersName || m.winnerName || 'STARTING MAP', m.voteChoices, m.voteCounts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0));
+        }
         updateTopHUD();
         break;
-      case 'join': addRemotePlayer(m.id, m.name, m.skin || 'rift'); addKillFeed(null, `<b>${m.name}</b> JOINED THE MATCH`); updateTopHUD(); break;
-      case 'name': { const rp = net.players.get(m.id); if (rp){ rp.name = m.name; rp.group.remove(rp.tag); rp.tag = makeNameSprite(m.name); rp.tag.position.y = 2.45; rp.group.add(rp.tag); } break; }
+      case 'mode':
+        net.dmMode = m.mode || 'ffa'; net.myTeam = m.team || 0;
+        if (net.dmMode === 'team'){ showBanner(`ASSIGNED — ${TEAM_NAMES[net.myTeam]}`); addKillFeed(null, `YOU PLAY FOR <span style="color:${TEAM_COLORS[net.myTeam]}">${TEAM_NAMES[net.myTeam]}</span>`); }
+        updateTeamHUD();
+        break;
+      case 'team': { const rp = net.players.get(m.id); if (rp) setRemoteTeam(rp, m.team || 0); break; }
+      case 'join': addRemotePlayer(m.id, m.name, m.skin || 'rift', m.team || 0); addKillFeed(null, `<b>${m.name}</b> JOINED THE MATCH${fmtTeamTag(m.team) ? ' — ' + fmtTeamTag(m.team) : ''}`); updateTopHUD(); break;
+      case 'name': { const rp = net.players.get(m.id); if (rp){ rp.name = m.name; rp.group.remove(rp.tag); rp.tag = makeNameSprite(m.name, net.dmMode === 'team' && rp.team ? TEAM_COLORS[rp.team] : '#2cf2ff'); rp.tag.position.y = 2.45; rp.group.add(rp.tag); } break; }
       case 'skin': { const rp = net.players.get(m.id); if (rp) setRemoteSkin(rp, m.skin || 'rift'); break; }
       case 'leave': { const rp = net.players.get(m.id); if (rp) addKillFeed(null, `<b>${rp.name}</b> LEFT`); removeRemotePlayer(m.id); updateTopHUD(); break; }
       case 'state': { const rp = net.players.get(m.id) || addRemotePlayer(m.id, 'PLAYER'); applyNetState(rp, m.s); break; }
       case 'shoot': {
         const rp = net.players.get(m.id);
+        const isKnifeShot = (m.w || 0) >= 100;
         if (rp){ setRemoteWeapon(rp, m.w || rp.weaponIndex || 0); rp.fireT = 0.12; }
         const o = new THREE.Vector3(m.o[0], m.o[1], m.o[2]);
         const p = new THREE.Vector3(m.p[0], m.p[1], m.p[2]);
-        spawnTracer(o, p);
-        spawnSparks(p, 0x9ab0cc, 3);
-        playNoise(0.1, 1100, 0.8, 0.2);
+        if (isKnifeShot){ playNoise(0.06, 2600, 0.3, 0.18); }
+        else {
+          spawnTracer(o, p);
+          spawnSparks(p, 0x9ab0cc, 3);
+          playNoise(0.1, 1100, 0.8, 0.2);
+        }
         break; }
       case 'hit': {
         net.lastHitBy = m.from;
@@ -2592,34 +3164,61 @@ function connectNet(){
           const victim = net.players.get(m.victim);
           if (victim) remotePlayerKilled(victim, m.by);
         }
-        if (m.by === net.id){ S.kills++; S.score += 150; PROGRESS.totalKills = (PROGRESS.totalKills || 0) + 1; trackChallenge('kill', 1); grantProgress(65, 35, 'PLAYER ELIMINATED'); SFX.kill(); showHitmarker(true); registerKill(); }
+        if (m.by === net.id){ S.kills++; S.score += 150; PROGRESS.totalKills = (PROGRESS.totalKills || 0) + 1; trackChallenge('kill', 1); grantProgress(m.knife ? (m.bs ? 130 : 95) : 65, m.knife ? (m.bs ? 75 : 55) : 35, m.bs ? 'BACKSTAB EXECUTION' : m.knife ? 'SHANKED A RIVAL' : 'PLAYER ELIMINATED'); SFX.kill(); showHitmarker(true); registerKill(); }
         net.scores = m.scores || net.scores;
-        addKillFeed(null, `<b>${m.names.k}</b> ⟶ ${m.names.v}`);
+        if (m.mode) net.dmMode = m.mode;
+        if (m.totals){ net.teamTotals = m.totals; updateTeamHUD(); }
+        if (m.knife) addKillFeed(null, `<b>${fmtColoredName(m.names.k, m.kteam)}</b> <span style="color:#ffd040">⚔ ${m.bs ? 'BACKSTABBED' : 'SHANKED'}</span> ${fmtColoredName(m.names.v, m.vteam)}${m.demoted ? ' — DEMOTED ONE TIER' : ''}`);
+        else addKillFeed(null, `<b>${fmtColoredName(m.names.k, m.kteam)}</b> ⟶ ${fmtColoredName(m.names.v, m.vteam)}`);
         updateScoreboardHUD();
         updateTopHUD();
+        syncLadderWeapon();   // shared ladder: promotion on your kill, demotion if you were shanked
         break;
       case 'score':
         net.scores = m.scores || [];
         net.limit = m.limit || net.limit;
         net.round = m.round || net.round;
         net.currentMap = m.map || net.currentMap;
-        updateScoreboardHUD(); updateTopHUD();
+        if (m.mode) net.dmMode = m.mode;
+        if (m.totals) net.teamTotals = m.totals;
+        updateScoreboardHUD(); updateTopHUD(); updateTeamHUD();
+        syncLadderWeapon();
         break;
       case 'roundOver':
         net.roundOver = true; net.voteActive = true; net.scores = m.scores || net.scores;
+        if (m.mode) net.dmMode = m.mode;
+        if (m.totals){ net.teamTotals = m.totals; updateTeamHUD(); }
         if (m.winnerId === net.id){ PROGRESS.dmWins = (PROGRESS.dmWins || 0) + 1; trackChallenge('dmWin', 1); grantProgress(500, 300, 'LAN MATCH WON'); }
         SFX.roundWin();
         showBanner((m.winnerName || 'PLAYER') + ' WINS');
-        showMapVote(m.winnerName || 'ROUND COMPLETE', m.choices || [], m.counts || {}, m.voteEndsAt || 0);
+        showMapVote(m.winnerName || 'ROUND COMPLETE', m.choices || [], m.counts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0));
         updateScoreboardHUD(); updateTopHUD();
         break;
-      case 'voteUpdate':
-        updateVoteCounts(m.choices || net.voteChoices, m.counts || {}, m.voteEndsAt || net.voteEndsAt);
+      case 'modeVote':   // map settled — the second ballot picks the rules
+        net.pendingMap = m.map || net.pendingMap;
+        showModeVote(m.map || 'MAP', m.counts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0));
+        addKillFeed(null, `<b>${m.map || 'MAP'}</b> TAKES THE MAP VOTE — NOW VOTE THE MODE`);
         break;
+      case 'modeDecided':
+        net.dmMode = m.mode || 'ffa';
+        showBanner(m.modeName || 'FREE FOR ALL');
+        addKillFeed(null, `<b>${m.map || net.pendingMap}</b> // <b>${m.modeName}</b> — ROUND INCOMING`);
+        if (net.dmMode !== 'team'){ net.myTeam = 0; updateTeamHUD(); }
+        $('voteTimer').textContent = `LOCKED IN — ${m.map || net.pendingMap} // ${m.modeName || ''}`;
+        break;
+      case 'voteUpdate': {
+        if (m.voteEndsAt && m.now) net.voteEndsLocal = voteLocalEnd(m.voteEndsAt, m.now);
+        if (m.phase === net.votePhase) net.voteCounts = m.counts || net.voteCounts;
+        updateVoteCounts();
+        break; }
       case 'roundStart':
         net.roundOver = false; net.voteActive = false; net.round = m.round || (net.round+1); net.limit = m.limit || net.limit;
         net.scores = m.scores || []; net.currentMap = m.map || 'FORGE';
-        hideMapVote(); setMap(net.currentMap); resetMatchStats(); respawnDMPlayer(true);
+        if (m.mode) net.dmMode = m.mode;
+        if (m.totals) net.teamTotals = m.totals;
+        updateTeamHUD();
+        net.myScore = -1; knifeMode = 0;
+        hideMapVote(); setMap(net.currentMap); resetMatchStats(); syncLadderWeapon(); respawnDMPlayer(true);
         SFX.roundStart(); showBanner('ROUND ' + net.round);
         updateScoreboardHUD(); updateTopHUD();
         break;
@@ -2631,6 +3230,8 @@ function applyNetState(rp, s){
   rp.target.set(s[0], s[1], s[2]);
   rp.yawT = s[3] || 0;
   if (s.length > 4) setRemoteWeapon(rp, s[4]);
+  rp.slide = !!s[5];
+  rp.crouching = !!s[6];
   rp.group.visible = true;
   if (firstContact){ rp.group.position.copy(rp.target); rp.lastPos.copy(rp.target); }
 }
@@ -2639,7 +3240,8 @@ function updateNet(dt){
   net.sendT -= dt;
   if (net.sendT <= 0 && S.started && !S.dead){
     net.sendT = 0.05;
-    netSend({ t:'state', s:[+player.pos.x.toFixed(2), +player.pos.y.toFixed(2), +player.pos.z.toFixed(2), +player.yaw.toFixed(3), weaponIndex] });
+    const slotCode = knifeMode ? (knifeGolden() ? 101 : 100) : weaponIndex;
+    netSend({ t:'state', s:[+player.pos.x.toFixed(2), +player.pos.y.toFixed(2), +player.pos.z.toFixed(2), +player.yaw.toFixed(3), slotCode, player.slideT > 0 ? 1 : 0, player.crouched ? 1 : 0] });
   }
   const k = 1 - Math.exp(-12 * dt);
   for (const rp of net.players.values()){
@@ -2672,9 +3274,15 @@ function updateNet(dt){
     if (parts.torso){ parts.torso.position.y = parts.torso.userData.basePos.y + bob; parts.torso.rotation.z = Math.sin(phase*.5)*0.035*blend; }
     if (parts.head){ parts.head.position.y = parts.head.userData.basePos.y + bob*0.45; parts.head.rotation.z = -parts.torso?.rotation.z*0.45 || 0; }
     if (rp.weaponRoot){
-      rp.weaponRoot.position.set(0.08, 1.24 + bob*0.35, -0.54 + recoil*0.06);
-      rp.weaponRoot.rotation.set(-0.15 - recoil*0.22 + Math.sin(phase)*0.018*blend, 0.02, -0.03 + Math.sin(phase*.7)*0.025*blend);
+      rp.weaponRoot.position.set(0.08, 1.24 + bob*0.35 - (rp.slideBlend||0)*0.30 - (rp.crouchBlend||0)*0.18, -0.54 + recoil*0.06 - (rp.slideBlend||0)*0.10);
+      rp.weaponRoot.rotation.set(-0.15 - recoil*0.22 + Math.sin(phase)*0.018*blend - (rp.slideBlend||0)*0.35, 0.02, -0.03 + Math.sin(phase*.7)*0.025*blend);
     }
+    // networked slide: squash + forward lean so everyone sees the slide, not just extra speed
+    rp.slideBlend = lerp(rp.slideBlend || 0, rp.slide ? 1 : 0, 1 - Math.exp(-14*dt));
+    rp.crouchBlend = lerp(rp.crouchBlend || 0, (rp.crouching && !rp.slide) ? 1 : 0, 1 - Math.exp(-10*dt));
+    const sb = rp.slideBlend, cb = rp.crouchBlend;
+    g.scale.set(1 + sb*0.16 + cb*0.05, 1 - sb*0.38 - cb*0.26, 1 + sb*0.16 + cb*0.05);   // slides squash long, crouches shorten
+    g.rotation.x = sb * 0.22;
   }
 }
 function remotePlayerKilled(rp, killerId){
@@ -2695,6 +3303,9 @@ function respawnDMPlayer(silent=false){
   if (mode === 'dm' && !net.voteActive){ S.paused = false; fallbackMode = true; locked = true; canvas.style.cursor = 'none'; }
   net.spectateId = 0; net.spectateT = 0;
   $('spectate').classList.remove('show');
+  const rw = CW();                                   // redeploy locked & loaded — respawn always tops off your gun
+  rw.reloading = 0; rw.ammo = rw.mag; rw.cool = 0;
+  updateAmmoHUD();
   updateHealthHUD();
   if (!silent){ SFX.respawn(); showBanner('REDEPLOYED'); }
 }
@@ -2873,13 +3484,30 @@ function updateScoreboardHUD(){
   const panel = $('scoreboardPanel'), rows = $('scoreRows');
   if (!panel || !rows) return;
   panel.classList.toggle('hidden', mode !== 'dm' && !net.on);
-  panel.querySelector('.sbTitle').textContent = `LEADERBOARD // FIRST TO ${net.limit || 30}`;
+  panel.querySelector('.sbTitle').textContent = net.dmMode === 'team'
+    ? `RED v BLUE // FIRST TEAM TO ${net.limit || 30}`
+    : `LEADERBOARD // FIRST TO ${net.limit || 30}`;
+  if (net.dmMode === 'team'){
+    const list = (net.scores || []);
+    const row = p => `<div class="scoreRow ${p.id===net.id?'me':''}"><span class="${p.team===1?'tr':'tb'}">${p.name || 'PLAYER'}</span><b>${p.score || 0}<small>${p.deaths || 0}D</small></b></div>`;
+    const red = list.filter(p => p.team === 1).sort((a,b)=>(b.score||0)-(a.score||0));
+    const blue = list.filter(p => p.team === 2).sort((a,b)=>(b.score||0)-(a.score||0));
+    const t = net.teamTotals || { red:0, blue:0 };
+    rows.innerHTML =
+      `<div class="scoreRow sbTeamHdr tr"><span>RED TEAM</span><b>${t.red}</b></div>` +
+      (red.map(row).join('') || '<div class="scoreRow tr"><span>—</span><b>0</b></div>') +
+      `<div class="scoreRow sbTeamHdr tb"><span>BLUE TEAM</span><b>${t.blue}</b></div>` +
+      (blue.map(row).join('') || '<div class="scoreRow tb"><span>—</span><b>0</b></div>');
+    return;
+  }
   const list = (net.scores || []).slice(0, 8);
   rows.innerHTML = list.length ? list.map((p,i) => `<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${p.name || 'PLAYER'}</span><b>${p.score || 0}/${net.limit || 30}<small>${p.deaths || 0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/30<small>0D</small></b></div>';
 }
 function voteDescription(name){
   if (name === 'NEXUS') return 'Symmetric lanes, fast duels, tight mid control';
   if (name === 'DUSK YARD') return 'Containers, long angles, flank routes';
+  if (name === 'COLD STORAGE') return 'Freezer hub, rack aisles, frost-blue vaults';
+  if (name === 'RIFT DOCKS') return 'Rain-slick pier, cranes, container lanes';
   return 'Balanced forge arena with center roof and corner towers';
 }
 function renderRoundStats(){
@@ -2894,56 +3522,103 @@ function renderRoundStats(){
     `HEADSHOTS <b>${S.headshots}</b><br>BEST STREAK <b>${S.longestStreak}</b><br>` +
     `EARNED <b>${S.cashEarned} CR / ${S.xpEarned} XP</b></div>`;
 }
-function showMapVote(winner, choices, counts={}, endsAt=0){
-  net.voteActive = true; net.voteChoices = choices; net.voteCounts = counts; net.voteEndsAt = endsAt;
+/* The result of a vote message with server timestamps (now/voteEndsAt) — builds a LOCAL deadline so a
+   different machine clock can't skew the countdown (was the infamous "0s/99s" vote-timer bug on LAN). */
+function voteLocalEnd(endsAt=0, now=0){
+  const rem = now ? Math.max(0, endsAt - now) : 6000;
+  return Date.now() + rem;
+}
+const MODE_CARD = {
+  FFA:  { title:'FREE FOR ALL', sub:'every runner for themselves — first to 30 kills takes it', cls:'vmFFA' },
+  TEAM: { title:'RED v BLUE',   sub:'teammates can\'t hurt you — first runner to 30 kills still wins', cls:'vmTEAM' },
+};
+function enterVoteMode(paused=true){
+  net.voteActive = true;
   S.paused = true; locked = false; mouseL = mouseR = false; canvas.style.cursor = 'crosshair';
   try { document.exitPointerLock(); } catch(e){}
+  $('voteOverlay').classList.remove('hidden');
+}
+function showMapVote(winner, choices, counts={}, endsLocal=0){
+  enterVoteMode();
+  net.votePhase = 'map'; net.voteChoices = choices; net.voteCounts = counts;
+  if (endsLocal) net.voteEndsLocal = endsLocal;
   $('voteWinner').textContent = (winner === 'STARTING MAP') ? 'VOTE STARTING MAP' : `${winner} WINS — VOTE NEXT MAP`;
   renderRoundStats();
   const box = $('voteChoices'); box.innerHTML = '';
   choices.forEach((m,i) => {
     const btn = document.createElement('button'); btn.className = 'voteBtn'; btn.dataset.map = m;
-    btn.innerHTML = `<b>${i+1}. ${m}</b><span>${voteDescription(m)}</span><span class="voteCount">${counts[m] || 0} VOTES</span>`;
+    btn.innerHTML = `<img class="voteThumb" src="${thumbFor(m)}" alt="${m}" onerror="this.remove()"><b>${i+1}. ${m}</b><span>${voteDescription(m)}</span><span class="voteCount">${counts[m] || 0} VOTES</span>`;
     btn.onclick = () => castMapVote(m);
     box.appendChild(btn);
   });
-  updateVoteCounts(choices, counts, endsAt);
-  $('voteOverlay').classList.remove('hidden');
+  net.__voteSecs = -1; updateVoteCounts();
 }
-function updateVoteCounts(choices=net.voteChoices, counts={}, endsAt=net.voteEndsAt){
-  net.voteChoices = choices; net.voteCounts = counts; net.voteEndsAt = endsAt;
+function showModeVote(mapName, counts={}, endsLocal=0){
+  enterVoteMode();
+  net.votePhase = 'mode'; net.pendingMap = mapName || net.pendingMap; net.voteChoices = ['FFA','TEAM']; net.voteCounts = counts;
+  if (endsLocal) net.voteEndsLocal = endsLocal;
+  $('voteWinner').textContent = `${(mapName || 'MAP').toUpperCase()} LOCKED — VOTE THE MODE`;
+  renderRoundStats();
+  const box = $('voteChoices'); box.innerHTML = '';
+  ['FFA','TEAM'].forEach((m,i) => {
+    const c = MODE_CARD[m];
+    const btn = document.createElement('button'); btn.className = 'voteBtn voteModeBtn ' + c.cls; btn.dataset.map = m;
+    btn.innerHTML = `<b>${i+1}. ${c.title}</b><span>${c.sub}</span><span class="voteCount">${counts[m] || 0} VOTES</span>`;
+    btn.onclick = () => castMapVote(m);
+    box.appendChild(btn);
+  });
+  net.__voteSecs = -1; updateVoteCounts();
+}
+function updateVoteCounts(){
+  const counts = net.voteCounts || {};
   for (const btn of document.querySelectorAll('.voteBtn')){
     const m = btn.dataset.map;
-    const c = btn.querySelector('.voteCount'); if (c) c.textContent = `${counts[m] || 0} VOTES`;
+    const c = btn.querySelector('.voteCount'); if (c && counts[m] !== undefined) c.textContent = `${counts[m]} VOTES`;
   }
-  if (endsAt){
-    const secs = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
-    $('voteTimer').textContent = `NEXT ROUND STARTS IN ${secs}s // VOTE WITH MOUSE OR KEYS 1–3`;
+  const secs = Math.max(0, Math.ceil(((net.voteEndsLocal || 0) - Date.now()) / 1000));
+  if (secs !== net.__voteSecs){
+    net.__voteSecs = secs;
+    $('voteTimer').textContent = net.votePhase === 'mode' ? `MODE VOTE — MOUSE OR KEYS 1–2 · ${secs}s` : `MAP VOTE — MOUSE OR KEYS 1–3 · ${secs}s`;
   }
 }
 function hideMapVote(){
   $('voteOverlay').classList.add('hidden');
-  net.voteActive = false;
+  net.voteActive = false; net.votePhase = 'map'; net.__voteSecs = -1;
   if (mode === 'dm' && S.started && !S.dead){ S.paused = false; fallbackMode = true; locked = true; canvas.style.cursor = 'none'; }
 }
-function castMapVote(map){
-  if (!net.voteActive || !map) return;
-  for (const b of document.querySelectorAll('.voteBtn')) b.classList.toggle('selected', b.dataset.map === map);
+function castMapVote(choice){
+  if (!net.voteActive || !choice || !net.voteChoices.includes(choice)) return;
+  for (const b of document.querySelectorAll('.voteBtn')) b.classList.toggle('selected', b.dataset.map === choice);
   SFX.vote();
-  netSend({ t:'vote', map });
+  netSend({ t:'vote', map:choice });
 }
 function updateAmmoHUD(){
   const w = CW();
+  const sg = $('slotGun'), sk = $('slotKnife');
+  if (sg) sg.classList.toggle('active', !knifeMode);
+  if (sk){
+    sk.classList.toggle('active', !!knifeMode);
+    sk.classList.toggle('gold', !!knifeGolden());
+    sk.textContent = knifeGolden() ? '2 ★ SHANK' : '2 KNIFE';
+  }
+  if (knifeMode){
+    const def = currentKnifeDef();
+    $('weaponName').innerHTML = def.golden ? `<span style="color:#ffd040">${def.name}</span>` : def.name;
+    $('ammoMag').textContent = '—';
+    $('ammoMag').classList.remove('lowammo');
+    $('ammoReserve').textContent = ' ∞';
+    const av = $('arsenalVal'); if (av) av.textContent = mode === 'dm' ? `${Math.min((net.myScore || 0) + 1, 30)} / 30` : `${weaponIndex+1} / ${WEAPONS.length}`;
+    $('nadeVal').textContent = '×' + player.grenades;
+    $('reloadHint').textContent = knifeGolden() ? 'FINAL TIER — SHANK TO WIN' : '';
+    return;
+  }
   const rc = '#' + currentRarity.color.toString(16).padStart(6,'0');
   $('weaponName').innerHTML = `<span style="color:${rc}">${currentRarity.name}</span> ${w.name}`;
   $('ammoMag').textContent = w.ammo;
   $('ammoMag').classList.toggle('lowammo', w.ammo <= w.mag * 0.25);
   $('ammoReserve').textContent = ' / ' + w.res;
-  for (let i=0;i<4;i++){
-    const el = $('slot'+i);
-    if (el) el.classList.toggle('active', i === weaponIndex);
-  }
-  const av = $('arsenalVal'); if (av) av.textContent = `${weaponIndex+1} / ${WEAPONS.length}`;
+  const av = $('arsenalVal');
+  if (av) av.textContent = mode === 'dm' ? `TIER ${Math.min((net.myScore || 0) + 1, 30)} / 30` : `${weaponIndex+1} / ${WEAPONS.length}`;
   $('nadeVal').textContent = '×' + player.grenades;
   const fin = (S.started && !S.dead && !S.paused && enemies && findFinisherTarget()) ? 'PRESS F TO EXECUTE' : '';
   $('reloadHint').textContent = w.reloading > 0 ? `RELOADING ${Math.round(reloadProgress(w)*100)}%` : (w.ammo === 0 ? 'PRESS R TO RELOAD' : fin);
@@ -2963,8 +3638,14 @@ function updateTopHUD(){
     $('hostilesVal').textContent = net.players.size + 1;
     const me = (net.scores || []).find(p => p.id === net.id);
     const leader = (net.scores || [])[0];
-    $('scoreVal').textContent = me ? me.score : S.kills;
-    $('killsVal').textContent = leader ? `${leader.score}/${net.limit || 30}` : `0/${net.limit || 30}`;
+    if (net.dmMode === 'team'){
+      const t = net.teamTotals || { red:0, blue:0 };
+      $('scoreVal').textContent = me ? me.score : S.kills;
+      $('killsVal').textContent = `${t.red} – ${t.blue}`;
+    } else {
+      $('scoreVal').textContent = me ? me.score : S.kills;
+      $('killsVal').textContent = leader ? `${leader.score}/${net.limit || 30}` : `0/${net.limit || 30}`;
+    }
   } else {
     $('modeLbl').textContent = 'WAVE';
     $('hostilesLbl').textContent = 'HOSTILES';
@@ -3003,10 +3684,10 @@ function drawMinimap(){
     mm.fillStyle = '#ff3b57';
     mm.beginPath(); mm.arc(x, z, 2.6, 0, 7); mm.fill();
   }
-  // remote players (allies/rivals in blue)
+  // remote players — teammates in team color, rivals red (ffa: everyone a rival)
   for (const rp of net.players.values()){
     const [x,z] = toMap(rp.group.position.x, rp.group.position.z);
-    mm.fillStyle = '#2c86ff';
+    mm.fillStyle = isTeammate(rp) ? TEAM_COLORS[net.myTeam] : '#ff3b57';
     mm.beginPath(); mm.arc(x, z, 2.6, 0, 7); mm.fill();
   }
   // player
@@ -3028,16 +3709,19 @@ function updatePlayer(dt, now){
   player.invuln = Math.max(0, (player.invuln || 0) - dt);
   // input direction
   let ix = 0, iz = 0;
-  if (keys['KeyW']) iz -= 1;
-  if (keys['KeyS']) iz += 1;
-  if (keys['KeyA']) ix -= 1;
-  if (keys['KeyD']) ix += 1;
+  if (bindDown('fwd')) iz -= 1;
+  if (bindDown('back')) iz += 1;
+  if (bindDown('left')) ix -= 1;
+  if (bindDown('right')) ix += 1;
   const moving = ix !== 0 || iz !== 0;
-  const sprinting = keys['ShiftLeft'] && iz < 0 && adsT < 0.3;
-  const ads = mouseR && CW().reloading <= 0;
+  player.crouched = bindDown('crouch') && player.grounded && player.slideT <= 0;
+  const sprinting = bindDown('sprint') && moving && !player.crouched && adsT < 0.3;   // sprint in ANY direction, not just forward — sideways strafe-sprints carry speed too; crouching cancels it
+  const adsHeld = (mouseR || bindDown('ads')) && !knifeMode;   // RMB or the rebindable CTRL aim key
+  const ads = adsHeld && CW().reloading <= 0;
   adsT = clamp(adsT + (ads ? dt*8 : -dt*8), 0, 1);
 
-  const speed = ads ? 3.6 : (sprinting ? 8.4 : 5.7);
+  const speedMul = knifeMode ? currentKnifeDef().speedMul : 1;  // knife +5%, golden shank +15% move speed
+  const speed = (ads ? 3.6 : player.crouched ? 3.1 : (sprinting ? 8.4 : 5.7)) * speedMul;
   const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
   let wx = 0, wz = 0;
   if (moving){
@@ -3048,8 +3732,8 @@ function updatePlayer(dt, now){
     wx = (ix * cos + iz * sin) * speed;
     wz = (iz * cos - ix * sin) * speed;
   }
-  // smooth accel
-  const accel = player.grounded ? 14 : 4;
+  // smooth accel (stronger air control so mid-air corrections feel fluent)
+  const accel = player.grounded ? 14 : 6.5;
   player.vel.x = lerp(player.vel.x, wx, 1 - Math.exp(-accel*dt));
   player.vel.z = lerp(player.vel.z, wz, 1 - Math.exp(-accel*dt));
 
@@ -3061,11 +3745,16 @@ function updatePlayer(dt, now){
     player.vel.x = slideDir.x * ss;
     player.vel.z = slideDir.z * ss;
   }
-  player.crouch = lerp(player.crouch, player.slideT > 0 ? 1 : 0, 1 - Math.exp(-13*dt));
+  player.crouch = lerp(player.crouch, player.slideT > 0 ? 1 : (player.crouched ? 0.92 : 0), 1 - Math.exp(-13*dt));
 
-  // gravity & jump
+  // gravity & jump — buffered input + coyote time so jumps always register even mid-sprint / mid-crowd
   player.vel.y -= 21 * dt;
-  if (keys['Space'] && player.grounded){
+  player.jumpBufferT = Math.max(0, (player.jumpBufferT || 0) - dt);
+  if (player.grounded) player.coyoteT = 0.12;
+  else player.coyoteT = Math.max(0, (player.coyoteT || 0) - dt);
+  if (player.jumpBufferT > 0 && player.coyoteT > 0){
+    player.jumpBufferT = 0;
+    player.coyoteT = 0;
     player.vel.y = 7.6;
     player.grounded = false;
     player.slideT = 0;
@@ -3092,7 +3781,7 @@ function updatePlayer(dt, now){
   if (player.grounded && hSpeed > 1.5){
     player.bobT += dt * hSpeed * 1.35;
     player.stepT -= dt;
-    if (player.stepT <= 0){ player.stepT = sprinting ? 0.31 : 0.42; SFX.step(); }
+    if (player.stepT <= 0){ player.stepT = sprinting ? 0.31 : player.crouched ? 0.6 : 0.42; SFX.step(player.crouched ? 0.4 : 1); }
   } else {
     player.bobT = lerp(player.bobT, Math.round(player.bobT / Math.PI) * Math.PI, dt*8);
   }
@@ -3132,11 +3821,16 @@ function updatePlayer(dt, now){
       updateAmmoHUD();
     }
   }
-  if (mouseL && (w.auto || w.cool <= -0.0001)){
+  // knife swing timers + attack input — mouse or the rebindable FIRE key for touchpad/keyboard-only players
+  const fireHeld = mouseL || bindDown('fire');
+  if (knifeSwingCd > 0) knifeSwingCd -= dt;
+  if (knifeSwingT > 0) knifeSwingT -= dt;
+  if (fireHeld && knifeMode){ tryKnifeSwing(); }
+  else if (fireHeld && !knifeMode && (w.auto || w.cool <= -0.0001)){
     if (w.auto) fireWeapon();
     else { if (!player._firedHeld){ fireWeapon(); player._firedHeld = true; } }
   }
-  if (!mouseL) player._firedHeld = false;
+  if (!fireHeld) player._firedHeld = false;
 
   // gun transform + cinematic reload choreography
   gunKick = Math.max(0, gunKick - dt * 0.9);
@@ -3160,6 +3854,29 @@ function updatePlayer(dt, now){
     swayX*2 - rMag*0.16 + rSlam*0.10,
     -rMag*0.55 + rSlam*0.24
   );
+
+  // hard guarantee every frame: exactly one knife variant visible, and only in knife mode
+  knifeModels[0].visible = !!knifeMode && !knifeGolden();
+  knifeModels[1].visible = !!knifeMode && knifeGolden();
+
+  // knife choreography: snappy windup, big explosive slash straight across the screen
+  // (mirrored every other swing), fast recover. No jabs.
+  if (knifeMode){
+    const T = 0.42;
+    const p = knifeSwingT > 0 ? 1 - knifeSwingT / T : 0;
+    const phase = (s0, d) => ease01(clamp((p - s0) / d, 0, 1));
+    const windup = phase(0, .26), strike = phase(.26, .30), recov = phase(.64, .36);
+    const a = windup * (1 - strike);     // weight of the windup pose
+    const b = strike * (1 - recov);      // weight of the strike pose
+    // SLASH: haul out to one side, then carve a wide horizontal arc through the crosshair
+    const s = (knifeSwingId & 1) ? 1 : -1;
+    gunRoot.rotation.x += -0.16*a + 0.26*b;
+    gunRoot.rotation.y += s * (-0.72*a + 1.55*b);
+    gunRoot.rotation.z += s * (-0.48*a + 1.05*b);
+    gunRoot.position.x += s * (-0.10*a + 0.30*b);
+    gunRoot.position.y +=  0.04*a - 0.03*b;
+    gunRoot.position.z +=  0.04*a - 0.08*b;
+  }
 
   // flash
   if (flashTimer > 0){
@@ -3258,7 +3975,7 @@ function updateEffects(dt){
   }
 
   // map vote countdown
-  if (net.voteActive && net.voteEndsAt) updateVoteCounts(net.voteChoices, net.voteCounts, net.voteEndsAt);
+  if (net.voteActive && net.voteEndsLocal) updateVoteCounts();
 
   // drifting dust
   if (dustCloud) dustCloud.rotation.y += dt * 0.006;
@@ -3302,4 +4019,11 @@ updateAmmoHUD();
 updateHealthHUD();
 loop();
 window.__gameReady = true;
-window.__dbg = { player, S, camera, enemies, net, spawnEnemy, fireWeapon, grenadesLive, explodeAt, throwGrenade, WEAPONS, RARITIES, waveComposition, tryReload, rotateWeaponForKill, setMap, spawnPlayerPieces, dmDeath, respawnDMPlayer, PROGRESS, SKINS, grantProgress, updateProgressUI, skinDef, trackChallenge, findFinisherTarget, tryFinisher, destructibles, weatherSystems, worldAnim, eventLights, damageDestructible, destroyDestructible, cleanupPlayerAvatar, savePlayerName, addRemotePlayer };
+window.__dbg = { player, S, camera, enemies, net, keys, spawnEnemy, fireWeapon, grenadesLive, explodeAt, throwGrenade, WEAPONS, RARITIES, waveComposition, tryReload, rotateWeaponForKill, setMap, spawnPlayerPieces, dmDeath, respawnDMPlayer, PROGRESS, SKINS, grantProgress, updateProgressUI, skinDef, trackChallenge, findFinisherTarget, tryFinisher, destructibles, weatherSystems, worldAnim, eventLights, damageDestructible, destroyDestructible, cleanupPlayerAvatar, savePlayerName, addRemotePlayer, tryKnifeSwing, knifeStrike, isBackstab, KNIFE_DEFS, knifeModels,
+  MAP_NAMES, SETTINGS, DEFAULT_BINDS, BIND_LABELS, bindCode, bindDown, assignBind, friendlyKeyName, renderBindList, GUN_LADDER, FINAL_TIER_SCORE, equipLadderTier, syncLadderWeapon, equipGunSlot, equipKnifeSlot, tryKnifeSwing, knifeStrike, updateWeaponVisibility, knifeModels, solids, castWorld, hasLOS, resolvePenetration, updateEnemies, updatePlayer, isTeammate, setRemoteTeam, TEAM_COLORS, TEAM_NAMES, updateTeamHUD,
+  get knifeSwingCt(){ return knifeSwingId; },
+  get inputLocked(){ return locked; },
+  get knifeMode(){ return knifeMode; },
+  getKnifeState(){ return { mode:knifeMode, golden:knifeGolden(), locked:knifeLocked(), def:currentKnifeDef() }; },
+  resetKnifeTimers(){ knifeSwingT = knifeSwingCd = 0; },
+  getAdsT(){ return adsT; } };

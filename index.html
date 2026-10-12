@@ -44,6 +44,9 @@
   .playPanel { padding:28px; clip-path:polygon(22px 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%, 0 22px); }
   .menuLabel { font-size:10px; letter-spacing:4px; color:#8fa3bd; text-transform:uppercase; margin:0 0 9px; }
   #callsign { width:100%; margin:0 0 18px !important; }
+  #callsign.needName { border-color:#ff4b35 !important; box-shadow:0 0 0 1px #ff4b35, 0 0 18px rgba(255,75,53,.35) !important; animation: nameShake .45s ease; }
+  #callsign.needName::placeholder { color:#ff8a75; }
+  @keyframes nameShake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-7px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(3px)} }
   .modeBtn { width:100%; display:block; text-align:left; margin-bottom:12px; letter-spacing:3px; padding:17px 18px; }
   .modeBtn span { display:block; font-size:20px; color:#fff; letter-spacing:5px; }
   .modeBtn small { display:block; margin-top:7px; font-size:10px; color:#8fa3bd; letter-spacing:2px; }
@@ -58,6 +61,16 @@
   .settingRow label { color:#dfe9f5; font-size:12px; letter-spacing:3px; text-transform:uppercase; }
   .settingRow output { color:var(--orange); font-family:Consolas,monospace; text-align:right; }
   .settingRow input[type=range] { width:100%; accent-color:#2cf2ff; }
+  .settingsPanel { max-height:88vh; overflow-y:auto; }
+  .bindTitle { font-size:12px; letter-spacing:5px; color:var(--cyan); text-align:center; margin:22px 0 4px; }
+  .bindHint { font-size:9px; letter-spacing:2px; color:#8fa3bd; text-align:center; margin-bottom:8px; }
+  .bindRow { display:grid; grid-template-columns:1fr 150px; gap:14px; align-items:center; padding:7px 0; border-bottom:1px solid rgba(255,255,255,.06); }
+  .bindRow span { color:#dfe9f5; font-size:11px; letter-spacing:2px; text-transform:uppercase; }
+  .bindKey { font-family:Consolas,monospace; font-size:11px; letter-spacing:2px; text-align:center; padding:7px 6px; cursor:pointer;
+    background:rgba(10,16,28,.75); color:#eafcff; border:1px solid rgba(44,242,255,.35); transition:all .12s; }
+  .bindKey:hover { border-color:var(--cyan); box-shadow:0 0 10px rgba(44,242,255,.35); }
+  .bindKey.waiting { border-color:var(--orange); color:#1a1208; background:var(--orange); animation:bindPulse .7s infinite alternate; }
+  @keyframes bindPulse { from { box-shadow:0 0 6px rgba(255,154,60,.5);} to { box-shadow:0 0 18px rgba(255,154,60,.95);} }
   .settingsActions { display:flex; gap:14px; justify-content:center; margin-top:26px; flex-wrap:wrap; }
   .profileCard { margin:0 0 18px; border:1px solid rgba(44,242,255,.25); background:rgba(44,242,255,.045); padding:13px 14px; box-shadow:inset 0 0 20px rgba(44,242,255,.035); }
   .profileTop, .profileStats { display:flex; justify-content:space-between; align-items:center; gap:12px; }
@@ -140,6 +153,7 @@
   #weaponSlots { display:flex; gap:6px; justify-content:flex-end; margin-top:6px; }
   .slot { font-size:9px; letter-spacing:2px; padding:3px 8px; border:1px solid rgba(255,255,255,.15); color:#6e8199; }
   .slot.active { border-color:var(--cyan); color:#eafcff; background:rgba(44,242,255,.12); box-shadow:0 0 8px rgba(44,242,255,.3); }
+  .slot.gold { border-color:#ffd040; color:#ffd040; background:rgba(255,208,64,.12); box-shadow:0 0 10px rgba(255,208,64,.45); }
 
   /* top center */
   #topBar { position:absolute; top:18px; left:50%; transform:translateX(-50%); display:flex; gap:34px; padding:10px 34px; align-items:center;
@@ -215,6 +229,18 @@
   .scoreRow { display:flex; justify-content:space-between; gap:8px; font:11px Consolas,monospace; color:#b9cbe2; padding:2px 3px; border-bottom:1px solid rgba(255,255,255,.05); }
   .scoreRow.me { color:#fff; background:rgba(44,242,255,.12); box-shadow:inset 2px 0 0 var(--cyan); }
   .scoreRow b { color:var(--orange); }
+  .scoreRow.tr span, .scoreRow.tb span { font-weight:700; }
+  .scoreRow.tr span { color:#ff7d6e; }
+  .scoreRow.tb span { color:#79bcff; }
+  .scoreRow.sbTeamHdr { background:rgba(255,255,255,.06); box-shadow:inset 2px 0 0 currentColor; margin-top:2px; }
+  .scoreRow.sbTeamHdr.tr { color:#ff5040; } .scoreRow.sbTeamHdr.tb { color:#4aa0ff; }
+  .scoreRow.sbTeamHdr span { color:inherit; letter-spacing:2px; }
+  .scoreRow.sbTeamHdr b { color:inherit; }
+  #teamChip { position:absolute; top:64px; left:50%; transform:translateX(-50%); padding:6px 16px; text-align:center;
+    font:700 13px Consolas,monospace; letter-spacing:2px; color:#dfeefc; white-space:nowrap; }
+  #teamChip i { color:#5b7191; font-style:normal; margin:0 8px; }
+  #teamChip b { display:block; margin-top:2px; font-size:9px; letter-spacing:3px; color:#8fb0d4; }
+  #teamChip b.you-red { color:#ff7d6e; } #teamChip b.you-blue { color:#79bcff; }
 
   #spectate { position:absolute; top:16%; left:50%; transform:translateX(-50%); padding:11px 24px; text-align:center; opacity:0;
     color:#fff; font-size:12px; letter-spacing:4px; text-transform:uppercase; border:1px solid rgba(255,59,87,.5);
@@ -236,11 +262,21 @@
   .personalStats { font:12px Consolas,monospace; color:#cfe1f5; line-height:1.85; }
   .personalStats b { color:#fff; }
   #voteChoices { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
-  .voteBtn { cursor:pointer; padding:18px 10px; min-height:120px; color:#eafcff; background:rgba(44,242,255,.06); border:1px solid rgba(44,242,255,.35); text-transform:uppercase; letter-spacing:4px; }
+  .voteBtn { cursor:pointer; padding:14px 10px; min-height:120px; color:#eafcff; background:rgba(44,242,255,.06); border:1px solid rgba(44,242,255,.35); text-transform:uppercase; letter-spacing:4px; }
   .voteBtn:hover, .voteBtn.selected { background:rgba(255,154,60,.18); border-color:var(--orange); box-shadow:0 0 22px rgba(255,154,60,.28); }
+  .voteThumb { display:block; width:100%; aspect-ratio:32/19; object-fit:cover; margin-bottom:12px; border:1px solid rgba(44,242,255,.3); box-shadow:0 0 14px rgba(44,242,255,.15); background:#060b13; }
+  .voteBtn:hover .voteThumb, .voteBtn.selected .voteThumb { border-color:var(--orange); box-shadow:0 0 18px rgba(255,154,60,.3); }
   .voteBtn b { display:block; font-size:20px; margin-bottom:10px; color:#fff; }
   .voteBtn span { display:block; font-size:11px; color:#8fa3bd; letter-spacing:2px; }
   #voteTimer { margin-top:18px; font-size:11px; letter-spacing:4px; color:#8fa3bd; }
+  /* mode ballot: two big cards instead of map thumbnails */
+  .voteModeBtn b { font-size:24px; margin-top:14px; }
+  .voteModeBtn.vmFFA { border-color:rgba(44,242,255,.5); }
+  .voteModeBtn.vmFFA b { color:#8ef7ff; }
+  .voteModeBtn.vmTEAM::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px;
+    background:linear-gradient(90deg, #ff5040 50%, #4aa0ff 50%); }
+  .voteModeBtn.vmTEAM b { background:linear-gradient(90deg, #ff7d6e 0 50%, #79bcff 50% 100%); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .voteModeBtn:hover b, .voteModeBtn.selected b { text-shadow:0 0 16px rgba(255,255,255,.35); }
 
 
   /* ============ PREMIUM PRESENTATION PASS ============ */
@@ -407,6 +443,7 @@
     <canvas id="minimap" width="176" height="176"></canvas>
     <div id="minimapLbl">TACTICAL</div>
   </div>
+  <div id="teamChip" class="panel hidden"></div>
   <div id="scoreboardPanel" class="panel hidden">
     <div class="sbTitle">ROUND SCORE // 30</div>
     <div id="scoreRows"></div>
@@ -422,7 +459,8 @@
     <div id="ammoNums"><span id="ammoMag">30</span><span id="ammoReserve"> / 120</span></div>
     <div id="reloadHint"></div>
     <div id="weaponSlots">
-      <div class="slot active">KILL ROLL</div>
+      <div class="slot active" id="slotGun">1 GUN</div>
+      <div class="slot" id="slotKnife">2 KNIFE</div>
     </div>
     <div id="nadeRow">GRENADES [G] &nbsp;<b id="nadeVal">×3</b></div>
     <div id="arsenalRow">ARSENAL &nbsp;<b id="arsenalVal">1 / 50</b></div>
@@ -438,7 +476,7 @@
     <div class="deploySub" id="deploySub">Authorizing operator // syncing blackout telemetry // random arsenal locked</div>
     <div class="deployChecklist">
       <div><span>Operator suit seal</span><b>GREEN</b></div>
-      <div><span>Random arsenal protocol</span><b>LOCKED</b></div>
+      <div><span id="deployArsenalLbl">Random arsenal protocol</span><b>LOCKED</b></div>
       <div><span>Rift map stream</span><b>SYNCED</b></div>
       <div><span>Mission permission</span><b>GO</b></div>
     </div>
@@ -501,11 +539,11 @@
       </div>
 
       <button class="btn modeBtn" id="startBtn"><span>Solo</span><small>15 waves</small></button>
-      <button class="btn red modeBtn" id="mpBtn"><span>LAN</span><small>30 kills</small></button>
+      <button class="btn red modeBtn" id="mpBtn"><span>LAN MATCH</span><small>FFA · RED v BLUE</small></button>
       <button class="btn menuSecondary" id="skinsBtn">Character Skins</button>
       <button class="btn menuSecondary" id="settingsBtn">Settings</button>
 
-      <div class="menuControls compactControls">WASD · MOUSE · SHIFT · C · G · R · F</div>
+      <div class="menuControls compactControls">WASD · MOUSE/CTRL AIM · 1 GUN · 2 KNIFE · Q SLIDE · C CROUCH</div>
     </section>
   </div>
 </div>
@@ -518,6 +556,9 @@
     <div class="settingRow"><label for="fovRange">Field of View</label><input id="fovRange" type="range" min="65" max="95" step="1"><output id="fovVal">75</output></div>
     <div class="settingRow"><label for="volumeRange">Master Volume</label><input id="volumeRange" type="range" min="0" max="100" step="5"><output id="volumeVal">55%</output></div>
     <div class="settingRow"><label for="qualityRange">Render Quality</label><input id="qualityRange" type="range" min="75" max="200" step="25"><output id="qualityVal">150%</output></div>
+    <div class="bindTitle">KEYBINDS</div>
+    <div class="bindHint">Click a key, then press the new one — Escape cancels</div>
+    <div id="bindList"></div>
     <div class="settingsActions">
       <button class="btn" id="settingsBackBtn">Back</button>
       <button class="btn red" id="settingsResetBtn">Reset Defaults</button>
@@ -593,6 +634,6 @@ document.addEventListener('DOMContentLoaded', function(){
   });
 });
 </script>
-<script type="module" src="./game.js?v=38"></script>
+<script type="module" src="./game.js?v=39"></script>
 </body>
 </html>
