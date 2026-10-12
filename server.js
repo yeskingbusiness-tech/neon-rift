@@ -20,6 +20,13 @@ const server = http.createServer((req, res) => {
   fs.readFile(file, (err, data) => {
     if (err){ res.writeHead(404); return res.end('not found'); }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control':'no-store' });
+    // swap in the build token so "game.js?v=…" always points at the file on disk right now —
+    // CDN/browser caches can sit on .js for ages even when the HTML asks for no-store, and THAT is how
+    // people end up playing a stale build and seeing no changes
+    if (path.extname(file) === '.html'){
+      const html = data.toString('utf8').replace(/__BUILD__/g, String(fs.statSync(path.join(ROOT, 'game.js')).mtimeMs | 0));
+      return res.end(html);
+    }
     res.end(data);
   });
 });

@@ -5,7 +5,7 @@ A 15-wave solo survival + LAN deathmatch shooter that runs in your browser.
 ## Current features
 - Saved progression: XP, levels, credits, total kills, solo wave records, LAN wins
 - 16 character skins in the shop, with saved unlocks and LAN-visible selected skins
-- 52-weapon arsenal: rifles, SMGs, LMGs, pistols, shotguns, DMRs, snipers, rail/exotic weapons — plus a **flamethrower**, **grenade launcher**, and **rocket launcher** (real flying projectiles with splash damage)
+- 57-weapon arsenal: rifles, SMGs, LMGs, pistols, shotguns, DMRs, snipers, rail/exotic weapons — plus an ordnance rack: **flamethrower** (sets targets burning for seconds), **grenade launcher**, **multi-grenade launcher** (3 shells a pull), **napalm lobber** (leaves a burning pool), **arc mortar**, **rocket launcher**, and **plasma lances** — all flown as real projectiles with swept impact detection, so they detonate on the runner they hit, in every mode
 - Solo waves: **every kill instantly rolls you to a random loaded weapon** plus a rarity roll
 - **LAN Gun Ladder: everyone gets the same weapon at the same score** — kills promote you one tier, and rarity steps up with your tier
 - **Knife combat (key 2):** 25 damage flat to the body or head — but a **backstab is an instant kill**. Shanks in LAN steal a point: the victim drops one score and one gun tier (never below 0). Kill 30 is a **golden-shank-only** final tier with extra speed and damage

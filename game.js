@@ -326,6 +326,7 @@ const SFX = {
   explode(){ playNoise(0.5, 400, 0.5, 0.9); playTone(100, 25, 0.4, 0.6, 'sine'); },
   flame(){ playNoise(0.16, 620, 0.3, 0.22, 'lowpass'); playNoise(0.1, 160, 0.25, 0.14, 'lowpass'); },
   launch(){ playTone(150, 55, 0.14, 0.5, 'sine'); playNoise(0.14, 900, 0.6, 0.45, 'bandpass'); },
+  plasma(){ playTone(1500, 320, 0.08, 0.22, 'sawtooth'); playNoise(0.06, 2600, 1.2, 0.18, 'highpass'); },
 };
 
 /* ================= WORLD GEOMETRY ================= */
@@ -730,6 +731,12 @@ function buildMap(name='FORGE'){
   else { currentMapName = 'FORGE'; buildForgeLayout(); }
 }
 function setMap(name){
+  // ballistics & napalm belong to the map that spawned them — never carry them over
+  if (typeof playerShots !== 'undefined'){
+    for (const ps of playerShots){ scene.remove(ps.mesh); ps.mesh.geometry.dispose(); ps.mesh.material.dispose(); }
+    playerShots.length = 0;
+  }
+  if (typeof hazards !== 'undefined') hazards.length = 0;
   buildMap(name);
   if (typeof addLampGlows === 'function') addLampGlows();
   if (typeof rebuildPickups === 'function') rebuildPickups();
@@ -1297,6 +1304,11 @@ const WEAPON_BLUEPRINTS = [
   ['HELLFIRE MK-7',      'HEAVY',   true,   5, 900, 90, 270, .030, .0200, .004, .020, 1,  'flame',   13, false, 'flame'],
   ['LOBBER GL',          'LAUNCHER',false, 55,  80,  4,  24, .030, .0100, .050, .180, 1,  'launch', 200, false, 'gl', { r:4.5, dmg:45 }],
   ['ATLAS ROCKET',       'LAUNCHER',false, 85,  45,  1,  12, .010, .0020, .080, .240, 1,  'launch', 240, false, 'rocket', { r:5.5, dmg:60 }],
+  ['HAVOC MGL',          'LAUNCHER',false, 40,  60,  6,  30, .045, .0180, .050, .160, 3,  'launch', 200, false, 'gl', { r:3.4, dmg:35 }],
+  ['NAPALM LOBBER',      'LAUNCHER',false, 30,  70,  4,  20, .040, .0150, .050, .170, 1,  'launch', 180, false, 'napalm', { r:2.6, dmg:22, speed:24, grav:13, hazard:{ r:3.2, dps:16, life:4.5 } }],
+  ['ARC MORTAR',         'LAUNCHER',false,120,  32,  3,  12, .040, .0120, .090, .280, 1,  'launch', 220, false, 'gl', { r:7, dmg:80, speed:20, grav:14 }],
+  ['PLASMA LANCE',       'ENERGY',  false, 90, 200,  8,  48, .008, .0012, .030, .100, 1,  'plasma', 260, false, 'plasma', { speed:60 }],
+  ['VOLTAIC REPEATER',   'ENERGY',  true,  18, 520, 36, 216, .020, .0070, .010, .040, 1,  'plasma', 120, false, 'plasma', { r:1.8, dmg:12, speed:46 }],
 ];
 const WEAPONS = WEAPON_BLUEPRINTS.map((b, i) => ({
   name:b[0], slot:b[1], auto:b[2], dmg:b[3], rpm:b[4], mag:b[5], reserve:b[6],
@@ -1788,11 +1800,11 @@ function knifeStrike(){
    one tier; getting shanked costs you one point and one tier. The final
    tier (29+) locks you to the golden knife — the 30th kill is knife-only. */
 const GUN_LADDER = [
-  42, 20,  2, 22, 43, 23,           // pistols
+  42, 20,  2, 22, 43,               // pistols
    9,  8,  7, 47, 30, 31, 36,       // smgs
   17, 18, 38, 19,  1, 16,           // shotguns
-  24, 26,  6, 37, 34, 44,           // rifles
-  49, 50, 51, 15,                   // specials & heavy hitters: flamer → grenades → rockets → rail sniper
+  24, 26,  6, 34, 44,               // rifles
+  49, 52, 50, 53, 51, 15,           // ordnance tier: flamer → havoc → grenades → napalm → rockets → rail sniper
 ];
 const FINAL_TIER_SCORE = 29;
 function ladderRarity(sc){
@@ -1961,16 +1973,18 @@ function fireWeapon(){
   let anyHit = false, anyKill = false;
   const spread = (adsT > 0.5 ? w.adsSpread : w.spread) * (currentRarity.spread || 1) * (player.grounded ? (player.crouched ? 0.62 : 1) : 1.7);   // crouching steadies your aim
 
-  // launchers lob real projectiles instead of hitscan
-  if (w.kind === 'gl' || w.kind === 'rocket'){
-    camera.getWorldDirection(_dir);
-    _dir.x += rand(-spread, spread); _dir.y += rand(-spread, spread); _dir.z += rand(-spread, spread);
-    _dir.normalize();
-    spawnPlayerProjectile(_origin, _dir, w);
-    spawnSmoke(flash.position, 2);
-    if (net.on)
-      netSend({ t:'shoot', w:weaponIndex, o:[+flash.position.x.toFixed(2), +flash.position.y.toFixed(2), +flash.position.z.toFixed(2)],
-                p:[+(_origin.x + _dir.x * 40).toFixed(2), +(_origin.y + _dir.y * 40).toFixed(2), +(_origin.z + _dir.z * 40).toFixed(2)] });
+  // anything with a projectile kind lobs/thrashes real physics, not hitscan
+  if (w.kind === 'gl' || w.kind === 'rocket' || w.kind === 'napalm' || w.kind === 'plasma'){
+    for (let p = 0; p < w.pellets; p++){
+      camera.getWorldDirection(_dir);
+      _dir.x += rand(-spread, spread); _dir.y += rand(-spread, spread); _dir.z += rand(-spread, spread);
+      _dir.normalize();
+      spawnPlayerProjectile(_origin, _dir, w);
+      if (p === 0 && net.on)
+        netSend({ t:'shoot', w:weaponIndex, o:[+flash.position.x.toFixed(2), +flash.position.y.toFixed(2), +flash.position.z.toFixed(2)],
+                  p:[+(_origin.x + _dir.x * 40).toFixed(2), +(_origin.y + _dir.y * 40).toFixed(2), +(_origin.z + _dir.z * 40).toFixed(2)] });
+    }
+    if (w.kind !== 'plasma') spawnSmoke(flash.position, 2);
     updateAmmoHUD();
     return;
   }
@@ -2019,6 +2033,7 @@ function fireWeapon(){
       S.shotsHit++; if (headshot) S.headshots++;
       spawnSparks(_hitPoint, headshot ? 0xffd040 : 0xff8040, headshot ? 14 : 8);
       spawnDamagePopup(_hitPoint, Math.round(dmg), headshot);
+      if (w.kind === 'flame') applyBurn(hitEnemy, 3, 4);   // flame keeps cooking after the jet
       if (damageEnemy(hitEnemy, dmg)) anyKill = true;
     } else if (hitNetId){
       anyHit = true;
@@ -2026,6 +2041,7 @@ function fireWeapon(){
       S.shotsHit++; if (headshot) S.headshots++;
       spawnSparks(_hitPoint, headshot ? 0xffd040 : 0xff8040, headshot ? 14 : 8);
       spawnDamagePopup(_hitPoint, Math.round(dmg), headshot);
+      if (w.kind === 'flame'){ const rpBurn = net.players.get(hitNetId); if (rpBurn) applyBurn(rpBurn, 3, 4); }
       netSend({ t:'hit', target:hitNetId, dmg });
     } else if (hitDestructible){
       anyHit = true;
@@ -2101,71 +2117,182 @@ function spawnFlameJet(from, dir, dist){
 }
 
 const playerShots = [];   // { mesh, vel, grav, kind, splash, dmg, life, direct }
+const SHOT_STYLE = {
+  gl:     { color:0xffd050, radius:0.085, speed:25, grav:11 },
+  rocket: { color:0xff5a20, radius:0.12,  speed:36, grav:0  },
+  napalm: { color:0xffc040, radius:0.10,  speed:24, grav:13 },
+  plasma: { color:0x66ffe0, radius:0.055, speed:60, grav:0  },
+};
 function spawnPlayerProjectile(origin, dir, w){
-  const big = w.kind === 'rocket';
-  const mat = new THREE.MeshBasicMaterial({ color: big ? 0xff5a20 : 0xffd050 });
-  const m = new THREE.Mesh(new THREE.SphereGeometry(big ? 0.12 : 0.085, 8, 8), mat);
+  const st = SHOT_STYLE[w.kind] || SHOT_STYLE.gl;
+  const mat = new THREE.MeshBasicMaterial({ color: st.color });
+  const m = new THREE.Mesh(new THREE.SphereGeometry(st.radius, 8, 8), mat);
   m.position.copy(origin).addScaledVector(dir, 0.9);
   scene.add(m);
-  playerShots.push({ mesh:m, vel:dir.clone().multiplyScalar(big ? 36 : 25), grav: big ? 0 : 11, kind:w.kind, splash:w.splash, dmg:w.dmg, life:6, direct:null, disc:true });
+  const sp = (w.splash && w.splash.speed) || st.speed;
+  const gv = (w.splash && w.splash.grav != null) ? w.splash.grav : st.grav;
+  playerShots.push({ mesh:m, vel:dir.clone().multiplyScalar(sp), grav:gv, kind:w.kind, splash:w.splash, dmg:w.dmg, life:6, direct:null });
 }
-const _psDir = new THREE.Vector3(), _psUp = new THREE.Vector3(0, 1.45, 0), _psC = new THREE.Vector3();
+
+/* lingering napalm flames — anyone standing in the pool keeps burning */
+const hazards = [];         // { pos:{x,y,z}, endAt, r, dps, acc }
+function igniteHazard(pos, def){
+  hazards.push({ pos:pos.clone(), endAt:Date.now() + def.life * 1000, r:def.r, dps:def.dps, nextTick:Date.now() + 500 });
+}
+function stepHazards(dt){
+  const now = Date.now();
+  for (let i = hazards.length - 1; i >= 0; i--){
+    const hz = hazards[i];
+    if (now > hz.endAt){ hazards.splice(i, 1); continue; }
+    // ember spray so you can SEE the danger zone
+    if (Math.random() < 0.7){
+      const a = rand(0, 6.283), rr = Math.sqrt(Math.random()) * hz.r;
+      const mat = new THREE.MeshBasicMaterial({ color:FLAME_COLORS[(Math.random() * 3) | 0], transparent:true, opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false });
+      const m = new THREE.Mesh(sparkGeo, mat);
+      m.position.set(hz.pos.x + Math.cos(a) * rr, 0.15 + rand(0, 0.3), hz.pos.z + Math.sin(a) * rr);
+      m.scale.setScalar(rand(1.2, 2.6));
+      scene.add(m);
+      particles.push({ mesh:m, vel:new THREE.Vector3(rand(-0.5, 0.5), rand(1.2, 3.2), rand(-0.5, 0.5)), life:rand(0.25, 0.55), maxLife:0.55, grav:2, type:'spark' });
+    }
+    if (now >= hz.nextTick){            // ticks run on the wall clock — slow render frames mustn't starve the fire
+      const tick = hz.dps * 0.5 * (currentRarity.dmg || 1);
+      hz.nextTick += 500;
+      for (const e of enemies){
+        if (e.dead) continue;
+        const d = Math.hypot(e.group.position.x - hz.pos.x, e.group.position.z - hz.pos.z);
+        if (d <= hz.r){ spawnDamagePopup(e.group.position.clone().add(_psUp), Math.round(tick), false); damageEnemy(e, tick); }
+      }
+      if (net.on) for (const rp of net.players.values()){
+        if (isTeammate(rp)) continue;
+        const d = Math.hypot(rp.group.position.x - hz.pos.x, rp.group.position.z - hz.pos.z);
+        if (d <= hz.r) netSend({ t:'hit', target:rp.id, dmg:Math.round(tick) });
+      }
+    }
+  }
+}
+
+/* flamethrower victims smoulder: ticks drip-fire damage for a few seconds after the jet connects */
+function applyBurn(target, sec=3, dps=4){
+  target.burnUntil = Date.now() + sec * 1000;
+  target.burnDps = dps;
+  if (!target.burnNext || target.burnNext < Date.now()) target.burnNext = Date.now() + 250;
+}
+function stepBurns(dt){
+  const now = Date.now();
+  const mult = currentRarity.dmg || 1;
+  for (const e of enemies){
+    if (!e.burnUntil || e.dead) continue;
+    if (now >= e.burnNext){
+      const t = e.group.position;
+      const mat = new THREE.MeshBasicMaterial({ color:FLAME_COLORS[(Math.random() * 3) | 0], transparent:true, opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false });
+      const m = new THREE.Mesh(sparkGeo, mat);
+      m.position.set(t.x + rand(-0.35, 0.35), t.y + rand(0.4, 1.7), t.z + rand(-0.35, 0.35));
+      m.scale.setScalar(rand(1.0, 2.0));
+      scene.add(m);
+      particles.push({ mesh:m, vel:new THREE.Vector3(rand(-0.3, 0.3), rand(1.2, 2.6), rand(-0.3, 0.3)), life:rand(0.2, 0.4), maxLife:0.4, grav:2, type:'spark' });
+      damageEnemy(e, e.burnDps * 0.5 * mult);
+      e.burnNext = now + 500;
+    }
+    if (now > e.burnUntil) e.burnUntil = 0;
+  }
+  if (net.on) for (const rp of net.players.values()){
+    if (!rp.burnUntil) continue;
+    if (now >= rp.burnNext){
+      netSend({ t:'hit', target:rp.id, dmg:Math.round(rp.burnDps * 0.5 * mult) });
+      const t = rp.group.position;
+      const mat = new THREE.MeshBasicMaterial({ color:FLAME_COLORS[(Math.random() * 3) | 0], transparent:true, opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false });
+      const m = new THREE.Mesh(sparkGeo, mat);
+      m.position.set(t.x + rand(-0.35, 0.35), t.y + rand(0.6, 2.0), t.z + rand(-0.35, 0.35));
+      scene.add(m);
+      particles.push({ mesh:m, vel:new THREE.Vector3(rand(-0.3, 0.3), rand(1.2, 2.6), rand(-0.3, 0.3)), life:rand(0.2, 0.4), maxLife:0.4, grav:2, type:'spark' });
+      rp.burnNext = now + 500;
+    }
+    if (now > rp.burnUntil) rp.burnUntil = 0;
+  }
+}
+
+const _psDir = new THREE.Vector3(), _psUp = new THREE.Vector3(0, 1.45, 0), _psC = new THREE.Vector3(), _psSeg = new THREE.Vector3();
 function explodePlayerShot(ps, point){
   const pos = point || ps.mesh.position.clone();
-  window.__lastBoom = { x:+pos.x.toFixed(2), y:+pos.y.toFixed(2), z:+pos.z.toFixed(2), direct:!!ps.direct, kind:ps.kind, r:ps.splash.r };
-  spawnExplosion(pos);
-  if (ps.kind === 'rocket'){ SFX.bigBoom(); spawnSparks(pos, 0xffd040, 12); }
-  const r = ps.splash.r, mult = currentRarity.dmg || 1;
+  window.__lastBoom = { x:+pos.x.toFixed(2), y:+pos.y.toFixed(2), z:+pos.z.toFixed(2), direct:!!ps.direct, kind:ps.kind, r:(ps.splash && ps.splash.r) || 0 };
+  const mult = currentRarity.dmg || 1;
+  if (ps.kind === 'plasma' && !(ps.splash && ps.splash.r)){
+    spawnSparks(pos, 0x66ffe0, 14); SFX.plasma();
+  } else {
+    spawnExplosion(pos);
+    if (ps.kind === 'rocket'){ SFX.bigBoom(); spawnSparks(pos, 0xffd040, 12); }
+    if (ps.splash && ps.splash.hazard) igniteHazard(pos, ps.splash.hazard);
+  }
+  const r = (ps.splash && ps.splash.r) || 0;
   for (const e of enemies){
     if (e.dead) continue;
-    const d = e.group.position.distanceTo(pos); if (d > r + 0.4) continue;
+    const d = e.group.position.distanceTo(pos); if (r && d > r + 0.4) continue;
     const direct = ps.direct === e;
-    const dmg = ((direct ? ps.dmg : 0) + ps.splash.dmg * (direct ? 1 : Math.max(0.2, 1 - d / r))) * mult;
+    if (!direct && !r) continue;
+    const dmg = ((direct ? ps.dmg : 0) + (r ? ps.splash.dmg * (direct ? 1 : Math.max(0.2, 1 - d / r)) : 0)) * mult;
     spawnDamagePopup(e.group.position.clone().add(_psUp), Math.round(dmg), false);
     damageEnemy(e, dmg);
   }
   if (net.on) for (const rp of net.players.values()){
     if (isTeammate(rp)) continue;
-    const d = rp.group.position.distanceTo(pos); if (d > r + 0.4) continue;
+    const d = rp.group.position.distanceTo(pos); if (r && d > r + 0.4) continue;
     const direct = ps.direct === rp.id;
-    const dmg = ((direct ? ps.dmg : 0) + ps.splash.dmg * (direct ? 1 : Math.max(0.2, 1 - d / r))) * mult;
+    if (!direct && !r) continue;
+    const dmg = ((direct ? ps.dmg : 0) + (r ? ps.splash.dmg * (direct ? 1 : Math.max(0.2, 1 - d / r)) : 0)) * mult;
     netSend({ t:'hit', target:rp.id, dmg:Math.round(dmg) });
     spawnDamagePopup(rp.group.position.clone().add(_psUp), Math.round(dmg), false);
   }
   if (ps.direct && net.on) showHitmarker(true);
   for (const dd of destructibles){
     if (dd.broken) continue;
-    if (dd.mesh.position.distanceTo(pos) <= r + 0.6) damageDestructible(dd, (ps.dmg + ps.splash.dmg) * 0.5, pos);
+    if (r && dd.mesh.position.distanceTo(pos) <= r + 0.6) damageDestructible(dd, (ps.dmg + ps.splash.dmg) * 0.5, pos);
   }
   const camD = camera.position.distanceTo(pos);
-  if (camD < 12) player.shake = Math.min(player.shake + (1 - camD / 12) * 0.45, 0.7);
-  flashTimer = Math.max(flashTimer, 0.1); flashLight.intensity = Math.max(flashLight.intensity, 7);
+  if (r && camD < 12) player.shake = Math.min(player.shake + (1 - camD / 12) * 0.45, 0.7);
+  if (r){ flashTimer = Math.max(flashTimer, 0.1); flashLight.intensity = Math.max(flashLight.intensity, 7); }
+}
+
+/* distance from a point to the segment the projectile covers THIS frame —
+   the answer to "why did my rocket fly straight through their chest" */
+function segPointD2(from, to, point){
+  _psSeg.subVectors(to, from);
+  const len2 = _psSeg.lengthSq();
+  if (len2 < 1e-8) return from.distanceToSquared(point);
+  let t = _psC.subVectors(point, from).dot(_psSeg) / len2;
+  t = clamp(t, 0, 1);
+  _psSeg.multiplyScalar(t).add(from);
+  return point.distanceToSquared(_psSeg);
 }
 function stepPlayerShots(dt){
+  stepHazards(dt);
   for (let i = playerShots.length - 1; i >= 0; i--){
     const ps = playerShots[i];
     ps.vel.y -= ps.grav * dt;
     const from = ps.mesh.position;
+    const to = from.clone().addScaledVector(ps.vel, dt);
     const seg = ps.vel.length() * dt;
     _psDir.copy(ps.vel).normalize();
     const wall = castWorld(from, _psDir, seg + 0.16);
     let hitAt = null;
     if (wall < seg + 0.15){
       hitAt = from.clone().addScaledVector(_psDir, Math.max(0, wall - 0.02));
-    } else if (from.y + ps.vel.y * dt <= 0.12){
+    } else if ((from.y && ps.vel.y < 0) && (from.y + ps.vel.y * dt) <= 0.12){
       hitAt = from.clone(); hitAt.y = 0.1;                       // the floor counts as a face
     } else {
-      from.addScaledVector(ps.vel, dt);
+      // swept collision: explode the moment the flight path comes within arm's length of a runner
       for (const e of enemies){
         if (e.dead) continue;
         _psC.set(e.group.position.x, e.group.position.y + 1.0, e.group.position.z);   // aim at chest height, not the feet
-        if (_psC.distanceToSquared(from) < 1.5 * 1.5){ hitAt = _psC.clone(); ps.direct = e; window.__dbgPsHit = { tx:+_psC.x.toFixed(2), tz:+_psC.z.toFixed(2) }; break; }
+        const center = _psC.clone();
+        if (segPointD2(from, to, center) < 1.5 * 1.5){ hitAt = center; ps.direct = e; window.__dbgPsHit = { tx:+center.x.toFixed(2), tz:+center.z.toFixed(2) }; break; }
       }
       if (!hitAt && net.on) for (const rp of net.players.values()){
         if (isTeammate(rp)) continue;
         _psC.set(rp.group.position.x, rp.group.position.y + 1.0, rp.group.position.z);
-        if (_psC.distanceToSquared(from) < 1.4 * 1.4){ hitAt = _psC.clone(); ps.direct = rp.id; break; }
+        const center = _psC.clone();
+        if (segPointD2(from, to, center) < 1.4 * 1.4){ hitAt = center; ps.direct = rp.id; break; }
       }
+      from.copy(to);
     }
     ps.life -= dt;
     if (hitAt || ps.life <= 0){
@@ -2173,7 +2300,7 @@ function stepPlayerShots(dt){
       scene.remove(ps.mesh); ps.mesh.geometry.dispose(); ps.mesh.material.dispose();
       playerShots.splice(i, 1);
     } else if (Math.random() < 0.55){
-      const mat = new THREE.MeshBasicMaterial({ color: ps.kind === 'rocket' ? 0xff9a3c : 0xffe080, transparent:true, opacity:0.6, blending:THREE.AdditiveBlending, depthWrite:false });
+      const mat = new THREE.MeshBasicMaterial({ color: ps.kind === 'plasma' ? 0x66ffe0 : (SHOT_STYLE[ps.kind] || SHOT_STYLE.gl).color, transparent:true, opacity:0.6, blending:THREE.AdditiveBlending, depthWrite:false });
       const m = new THREE.Mesh(sparkGeo, mat); m.position.copy(ps.mesh.position); scene.add(m);
       particles.push({ mesh:m, vel:new THREE.Vector3(rand(-0.4, 0.4), rand(-0.4, 0.4), rand(-0.4, 0.4)), life:rand(0.15, 0.3), maxLife:0.3, grav:0, type:'spark' });
     }
@@ -2941,7 +3068,6 @@ function updateEnemies(dt, now){
 }
 
 function updateProjectiles(dt){
-  stepPlayerShots(dt);
   for (let i = projectiles.length-1; i >= 0; i--){
     const pr = projectiles[i];
     pr.life -= dt;
@@ -4206,13 +4332,15 @@ function loop(){
 
   if (S.started && !S.paused && !S.dead){
     updatePlayer(dt, now);
+    updateGrenades(dt, now);
+    updatePickups(dt, now);
+    stepPlayerShots(dt);   // launchers, napalm pools and burn ticks tick in EVERY mode (solo, sandbox and LAN rounds alike)
+    stepBurns(dt);
     if (mode === 'solo'){
       updateEnemies(dt, now);
       updateProjectiles(dt);
       updateWaves(dt);
     }
-    updateGrenades(dt, now);
-    updatePickups(dt, now);
   } else {
     // idle camera drift on menu
     if (!S.started){
@@ -4244,6 +4372,7 @@ window.__dbg = { player, S, camera, enemies, net, keys, spawnEnemy, fireWeapon, 
   getAdsT(){ return adsT; },
   get playerShotsCt(){ return playerShots.length; },
   get particlesCt(){ return particles.length; },
+  get hazardsCt(){ return hazards.length; },
   SB, deploySandbox, openSandboxPanel, damagePlayer, damageEnemy,
   raycaster, _origin, _dir, _hitPoint,
   get weaponIndex(){ return weaponIndex; },
