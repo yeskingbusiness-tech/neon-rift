@@ -37,9 +37,11 @@ let nextId = 1;
 const players = new Map();   // id -> { ws, name, state, score, deaths, vote, modeVote, team, invulnUntil }
 
 const ROUND_LIMIT = 30;
+const KNIFE_LIMIT = 15;                                // KNIFE FIGHT: first to 15 stabs — golden shank from 14, no demotions
+function limitNow(){ return gameMode === 'knife' ? KNIFE_LIMIT : ROUND_LIMIT; }
 const MAPS = ['FORGE', 'NEXUS', 'DUSK YARD', 'COLD STORAGE', 'RIFT DOCKS'];
-const MODE_CHOICES = ['FFA', 'TEAM'];
-const MODE_NAMES = { FFA:'FREE FOR ALL', TEAM:'RED v BLUE' };
+const MODE_CHOICES = ['FFA', 'TEAM', 'KNIFE'];
+const MODE_NAMES = { FFA:'FREE FOR ALL', TEAM:'RED v BLUE', KNIFE:'KNIFE FIGHT' };
 let gameMode = 'ffa';           // decided by the lobby's mode vote before every round
 const TEAM_NAMES = ['', 'RED TEAM', 'BLUE TEAM'];
 let currentMap = MAPS[0];
@@ -52,6 +54,19 @@ let votePhase = null;           // null | 'map' | 'mode' — two ballots per bre
 let pendingMap = null;          // map the lobby settled on while the mode vote runs
 
 function safeName(v, id){ return String(v || ('RIFT-' + id)).toUpperCase().replace(/[<>]/g, '').slice(0, 14); }
+/* callsign hygiene: nothing hateful/obscene — matched on a leetspeak-collapsed form so
+   'sh1t' and 'SHIT' read the same. Matches get replaced, not negotiated with. */
+const BAD_NAME_PARTS = ['fuck','shit','bitch','cunt','nigger','nigga','negro','faggot','fag','whore','slut','kike','spic','chink','rape','rapist','pedo','porn','nazi','hitler','dick','cock','pussy','twat','wank','cummer','cum','jizz','tits','boob','penis','vagina','anus','kkk','isis','paki','wetback','coon','dyke','tranny','retard',' bastard '.trim()];
+function normCall(v){ return String(v || '').toLowerCase().replace(/[@4]/g,'a').replace(/8/g,'b').replace(/[3€]/g,'e').replace(/[1!|]/g,'i').replace(/0/g,'o').replace(/[5$]/g,'s').replace(/7/g,'t').replace(/[^a-z0-9]+/g,''); }
+function nameIsClean(v){ const n = normCall(v); return n.length > 0 && !BAD_NAME_PARTS.some(b => n.includes(normCall(b))); }
+function uniqueName(base, selfId){
+  const taken = new Set([...players.values()].filter(q => q.ws && players.get(selfId) !== q).map(q => q.name));
+  if (!taken.has(base)) return base;
+  for (let n = 2; ; n++){
+    const cand = (base.slice(0, 11) + ' ' + n).slice(0, 14);
+    if (!taken.has(cand)) return cand;
+  }
+}
 function send(ws, o){ if (ws.readyState === 1) ws.send(JSON.stringify(o)); }
 function broadcast(o, exceptId){
   const s = JSON.stringify(o);
@@ -86,21 +101,40 @@ function pickChoices(exclude){
   }
   return choices;
 }
-function broadcastScore(){ broadcast({ t:'score', scores:scoreList(), limit:ROUND_LIMIT, round:roundNo, map:currentMap, active:roundActive, mode:(gameMode || 'ffa'), totals:teamTotals() }); }
+function broadcastScore(){ broadcast({ t:'score', scores:scoreList(), limit:limitNow(), round:roundNo, map:currentMap, active:roundActive, mode:(gameMode || 'ffa'), totals:teamTotals() }); }
+/* Ballot counting with NO coin flips: plurality wins, and a tie goes to the option whose EARLIEST
+   vote arrived first (first voice breaks the tie). Only a totally empty map ballot stays random —
+   somebody has to pick, and if nobody cared, any map is as good as another. */
+function earliestVoteAt(prop, choice){
+  let best = Infinity;
+  for (const p of players.values()) if (p[prop] === choice && (p[prop + 'At'] || Infinity) < best) best = p[prop + 'At'];
+  return best;
+}
 function chooseVoteWinner(){
   const counts = voteCounts();
-  // mode ballot: an empty ballot means nobody cared — keep ffa, not a coin flip nobody asked for
   if (votePhase === 'mode'){
-    const ffa = counts.FFA || 0, team = counts.TEAM || 0;
-    if (!ffa && !team) return 'FFA';
-    return ffa === team ? (Math.random() < 0.5 ? 'FFA' : 'TEAM') : ffa > team ? 'FFA' : 'TEAM';
+    let bestCount = -1; const tied = [];
+    for (const mch of MODE_CHOICES){
+      const c = counts[mch] || 0;
+      if (c > bestCount){ bestCount = c; tied.length = 0; tied.push(mch); }
+      else if (c === bestCount) tied.push(mch);
+    }
+    if (bestCount === 0) return 'FFA';                            // nobody cared: baseline mode, by design
+    let win = tied[0], tBest = Infinity;
+    for (const mch of tied){ const t = earliestVoteAt('modeVote', mch); if (t < tBest){ tBest = t; win = mch; } }
+    return win;
   }
-  let best = voteChoices[(Math.random() * voteChoices.length) | 0] || MAPS[(Math.random()*MAPS.length)|0], bestCount = counts[best] || 0;
+  let bestCount = -1, tied = [];
   for (const m of voteChoices){
     const c = counts[m] || 0;
-    if (c > bestCount || (c === bestCount && Math.random() > 0.5)){ best = m; bestCount = c; }
+    if (c > bestCount){ bestCount = c; tied = [m]; }
+    else if (c === bestCount) tied.push(m);
   }
-  return best;
+  if (!tied.length) return MAPS[(Math.random() * MAPS.length) | 0];
+  if (bestCount === 0) return tied[(Math.random() * tied.length) | 0];   // empty ballot: nothing to honor, spin the wheel
+  let win = tied[0], tBest = Infinity;
+  for (const m of tied){ const t = earliestVoteAt('vote', m); if (t < tBest){ tBest = t; win = m; } }
+  return win;
 }
 function scheduleVoteEnd(){
   if (voteTimer) clearTimeout(voteTimer);
@@ -118,7 +152,7 @@ function openVote({ initial=false, winnerId=0, winnerName='ROUND COMPLETE', winT
   voteEndsAt = Date.now() + 10000;
   scheduleVoteEnd();
   console.log(new Date().toISOString().slice(11,19), `[vote] map phase open (${initial ? 'initial' : 'next'}), choices=${voteChoices.join(',')}`);
-  broadcast({ t:'roundOver', winnerId, winnerName: initial ? 'STARTING MAP' : winnerName, winTeam, scores:scoreList(), choices:voteChoices, counts:voteCounts(), limit:ROUND_LIMIT, map:currentMap, voteEndsAt, initial, mode:(gameMode || 'ffa'), totals:teamTotals(), phase:'map', now:Date.now() });
+  broadcast({ t:'roundOver', winnerId, winnerName: initial ? 'STARTING MAP' : winnerName, winTeam, scores:scoreList(), choices:voteChoices, counts:voteCounts(), limit:limitNow(), map:currentMap, voteEndsAt, initial, mode:(gameMode || 'ffa'), totals:teamTotals(), phase:'map', now:Date.now() });
 }
 function closeVotePhase(){
   if (voteTimer){ clearTimeout(voteTimer); voteTimer = null; }
@@ -133,14 +167,15 @@ function closeVotePhase(){
   }
   if (votePhase !== 'mode') return;
   // mode decided → lock it in, (re)balance squads if it's teams, then kick off the round
-  gameMode = chooseVoteWinner() === 'TEAM' ? 'team' : 'ffa';
+  const votedMode = chooseVoteWinner();
+  gameMode = votedMode === 'TEAM' ? 'team' : (votedMode === 'KNIFE' ? 'knife' : 'ffa');
   votePhase = null; voteChoices = []; voteEndsAt = 0;
   if (gameMode === 'team'){
     const ids = [...players.keys()];
     for (let i = ids.length - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; [ids[i], ids[j]] = [ids[j], ids[i]]; }
     ids.forEach((pid, i) => { players.get(pid).team = (i % 2) + 1; });   // shuffled 1,2,1,2… = balanced RED/BLUE
   } else for (const p of players.values()) p.team = 0;
-  broadcast({ t:'modeDecided', mode:gameMode, modeName:gameMode === 'team' ? MODE_NAMES.TEAM : MODE_NAMES.FFA, map:pendingMap || currentMap });
+  broadcast({ t:'modeDecided', mode:gameMode, modeName:(MODE_NAMES[gameMode.toUpperCase()] || MODE_NAMES.FFA), map:pendingMap || currentMap });
   for (const [pid, p] of players){ send(p.ws, { t:'mode', mode:gameMode, team:p.team || 0, teamName:TEAM_NAMES[p.team] || '' }); broadcast({ t:'team', id:pid, team:p.team || 0 }, pid); }
   console.log(new Date().toISOString().slice(11,19), `[vote] mode decided: ${gameMode}; launching round`);
   setTimeout(() => startRound(pendingMap), 1400);
@@ -170,9 +205,10 @@ function startRound(map){
   votePhase = null;
   for (const p of players.values()){
     p.score = 0; p.deaths = 0; p.vote = null; p.modeVote = null; p.state = null; p.invulnUntil = Date.now() + 1500;
-    p.lastHitFrom = 0; p.lastHitKnife = false; p.lastHitAt = 0;
+    p.lastHitFrom = 0; p.lastHitKnife = false; p.lastHitAt = 0; p.assists = 0; p.dmgLog = new Map();
   }
-  broadcast({ t:'roundStart', map:currentMap, round:roundNo, limit:ROUND_LIMIT, scores:scoreList(), mode:gameMode, totals:teamTotals() });
+  const ladderSeed = (Math.random() * 0x7fffffff) | 0;   // one deck-shuffle per round, dealt to everyone equally
+  broadcast({ t:'roundStart', map:currentMap, round:roundNo, limit:limitNow(), scores:scoreList(), mode:gameMode, totals:teamTotals(), ladderSeed });
   console.log(new Date().toISOString().slice(11,19), `[round] ${roundNo} started on ${currentMap} (${gameMode})`);
 }
 function finishRound(winnerId){
@@ -180,11 +216,11 @@ function finishRound(winnerId){
   // Same win rule in both modes: ONE runner hits 30 kills. Team play only means no friendly fire.
   const winner = players.get(winnerId);
   openVote({ initial:false, winnerId, winnerName:winner ? winner.name : 'ARENA', winTeam:(winner && (gameMode === 'team')) ? winner.team : 0 });
-  console.log(new Date().toISOString().slice(11,19), `[round] ${winner ? winner.name : winnerId} reached ${ROUND_LIMIT} and won round ${roundNo}; voting open`);
+  console.log(new Date().toISOString().slice(11,19), `[round] ${winner ? winner.name : winnerId} reached ${limitNow()} and won round ${roundNo}; voting open`);
 }
 function welcomeState(id){
   return {
-    t:'welcome', id, map:currentMap, round:roundNo, limit:ROUND_LIMIT, active:roundActive, mode:(gameMode || 'ffa'), totals:teamTotals(),
+    t:'welcome', id, map:currentMap, round:roundNo, limit:limitNow(), active:roundActive, mode:(gameMode || 'ffa'), totals:teamTotals(),
     scores:scoreList(), voteChoices: votePhase === 'mode' ? MODE_CHOICES : voteChoices, voteCounts:voteCounts(), voteEndsAt,
     phase: votePhase, pendingMap, winnersName:(!roundActive && votePhase ? voteCtx.winnerName : ''), now:Date.now(),
     players:[...players].filter(([pid]) => pid !== id).map(([pid, q]) => ({ id:pid, name:q.name, skin:q.skin || 'rift', state:q.state, score:q.score || 0, deaths:q.deaths || 0, team:q.team || 0 }))
@@ -193,7 +229,7 @@ function welcomeState(id){
 
 wss.on('connection', ws => {
   const id = nextId++;
-  const p = { ws, name:'RIFT-' + id, skin:'rift', state:null, score:0, deaths:0, vote:null, team:0, invulnUntil:Date.now()+1500, lastHitFrom:0, lastHitKnife:false, lastHitAt:0 };
+  const p = { ws, name:'RIFT-' + id, skin:'rift', state:null, score:0, deaths:0, vote:null, team:0, invulnUntil:Date.now()+1500, lastHitFrom:0, lastHitKnife:false, lastHitAt:0, assists:0, dmgLog:new Map() };
   players.set(id, p);
   console.log(new Date().toISOString().slice(11,19), `[+] player ${id} connected (${players.size} online)`);
   ensureInitialVote();
@@ -203,8 +239,14 @@ wss.on('connection', ws => {
   ws.on('message', data => {
     let m; try { m = JSON.parse(data); } catch { return; }
     switch (m.t){
-      case 'hello':
-        p.name = safeName(m.name, id);
+      case 'hello': {
+        let base = safeName(m.name, id);
+        let filtered = false;
+        if (!nameIsClean(base)){ base = safeName('RIFT-' + id, id); filtered = true; }
+        const finalName = uniqueName(base, id);
+        const taken = !filtered && finalName !== base;
+        p.name = finalName;
+        send(p.ws, { t:'named', name:p.name, taken, filtered });
         p.skin = String(m.skin || 'rift').replace(/[^a-z0-9_-]/gi, '').slice(0, 24) || 'rift';
         // mode no longer locks from a button — the lobby votes it in before every round.
         // joining mid team round: slot into the shorthanded squad
@@ -220,6 +262,7 @@ wss.on('connection', ws => {
         broadcast({ t:'team', id, team:p.team }, id);
         broadcastScore();
         break;
+      }
       case 'skin':
         p.skin = String(m.skin || 'rift').replace(/[^a-z0-9_-]/gi, '').slice(0, 24) || 'rift';
         broadcast({ t:'skin', id, skin:p.skin }, id);
@@ -241,25 +284,48 @@ wss.on('connection', ws => {
           tgt.lastHitKnife = !!m.knife;
           tgt.lastHitBackstab = !!m.bs;
           tgt.lastHitAt = Date.now();
-          send(tgt.ws, { t:'hit', from:id, dmg:Math.min(Number(m.dmg) || 0, 200), knife:!!m.knife });
+          // assist ledger: everyone who lands damage earns a line; a heal or 5 quiet seconds ends your claim
+          if (!tgt.dmgLog) tgt.dmgLog = new Map();
+          tgt.dmgLog.set(id, Date.now());
+          send(tgt.ws, { t:'hit', from:id, dmg:Math.min(Number(m.dmg) || 0, 200), knife:!!m.knife, burn:!!m.burn });
         }
         break;
       }
+      case 'heal':
+        if (p.dmgLog) p.dmgLog.clear();    // patched back up — nobody gets assist credit for old wounds
+        break;
       case 'kill': {
         const killerId = Number(m.by) || 0;
         const killer = players.get(killerId);
-        let knifeKill = false, backstab = false, demoted = false;
+        let knifeKill = false, backstab = false, demoted = false, assistId = 0;
         if (roundActive){
           p.deaths = (p.deaths || 0) + 1;
           knifeKill = !!(killer && killerId !== id && p.lastHitFrom === killerId && p.lastHitKnife && (Date.now() - (p.lastHitAt || 0)) < 2500);
           backstab = knifeKill && !!p.lastHitBackstab;
-          if (knifeKill && p.score > 0){ p.score -= 1; demoted = true; }   // shanked: lose a point, drop a gun tier (never below 0)
+          if (knifeKill && p.score > 0 && gameMode !== 'knife'){ p.score -= 1; demoted = true; }   // shanked: lose a point, drop a gun tier (never below 0). KNIFE FIGHT: points are sacred, no demotions
           if (killer && killerId !== id) killer.score = (killer.score || 0) + 1;
+          // ASSIST: the kill goes to the finisher, but the OTHER most recent damager still gets a point.
+          // Claim lapses 5s after your last hit on the victim, and a heal wipes the ledger entirely.
+          const nowK = Date.now();
+          let bestT = 0;
+          for (const [aid, ts] of (p.dmgLog || [])){
+            if (aid === killerId || !players.has(aid)) continue;
+            if (nowK - ts > 5000) continue;
+            if (ts > bestT){ bestT = ts; assistId = aid; }
+          }
+          if (assistId){
+            const a = players.get(assistId);
+            // the final point can only ever be a Kill You Landed Yourself — an assist stops one short.
+            if ((a.score || 0) < limitNow() - 1){ a.score += 1; a.assists = (a.assists || 0) + 1; }
+            else assistId = 0;
+          }
           p.lastHitKnife = false; p.lastHitBackstab = false; p.lastHitFrom = 0;
+          p.dmgLog = new Map();
         }
-        broadcast({ t:'kill', victim:id, by:killerId, knife:knifeKill, bs:backstab, demoted, names:{ v:p.name, k:killer ? killer.name : 'ARENA' }, kteam: killer ? killer.team : 0, vteam: p.team, scores:scoreList(), limit:ROUND_LIMIT, mode:(gameMode || 'ffa'), totals:teamTotals() });
+        const assister = players.get(assistId);
+        broadcast({ t:'kill', victim:id, by:killerId, assist:assistId, knife:knifeKill, bs:backstab, demoted, names:{ v:p.name, k:killer ? killer.name : 'ARENA', a: assister ? assister.name : null }, kteam: killer ? killer.team : 0, vteam: p.team, ateam: assister ? assister.team : 0, scores:scoreList(), limit:limitNow(), mode:(gameMode || 'ffa'), totals:teamTotals() });
         broadcastScore();
-        if (roundActive && killer && killer.score >= ROUND_LIMIT) finishRound(killerId);
+        if (roundActive && killer && killer.score >= limitNow()) finishRound(killerId);   // only a self-landed kill ends a round
         break;
       }
       case 'spawn':
@@ -269,9 +335,9 @@ wss.on('connection', ws => {
         const choice = String(m.map || '');
         if (roundActive) break;
         if (votePhase === 'mode'){
-          if (MODE_CHOICES.includes(choice)){ p.modeVote = choice; broadcast({ t:'voteUpdate', phase:'mode', choices:MODE_CHOICES, counts:voteCounts(), voter:id, map:choice, voteEndsAt, now:Date.now() }); }
+          if (MODE_CHOICES.includes(choice)){ p.modeVote = choice; p.modeVoteAt = Date.now(); broadcast({ t:'voteUpdate', phase:'mode', choices:MODE_CHOICES, counts:voteCounts(), voter:id, map:choice, voteEndsAt, now:Date.now() }); }
         } else if (votePhase === 'map' && voteChoices.includes(choice)){
-          p.vote = choice;
+          p.vote = choice; p.voteAt = Date.now();
           broadcast({ t:'voteUpdate', phase:'map', choices:voteChoices, counts:voteCounts(), voter:id, map:choice, voteEndsAt, now:Date.now() });
         }
         break;

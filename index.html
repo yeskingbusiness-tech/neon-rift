@@ -27,7 +27,7 @@
       radial-gradient(circle at 18% 18%, rgba(44,242,255,.16), transparent 30%),
       radial-gradient(circle at 82% 76%, rgba(255,154,60,.16), transparent 28%),
       linear-gradient(135deg, rgba(2,4,10,.96), rgba(7,12,24,.94)); }
-  .menuGrid { width:min(1180px, 100%); margin:auto; display:grid; grid-template-columns:1.15fr .85fr; gap:30px; align-items:stretch; }
+  .menuGrid { width:min(1180px, 100%); margin:auto; display:grid; grid-template-columns:1.15fr .85fr; gap:30px; align-items:stretch; max-height:calc(100vh - 108px); }
   .brandPanel, .playPanel, .settingsPanel { position:relative; overflow:hidden; border:1px solid rgba(44,242,255,.28); background:linear-gradient(180deg, rgba(10,16,30,.78), rgba(5,8,16,.86)); box-shadow:0 0 40px rgba(0,0,0,.48), inset 0 0 50px rgba(44,242,255,.04); backdrop-filter:blur(5px); }
   .brandPanel { padding:44px 46px; min-height:560px; clip-path:polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 28px 100%, 0 calc(100% - 28px)); }
   .brandPanel:before { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(110deg, transparent, rgba(44,242,255,.08), transparent); transform:translateX(-55%); animation:sweep 6s linear infinite; }
@@ -41,7 +41,12 @@
   .quickStats div { border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.035); padding:14px 12px; text-align:center; }
   .quickStats b { display:block; color:#fff; font-size:30px; font-family:Consolas,monospace; text-shadow:0 0 12px rgba(44,242,255,.55); }
   .quickStats span { display:block; color:#8fa3bd; font-size:10px; letter-spacing:3px; text-transform:uppercase; margin-top:4px; }
-  .playPanel { padding:28px; clip-path:polygon(22px 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%, 0 22px); }
+  .playPanel { padding:28px; clip-path:polygon(22px 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%, 0 22px);
+    overflow-y:auto; overflow-x:hidden; max-height:calc(100vh - 108px); scrollbar-width:thin; scrollbar-color:rgba(44,242,255,.38) transparent; }
+  .playPanel::-webkit-scrollbar { width:6px; }
+  .playPanel::-webkit-scrollbar-track { background:transparent; }
+  .playPanel::-webkit-scrollbar-thumb { background:rgba(44,242,255,.38); box-shadow:0 0 8px rgba(44,242,255,.35); }
+  .playPanel::-webkit-scrollbar-thumb:hover { background:rgba(44,242,255,.6); }
   .menuLabel { font-size:10px; letter-spacing:4px; color:#8fa3bd; text-transform:uppercase; margin:0 0 9px; }
   #callsign { width:100%; margin:0 0 18px !important; }
   #callsign.needName { border-color:#ff4b35 !important; box-shadow:0 0 0 1px #ff4b35, 0 0 18px rgba(255,75,53,.35) !important; animation: nameShake .45s ease; }
@@ -184,6 +189,7 @@
 
   /* vignettes */
   #damageVignette { position:absolute; inset:0; opacity:0; background:radial-gradient(ellipse at center, transparent 42%, rgba(255,20,40,.55) 100%); }
+  #damageVignette.smouldering { background:radial-gradient(ellipse at center, transparent 38%, rgba(255,92,14,.62) 88%, rgba(255,150,20,.8) 100%); }
   #staticVignette { position:absolute; inset:0; background:radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.42) 100%); }
 
   #objective { display:none !important; }
@@ -276,6 +282,8 @@
   .voteModeBtn.vmTEAM::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px;
     background:linear-gradient(90deg, #ff5040 50%, #4aa0ff 50%); }
   .voteModeBtn.vmTEAM b { background:linear-gradient(90deg, #ff7d6e 0 50%, #79bcff 50% 100%); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .voteModeBtn.vmKNIFE::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, transparent, rgba(255,208,64,.85), transparent); }
+  .voteModeBtn.vmKNIFE b { color:#ffe680; text-shadow:0 0 12px rgba(255,208,64,.55); }
   .voteModeBtn:hover b, .voteModeBtn.selected b { text-shadow:0 0 16px rgba(255,255,255,.35); }
 
   /* sandbox picker */
@@ -473,7 +481,7 @@
       <div class="slot" id="slotKnife">2 KNIFE</div>
     </div>
     <div id="nadeRow">GRENADES [G] &nbsp;<b id="nadeVal">×3</b></div>
-    <div id="arsenalRow">ARSENAL &nbsp;<b id="arsenalVal">1 / 50</b></div>
+    <div id="arsenalRow">ARSENAL &nbsp;<b id="arsenalVal">1 / 57</b></div>
   </div>
 
   <div id="objective"></div>
@@ -520,7 +528,7 @@
       <div class="gameSub">BLACKOUT</div>
       <p class="menuCopy">Fast arena combat. Random weapons. Solo waves or LAN deathmatch.</p>
       <div class="quickStats compactStats">
-        <div><b>50</b><span>Guns</span></div>
+        <div><b id="menuGunCount">57</b><span>Guns</span></div>
         <div><b>15</b><span>Waves</span></div>
         <div><b>30</b><span>LAN</span></div>
       </div>
@@ -554,7 +562,7 @@
       <button class="btn menuSecondary" id="skinsBtn">Character Skins</button>
       <button class="btn menuSecondary" id="settingsBtn">Settings</button>
 
-      <div class="menuControls compactControls">WASD · MOUSE/CTRL AIM · 1 GUN · 2 KNIFE · Q SLIDE · C CROUCH</div>
+      <div class="menuControls compactControls">WASD · MOUSE + RMB AIM · 1 GUN · 2 KNIFE · Q SLIDE · C CROUCH</div>
     </section>
   </div>
 </div>

@@ -21,14 +21,14 @@ function saveSettings(){ localStorage.setItem('neonRiftSettings', JSON.stringify
 const DEFAULT_BINDS = {
   fwd:'KeyW', back:'KeyS', left:'KeyA', right:'KeyD',
   jump:'Space', sprint:'ShiftLeft', slide:'KeyQ', crouch:'KeyC', fire:'KeyE',
-  reload:'KeyR', nade:'KeyG', finisher:'KeyF',
-  gun:'Digit1', knife:'Digit2', ads:'ControlLeft',
+  reload:'KeyR', nade:'KeyG',
+  gun:'Digit1', knife:'Digit2',        // aiming is right-mouse, period — no CTRL muscle-memory accidents
 };
 const BIND_LABELS = {
   fwd:'Move Forward', back:'Move Back', left:'Strafe Left', right:'Strafe Right',
   jump:'Jump', sprint:'Sprint', slide:'Slide (hold sprint)', crouch:'Crouch (hold)', fire:'Fire / Swing',
-  reload:'Reload', nade:'Throw Grenade', finisher:'Finisher',
-  gun:'Weapon — Gun', knife:'Weapon — Knife', ads:'Aim / Scope (hold)',
+  reload:'Reload', nade:'Throw Grenade',
+  gun:'Weapon — Gun', knife:'Weapon — Knife',
 };
 if (!SETTINGS.binds || typeof SETTINGS.binds !== 'object') SETTINGS.binds = {};
 SETTINGS.binds = { ...DEFAULT_BINDS, ...SETTINGS.binds };
@@ -41,6 +41,18 @@ if ((SETTINGS.bindVersion || 0) < 2){
 if ((SETTINGS.bindVersion || 0) < 3){
   if (SETTINGS.binds.fire === 'KeyX') SETTINGS.binds.fire = 'KeyE';
   SETTINGS.bindVersion = 3;
+  saveSettings();
+}
+// binds v4: CTRL-to-aim is retired — aiming is right-mouse only. Scrub stale saves.
+if ((SETTINGS.bindVersion || 0) < 4){
+  if ('ads' in SETTINGS.binds) delete SETTINGS.binds.ads;
+  SETTINGS.bindVersion = 4;
+  saveSettings();
+}
+// binds v5: the execution finisher is gone entirely. Free up F.
+if ((SETTINGS.bindVersion || 0) < 5){
+  if ('finisher' in SETTINGS.binds) delete SETTINGS.binds.finisher;
+  SETTINGS.bindVersion = 5;
   saveSettings();
 }
 function bindCode(id){ return SETTINGS.binds[id] ?? DEFAULT_BINDS[id]; }
@@ -60,22 +72,23 @@ function assignBind(id, code){
 }
 
 const SKINS = [
-  { id:'rift',     name:'Rift Runner',    desc:'Standard black/cyan combat shell',      color:0x2c6eff, eye:0x2cf2ff, cost:0,    level:1 },
-  { id:'crimson',  name:'Crimson Ghost',  desc:'Red assault armor for close fights',    color:0xb72a3a, eye:0xff3b57, cost:250,  level:4 },
-  { id:'cobalt',   name:'Cobalt Wraith',  desc:'Deep blue recon shell',                 color:0x22409a, eye:0x66aaff, cost:350,  level:5 },
-  { id:'ember',    name:'Ember Jackal',   desc:'Scorched orange raider plating',        color:0x9a4a1f, eye:0xff9a3c, cost:450,  level:6 },
-  { id:'jade',     name:'Jade Ronin',     desc:'Temple green duelist frame',            color:0x1f7a5a, eye:0x66ffc2, cost:600,  level:8 },
-  { id:'solar',    name:'Solar Warden',   desc:'Gold reactive plating',                 color:0xc87922, eye:0xffd040, cost:650,  level:9 },
-  { id:'void',     name:'Void Specter',   desc:'Black violet stealth frame',            color:0x3d246a, eye:0xd040ff, cost:900,  level:11 },
-  { id:'hornet',   name:'Circuit Hornet', desc:'Hazard yellow shock trooper',           color:0x8a7418, eye:0xffea66, cost:1050, level:13 },
-  { id:'toxic',    name:'Toxic Phantom',  desc:'Green biohazard glow suit',             color:0x287a42, eye:0x8fe08a, cost:1250, level:15 },
-  { id:'siren',    name:'Plasma Siren',   desc:'Magenta nightclub combat shell',        color:0x8a1f6a, eye:0xff5ad0, cost:1450, level:17 },
-  { id:'arctic',   name:'Arctic Neon',    desc:'White/blue high contrast shell',        color:0x9eb9d6, eye:0x66eaff, cost:1700, level:19 },
-  { id:'ghost',    name:'Ghost Protocol', desc:'Pale grey special-operations frame',    color:0x8a94a6, eye:0xeafcff, cost:1900, level:21 },
-  { id:'obsidian', name:'Obsidian Shade', desc:'Matte black shell with power conduits', color:0x15161c, eye:0x2cf2ff, cost:2100, level:23 },
-  { id:'royal',    name:'Royal Blackout', desc:'Prestige purple-gold operator',         color:0x5a36a0, eye:0xff9a3c, cost:2400, level:25 },
-  { id:'nemesis',  name:'Nemesis Shell',  desc:'Blackened red breach armor',            color:0x3a1216, eye:0xff2020, cost:2800, level:27 },
-  { id:'aurum',    name:'Aurum Prime',    desc:'Gilded champion frame of the rift',     color:0x8a6a1f, eye:0xffe680, cost:3200, level:30 },
+  { id:'rift',     name:'Rift Runner',    desc:'Standard blue/cyan combat shell',        color:0x2c6eff, trim:0x1a3d8f, eye:0x2cf2ff, cost:0,     level:1 },
+  { id:'crimson',  name:'Crimson Ghost',  desc:'Red assault armor for close fights',     color:0xb72a3a, trim:0x5a1420, eye:0xff3b57, cost:250,   level:4 },
+  { id:'cobalt',   name:'Cobalt Wraith',  desc:'Deep blue recon shell',                  color:0x2f5fd0, trim:0x1c3472, eye:0x66aaff, cost:350,   level:5 },
+  { id:'ember',    name:'Ember Jackal',   desc:'Scorched orange raider plating',         color:0xc06128, trim:0x6a3012, eye:0xff9a3c, cost:450,   level:6 },
+  { id:'jade',     name:'Jade Ronin',     desc:'Temple green duelist frame',             color:0x1f8a5a, trim:0x0f4530, eye:0x66ffc2, cost:600,   level:8 },
+  { id:'solar',    name:'Solar Warden',   desc:'Gold reactive plating',                  color:0xd4892a, trim:0x7a4a12, eye:0xffd040, cost:650,   level:9 },
+  { id:'void',     name:'Void Specter',   desc:'Violet phase frame',                     color:0x5a3aae, trim:0x2f1d66, eye:0xd040ff, cost:900,   level:11 },
+  { id:'hornet',   name:'Circuit Hornet', desc:'Hazard yellow shock trooper',            color:0xb59a20, trim:0x5e4e0d, eye:0xffea66, cost:1050,  level:13 },
+  { id:'toxic',    name:'Toxic Phantom',  desc:'Green biohazard glow suit',              color:0x2f9a52, trim:0x1a5530, eye:0x8fe08a, cost:1250,  level:15 },
+  { id:'siren',    name:'Plasma Siren',   desc:'Magenta nightclub combat shell',         color:0xa82580, trim:0x601448, eye:0xff5ad0, cost:1450,  level:17 },
+  { id:'arctic',   name:'Arctic Neon',    desc:'White/blue high contrast shell',         color:0x9ec2e0, trim:0x4a6480, eye:0x66eaff, cost:1700,  level:19 },
+  { id:'ghost',    name:'Ghost Protocol', desc:'Pale grey special-operations frame',     color:0x9aa6b8, trim:0x48525f, eye:0xeafcff, cost:1900,  level:21 },
+  { id:'duskfall', name:'Duskfall Fade',  desc:'Gradient: burning orange into violet',   color:0xff7a3c, trim:0x7a2d8a, eye:0xffe0a0, cost:2100,  level:23 },
+  { id:'royal',    name:'Royal Blackout', desc:'Prestige purple-gold operator',          color:0x6a3fb0, trim:0x321f5e, eye:0xff9a3c, cost:2400,  level:25 },
+  { id:'nebula',   name:'Nebula Sheath',  desc:'Gradient: deep indigo into hot magenta', color:0x3a3ac8, trim:0xc03a7a, eye:0x8ad0ff, cost:2800,  level:27 },
+  { id:'aurum',    name:'Aurum Prime',    desc:'Gilded champion frame of the rift',      color:0xb08a2a, trim:0x5a430f, eye:0xffe680, cost:3200,  level:30 },
+  { id:'monarch',  name:'Void Monarch',   desc:'Pitch-white shell, void-black seams',    color:0xf2f4f8, trim:0x08080f, eye:0x0a0a10, cost:100000, level:50 },
 ];
 function xpForLevel(level){ return level <= 1 ? 0 : Math.floor(120 * Math.pow(level-1, 1.65) + 80 * (level-1)); }
 function levelFromXp(xp){ let lvl = 1; while (lvl < 99 && xp >= xpForLevel(lvl+1)) lvl++; return lvl; }
@@ -86,9 +99,10 @@ function loadProgress(){
     const p = { ...defaultProgress(), ...(JSON.parse(localStorage.getItem('neonRiftProgress') || '{}')) };
     if (!Array.isArray(p.unlocked)) p.unlocked = ['rift'];
     if (!p.challengeState || typeof p.challengeState !== 'object') p.challengeState = {};
+    p.unlocked = p.unlocked.filter(id => SKINS.some(s => s.id === id));   // retired skins (e.g. the old stealth blacks) leave no residue
     p.name = String(p.name || 'RIFT-OPS').toUpperCase().replace(/[<>]/g,'').slice(0,14);
     if (!p.unlocked.includes('rift')) p.unlocked.push('rift');
-    if (!p.unlocked.includes(p.skin)) p.skin = 'rift';
+    if (!SKINS.some(s => s.id === p.skin) || !p.unlocked.includes(p.skin)) p.skin = 'rift';
     return p;
   } catch(e){ return defaultProgress(); }
 }
@@ -914,7 +928,7 @@ const player = {
   grounded: true, lastDamage: -99,
   bobT: 0, stepT: 0, shake: 0,
   fovKick: 0,
-  grenades: 3, slideT: 0, slideCd: 0, crouch: 0, invuln:0,
+  grenades: 3, slideT: 0, slideCd: 0, crouch: 0, invuln:0, invulnUntil:0,
 };
 const slideDir = new THREE.Vector3();
 
@@ -947,7 +961,6 @@ addEventListener('keydown', e => {
   if (action === 'reload') tryReload();
   else if (action === 'nade') throwGrenade();
   else if (action === 'slide') trySlide();
-  else if (action === 'finisher') tryFinisher();
   else if (action === 'gun') equipGunSlot();
   else if (action === 'knife') equipKnifeSlot();
   else if (action === 'jump') player.jumpBufferT = 0.14;
@@ -1221,8 +1234,9 @@ function renderSkinGrid(){
     const selected = PROGRESS.skin === sk.id;
     const card = document.createElement('button');
     card.className = 'skinCard' + (selected ? ' selected' : '');
-    const state = selected ? 'EQUIPPED' : unlocked ? 'SELECT' : !levelOk ? `REQUIRES LVL ${sk.level}` : `${sk.cost} CR`;
-    card.innerHTML = `<div class="skinSwatch" style="background:linear-gradient(135deg,#${sk.color.toString(16).padStart(6,'0')},#${sk.eye.toString(16).padStart(6,'0')}); box-shadow:0 0 22px #${sk.eye.toString(16).padStart(6,'0')}55 inset;"></div><b>${sk.name}</b><small>${sk.desc}</small><div class="skinAction">${state}</div>`;
+    const state = selected ? 'EQUIPPED' : unlocked ? 'SELECT' : !levelOk ? `REQUIRES LVL ${sk.level}` : `${sk.cost.toLocaleString()} CR`;
+    const c = '#' + sk.color.toString(16).padStart(6,'0'), t = '#' + (sk.trim ?? sk.color).toString(16).padStart(6,'0'), e = '#' + sk.eye.toString(16).padStart(6,'0');
+    card.innerHTML = `<div class="skinSwatch" style="background:linear-gradient(135deg,${c},${t} 55%,${e}); box-shadow:0 0 22px ${e}55 inset;"></div><b>${sk.name}</b><small>${sk.desc}</small><div class="skinAction">${state}</div>`;
     card.onclick = () => {
       if (unlocked){ PROGRESS.skin = sk.id; saveProgress(); applyLocalSkinAppearance(); updateProgressUI(); return; }
       if (!levelOk){ addKillFeed(null, `SKIN LOCKED — REACH <b>LEVEL ${sk.level}</b>`); return; }
@@ -1307,17 +1321,36 @@ const WEAPON_BLUEPRINTS = [
   ['HAVOC MGL',          'LAUNCHER',false, 40,  60,  6,  30, .045, .0180, .050, .160, 3,  'launch', 200, false, 'gl', { r:3.4, dmg:35 }],
   ['NAPALM LOBBER',      'LAUNCHER',false, 30,  70,  4,  20, .040, .0150, .050, .170, 1,  'launch', 180, false, 'napalm', { r:2.6, dmg:22, speed:24, grav:13, hazard:{ r:3.2, dps:16, life:4.5 } }],
   ['ARC MORTAR',         'LAUNCHER',false,120,  32,  3,  12, .040, .0120, .090, .280, 1,  'launch', 220, false, 'gl', { r:7, dmg:80, speed:20, grav:14 }],
-  ['PLASMA LANCE',       'ENERGY',  false, 90, 200,  8,  48, .008, .0012, .030, .100, 1,  'plasma', 260, false, 'plasma', { speed:60 }],
+  ['PLASMA LANCE',         'ENERGY',  false, 90, 200,  8,  48, .008, .0012, .030, .100, 1,  'plasma', 260, false, 'plasma', { speed:60 }],
   ['VOLTAIC REPEATER',   'ENERGY',  true,  18, 520, 36, 216, .020, .0070, .010, .040, 1,  'plasma', 120, false, 'plasma', { r:1.8, dmg:12, speed:46 }],
+  // --- forge wave 2: 15 new frames — classic ferals, scatter freaks, and honest ballistics ---
+  ['AEGIS BR-95',          'RIFLE',   false, 46, 300, 15,  90, .008, .0018, .020, .090, 1,  'rifle',   170, false],
+  ['SABLE-6 AR',           'RIFLE',   true,  20, 700, 33, 198, .014, .0038, .011, .050, 1,  'rifle',   121, false],
+  ['VERDICT LEVER',        'RIFLE',   false, 72,  95,  8,  48, .010, .0012, .030, .130, 1,  'rifle',   200, false],
+  ['JACKHAMMER-8',         'SHOTGUN', true,   5, 300, 20,  80, .070, .0520, .020, .070, 6,  'shotgun',  33, false],
+  ['CYCLOPS SLUG-12',      'SHOTGUN', false, 95,  55,  3,  21, .020, .0060, .050, .200, 1,  'shotgun',  95, false],
+  ['LONG TOM FOWLER',      'SHOTGUN', false, 18,  30,  2,  14, .050, .0300, .060, .240,14,  'shotgun',  60, false, 'hitscan', null, 3.6],
+  ['BLUNDERBUSS ROYALE',   'SHOTGUN', false, 15,  70,  4,  24, .078, .0560, .042, .180,12,  'shotgun',  28, false],
+  ['DUST DEVIL',           'PISTOL',  false, 11, 130,  6,  36, .046, .0300, .030, .120, 5,  'shotgun',  40, false],
+  ['ROCKSLIDE HMG',        'LMG',     true,  32, 450, 55, 165, .023, .0080, .019, .085, 1,  'rifle',   148, false],
+  // projectiles you can watch fly
+  ['LEADLINE MUSKET',      'VINTAGE', false,155,  26,  1,  20, .030, .0008, .080, .260, 1,  'shotgun', 235, false, 'hitscan', null, 3.2],
+  ['WINDRUNNER LONGBOW',   'BOW',     false,120,  48,  1,  30, .010, .0005, .025, .090, 1,  'pistol',  220, false, 'arrow', { speed:57, grav:5 }, 0.9],
+  ['SNOWBALL SLINGER',     'LAUNCHER',false, 20, 110,  8,  48, .034, .0120, .040, .130, 1,  'launch',  170, false, 'snowball', { r:2.3, dmg:16, speed:26, grav:16 }],
+  ['HAVOC FLAREGUN',       'PISTOL',  false, 45,  65,  1,  14, .020, .0080, .028, .110, 1,  'launch',  160, false, 'gl', { r:2.6, dmg:32, speed:24, grav:13 }, 1.6],
+  ['ICICLE CARBINE',       'ENERGY',  false, 58, 260, 12,  72, .010, .0014, .019, .075, 1,  'plasma',  225, false, 'plasma', { speed:72 }],
+  ['SUPERNOVA CASTER',     'ENERGY',  false,110,  22,  1,   6, .030, .0012, .050, .180, 1,  'plasma',  240, false, 'plasma', { r:4.6, dmg:70, speed:44 }],
 ];
 const WEAPONS = WEAPON_BLUEPRINTS.map((b, i) => ({
   name:b[0], slot:b[1], auto:b[2], dmg:b[3], rpm:b[4], mag:b[5], reserve:b[6],
   spread:b[7], adsSpread:b[8], recoil:b[9], kick:b[10], pellets:b[11], sfx:b[12], range:b[13], scoped:!!b[14],
-  kind:b[15] || 'hitscan', splash:b[16] || null,
+  kind:b[15] || 'hitscan', splash:b[16] || null, reloadS:b[17] || 0,
   index:i, accent:[0x2cf2ff,0xff9a3c,0xff3b57,0x8fe08a,0xd040ff,0xffd040][i % 6],
   darkAccent:[0x0d6670,0x7a3a10,0x701929,0x1f6a38,0x4e196a,0x745c14][i % 6]
 }));
 WEAPONS.forEach(w => { w.ammo = w.mag; w.res = w.reserve; w.cool = 0; w.reloading = 0; });
+{ const mg = $('menuGunCount'); if (mg) mg.textContent = WEAPONS.length;
+  const av = $('arsenalVal'); if (av) av.textContent = '1 / ' + WEAPONS.length; }   // the menu never lies about the size of the armory again
 const RARITIES = [
   { id:'common', name:'COMMON', color:0x9ab0cc, chance:0.50, dmg:1.00, spread:1.00, recoil:1.00 },
   { id:'uncommon', name:'UNCOMMON', color:0x8fe08a, chance:0.25, dmg:1.08, spread:0.93, recoil:0.95 },
@@ -1662,31 +1695,48 @@ const KNIFE_DEFS = [
   { name:'RIPPER SHANK', dmg:25,  backstab:99999, golden:false, speedMul:1.05 },
   { name:'GOLDEN SHANK', dmg:50,  backstab:99999, golden:true,  speedMul:1.15 },
 ];
-const BS_DOT = -0.35;               // attacker must sit inside the victim's rear 140° cone for a backstab
+const BS_DOT = -0.5;                // attacker must sit inside the victim's rear 120° cone for a backstab
 const KNIFE_CODE = 100;            // replicated weapon slot: 100 = knife, 101 = golden knife
 let knifeMode = 0;                 // 0 = gun, 1 = knife
 let knifeSwingT = 0, knifeSwingCd = 0, knifeSwingId = 0;
-function knifeGolden(){ return mode === 'dm' && (net.myScore || 0) >= FINAL_TIER_SCORE; }
-function knifeLocked(){ return knifeGolden(); }       // final tier is knife-only
+function isKnifeFight(){ return mode === 'dm' && net.dmMode === 'knife'; }   // the ballot's third option: KNIFE FIGHT
+function finalTierScore(){ return isKnifeFight() ? 14 : FINAL_TIER_SCORE; }  // knife fight goes golden one stab early
+function knifeGolden(){ return mode === 'dm' && (net.myScore || 0) >= finalTierScore(); }
+function knifeLocked(){ return isKnifeFight() || knifeGolden(); }       // final tier or knife fight: blades only
 function currentKnifeDef(){ return KNIFE_DEFS[knifeGolden() ? 1 : 0]; }
 
 function buildKnifeModel(golden){
+  // a proper drop-point combat blade: pommel → grip → guard → belly → clip tip, edge glowing
   const g = new THREE.Group();
-  const steel = new THREE.MeshStandardMaterial({ color: golden ? 0xd8b13c : 0xb8c4d4, roughness:.26, metalness:.92 });
-  const dark  = new THREE.MeshStandardMaterial({ color: golden ? 0x4a3512 : 0x2e3440, roughness:.7, metalness:.4 });
+  const steel = new THREE.MeshStandardMaterial({ color: golden ? 0xe6c14e : 0xc9d4e2, roughness:.18, metalness:.95 });
+  const flat  = new THREE.MeshStandardMaterial({ color: golden ? 0x8a6a1f : 0x59667a, roughness:.4, metalness:.85 });
+  const dark  = new THREE.MeshStandardMaterial({ color: golden ? 0x3d2c0d : 0x232936, roughness:.62, metalness:.5 });
+  const grip  = new THREE.MeshStandardMaterial({ color: golden ? 0x54390e : 0x151a26, roughness:.9, metalness:.15 });
   const glow  = new THREE.MeshBasicMaterial({ color: golden ? 0xffe680 : 0x2cf2ff });
-  const handle = box(.045,.15,.085, dark, 0,-.115,.075, g); handle.rotation.x = -.12;
-  box(.088,.026,.05, dark, 0,-.028,.048, g);                                    // guard
-  const blade = box(.03,.30,.058, steel, 0,.135,.012, g); blade.rotation.x = .06;
-  const tip = box(.03,.06,.058, steel, 0,.316,-.006, g); tip.rotation.x = .5;
-  const edge = box(.011,.30,.012, glow, .018,.135,-.004, g); edge.rotation.x = .06;
+  // grip under the palm, canted a touch forward
+  const handle = box(.040,.155,.070, grip, 0,-.100,.032, g); handle.rotation.x = -.08;
+  box(.046,.020,.076, dark, 0,-.182,.026, g);                                    // pommel cap
+  box(.046,.012,.078, dark, 0,-.052,.038, g);                                    // top grip ring
+  const guard = box(.060,.014,.104, flat, 0,-.030,.034, g);                      // slim oval-ish guard
+  guard.rotation.x = .04;
+  // blade: long belly with a full-length spine on top, glowing edge along the entire bottom
+  const blade = box(.016,.300,.086, steel, 0,.128,.006, g); blade.rotation.x = .03;
+  const spine = box(.015,.300,.016, flat, 0,.128,-.036, g); spine.rotation.x = .03;
+  const edge  = box(.005,.297,.012, glow, 0,.129,.048, g); edge.rotation.x = .03;
+  // drop-point tip: clip angled down toward the point, edge wraps the tip
+  const tip   = box(.014,.052,.086, steel, 0,.300,-.002, g); tip.rotation.x = -.62;
+  const tipEdge = box(.004,.048,.010, glow, 0,.298,.036, g); tipEdge.rotation.x = -.62;
+  const rivetA = new THREE.Mesh(new THREE.CylinderGeometry(.007,.007,.048,8), flat);
+  rivetA.rotation.z = Math.PI/2; rivetA.position.set(0,-.075,.033); g.add(rivetA);
+  const rivetB = rivetA.clone(); rivetB.position.y = -.145; g.add(rivetB);
   tagPart(g,'blade',blade); tagPart(g,'edge',edge); tagPart(g,'tip',tip);
+  if (golden) for (const extra of [spine, edge, tipEdge]) extra.userData.goldTrim = true;
   return prepareGunModel(g);
 }
 const knifeModels = [buildKnifeModel(false), buildKnifeModel(true)];
 knifeModels[0].name = 'knifeNormal';
 knifeModels[1].name = 'knifeGolden';
-// reverse grip: canted forward so the blade reads as a knife, not a baton
+// reverse grip: canted forward so the belly and point lead — reads as a knife, not a baton
 knifeModels.forEach(m => { m.visible = false; m.scale.setScalar(.8); m.position.set(-.02,.07,.02); m.rotation.set(.12,.3,.5); gunRoot.add(m); });
 
 function updateWeaponVisibility(){
@@ -1696,7 +1746,7 @@ function updateWeaponVisibility(){
 }
 function equipGunSlot(){
   if (!knifeMode) return;
-  if (knifeLocked()){ addKillFeed(null, 'FINAL TIER — <b style="color:#ffd040">GOLDEN SHANK</b> ONLY'); return; }
+  if (knifeLocked()){ addKillFeed(null, isKnifeFight() ? 'KNIFE FIGHT — <b>BLADES ONLY</b>' : 'FINAL TIER — <b style="color:#ffd040">GOLDEN SHANK</b> ONLY'); return; }
   knifeMode = 0;
   switchT = Math.max(switchT, 0.2);
   knifeSwingT = knifeSwingCd = 0;
@@ -1807,11 +1857,26 @@ const GUN_LADDER = [
   49, 52, 50, 53, 51, 15,           // ordnance tier: flamer → havoc → grenades → napalm → rockets → rail sniper
 ];
 const FINAL_TIER_SCORE = 29;
+/* the ladder's 29 stops stay the ladder — but the deck is re-dealt every LAN round from the
+   server's seed, so tier 7 means something different each match, for everyone equally */
+let LADDER_ROUND = GUN_LADDER.slice();
+function shuffleLadder(seed){
+  const rnd = mulberry32(((seed >>> 0) || 1) >>> 0);   // seeded PRNG lives up at the world-gen helpers
+  LADDER_ROUND = GUN_LADDER.slice();
+  for (let i = LADDER_ROUND.length - 1; i > 0; i--){ const j = (rnd() * (i + 1)) | 0; [LADDER_ROUND[i], LADDER_ROUND[j]] = [LADDER_ROUND[j], LADDER_ROUND[i]]; }
+}
 function ladderRarity(sc){
   return sc >= 27 ? RARITIES[4] : sc >= 21 ? RARITIES[3] : sc >= 14 ? RARITIES[2] : sc >= 6 ? RARITIES[1] : RARITIES[0];
 }
 function equipLadderTier(sc, { quiet=false } = {}){
   sc = clamp(sc|0, 0, FINAL_TIER_SCORE + 1);
+  if (isKnifeFight()){          // ballot said blades — you never touch the ladder at all
+    knifeMode = 1; mouseR = false; adsT = 0;
+    switchT = Math.max(switchT, 0.22);
+    updateWeaponVisibility(); updateAmmoHUD();
+    if (!quiet && knifeGolden()){ showBanner('GOLDEN SHANK'); addKillFeed(null, 'ONE MORE STAB — <b style="color:#ffd040">GOLDEN SHANK</b> // +15% SPEED'); SFX.reloadBolt(); }
+    return;
+  }
   if (sc >= FINAL_TIER_SCORE){
     knifeMode = 1; mouseR = false; adsT = 0;
     switchT = Math.max(switchT, 0.22);
@@ -1825,7 +1890,7 @@ function equipLadderTier(sc, { quiet=false } = {}){
   }
   knifeMode = 0;
   currentRarity = ladderRarity(sc);
-  switchWeapon(GUN_LADDER[clamp(sc, 0, GUN_LADDER.length-1)], { force:true, roll:true });
+  switchWeapon(LADDER_ROUND[clamp(sc, 0, LADDER_ROUND.length-1)], { force:true, roll:true });
   const w = CW();
   w.ammo = w.mag; w.res = w.reserve; w.cool = 0; w.reloading = 0;
   updateWeaponVisibility(); updateAmmoHUD();
@@ -1839,7 +1904,7 @@ function syncLadderWeapon(){
   if (sc === net.myScore) return;
   const promoted = sc > net.myScore;
   net.myScore = sc;
-  if (!promoted){
+  if (!promoted && !isKnifeFight()){          // knife-fight points are sacred — demotion theatre stays dark
     showBanner('KNIFED — DEMOTED');
     addKillFeed(null, `<b>KNIFED!</b> DEMOTED BACK TO ${sc} // ONE TIER LOST`);
   }
@@ -1847,6 +1912,7 @@ function syncLadderWeapon(){
 }
 
 function reloadDuration(w){
+  if (w.reloadS) return w.reloadS;              // muskets and breach-loaders write their own history
   if (w.slot === 'LMG') return 2.45;
   if (w.slot === 'SHOTGUN') return 2.05;
   if (w.slot === 'SNIPER' || w.slot === 'RAIL' || w.slot === 'EXOTIC') return 2.18;
@@ -1974,7 +2040,7 @@ function fireWeapon(){
   const spread = (adsT > 0.5 ? w.adsSpread : w.spread) * (currentRarity.spread || 1) * (player.grounded ? (player.crouched ? 0.62 : 1) : 1.7);   // crouching steadies your aim
 
   // anything with a projectile kind lobs/thrashes real physics, not hitscan
-  if (w.kind === 'gl' || w.kind === 'rocket' || w.kind === 'napalm' || w.kind === 'plasma'){
+  if (w.kind === 'gl' || w.kind === 'rocket' || w.kind === 'napalm' || w.kind === 'plasma' || w.kind === 'snowball' || w.kind === 'arrow'){
     for (let p = 0; p < w.pellets; p++){
       camera.getWorldDirection(_dir);
       _dir.x += rand(-spread, spread); _dir.y += rand(-spread, spread); _dir.z += rand(-spread, spread);
@@ -1984,7 +2050,7 @@ function fireWeapon(){
         netSend({ t:'shoot', w:weaponIndex, o:[+flash.position.x.toFixed(2), +flash.position.y.toFixed(2), +flash.position.z.toFixed(2)],
                   p:[+(_origin.x + _dir.x * 40).toFixed(2), +(_origin.y + _dir.y * 40).toFixed(2), +(_origin.z + _dir.z * 40).toFixed(2)] });
     }
-    if (w.kind !== 'plasma') spawnSmoke(flash.position, 2);
+    if (w.kind !== 'plasma' && w.kind !== 'arrow') spawnSmoke(flash.position, 2);
     updateAmmoHUD();
     return;
   }
@@ -2033,7 +2099,7 @@ function fireWeapon(){
       S.shotsHit++; if (headshot) S.headshots++;
       spawnSparks(_hitPoint, headshot ? 0xffd040 : 0xff8040, headshot ? 14 : 8);
       spawnDamagePopup(_hitPoint, Math.round(dmg), headshot);
-      if (w.kind === 'flame') applyBurn(hitEnemy, 3, 4);   // flame keeps cooking after the jet
+      if (w.kind === 'flame') applyBurn(hitEnemy, 3, 6);   // afterburn: ~18dmg over 3s once the jet lets go
       if (damageEnemy(hitEnemy, dmg)) anyKill = true;
     } else if (hitNetId){
       anyHit = true;
@@ -2041,8 +2107,8 @@ function fireWeapon(){
       S.shotsHit++; if (headshot) S.headshots++;
       spawnSparks(_hitPoint, headshot ? 0xffd040 : 0xff8040, headshot ? 14 : 8);
       spawnDamagePopup(_hitPoint, Math.round(dmg), headshot);
-      if (w.kind === 'flame'){ const rpBurn = net.players.get(hitNetId); if (rpBurn) applyBurn(rpBurn, 3, 4); }
-      netSend({ t:'hit', target:hitNetId, dmg });
+      if (w.kind === 'flame'){ const rpBurn = net.players.get(hitNetId); if (rpBurn) applyBurn(rpBurn, 3, 6); }
+      netSend({ t:'hit', target:hitNetId, dmg, burn: w.kind === 'flame' || undefined });
     } else if (hitDestructible){
       anyHit = true;
       const dmg = w.dmg * (currentRarity.dmg || 1);
@@ -2118,10 +2184,12 @@ function spawnFlameJet(from, dir, dist){
 
 const playerShots = [];   // { mesh, vel, grav, kind, splash, dmg, life, direct }
 const SHOT_STYLE = {
-  gl:     { color:0xffd050, radius:0.085, speed:25, grav:11 },
-  rocket: { color:0xff5a20, radius:0.12,  speed:36, grav:0  },
-  napalm: { color:0xffc040, radius:0.10,  speed:24, grav:13 },
-  plasma: { color:0x66ffe0, radius:0.055, speed:60, grav:0  },
+  gl:       { color:0xffd050, radius:0.085, speed:25, grav:11 },
+  rocket:   { color:0xff5a20, radius:0.12,  speed:36, grav:0  },
+  napalm:   { color:0xffc040, radius:0.10,  speed:24, grav:13 },
+  plasma:   { color:0x66ffe0, radius:0.055, speed:60, grav:0  },
+  snowball: { color:0xf4f8ff, radius:0.11,  speed:26, grav:16 },
+  arrow:    { color:0xe8dcb0, radius:0.05,  speed:55, grav:5  },
 };
 function spawnPlayerProjectile(origin, dir, w){
   const st = SHOT_STYLE[w.kind] || SHOT_STYLE.gl;
@@ -2134,10 +2202,40 @@ function spawnPlayerProjectile(origin, dir, w){
   playerShots.push({ mesh:m, vel:dir.clone().multiplyScalar(sp), grav:gv, kind:w.kind, splash:w.splash, dmg:w.dmg, life:6, direct:null });
 }
 
+/* another runner's ordnance should LOOK the same as your own — same ball, same arc, same boom —
+   but it never deals damage here: the shooter's client owns that. Pure spectacle, honest physics. */
+function spawnRemoteProjectileVisual(origin, endPoint, w){
+  const st = SHOT_STYLE[w.kind] || SHOT_STYLE.gl;
+  const dir = endPoint.clone().sub(origin);
+  if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
+  dir.normalize();
+  const mat = new THREE.MeshBasicMaterial({ color: st.color });
+  const m = new THREE.Mesh(new THREE.SphereGeometry(st.radius, 8, 8), mat);
+  m.position.copy(origin).addScaledVector(dir, 0.9);
+  scene.add(m);
+  const sp = (w.splash && w.splash.speed) || st.speed;
+  const gv = (w.splash && w.splash.grav != null) ? w.splash.grav : st.grav;
+  playerShots.push({ mesh:m, vel:dir.multiplyScalar(sp), grav:gv, kind:w.kind, splash:w.splash, dmg:0, life:6, direct:null, visual:true });
+}
+function explodeVisualShot(ps, point){
+  const pos = point || ps.mesh.position.clone();
+  if (!(ps.splash && ps.splash.r)){
+    spawnSparks(pos, ps.kind === 'arrow' ? 0xe8dcb0 : 0x66ffe0, 14); SFX.plasma();
+  } else if (ps.kind === 'snowball'){
+    spawnSparks(pos, 0xf4f8ff, 28);
+    spawnRing(pos.clone(), 0xdfefff);
+    SFX.plasma();
+  } else {
+    spawnExplosion(pos);
+    if (ps.kind === 'rocket'){ SFX.bigBoom(); spawnSparks(pos, 0xffd040, 12); }
+    if (ps.splash && ps.splash.hazard) igniteHazard(pos, ps.splash.hazard, true);
+  }
+}
+
 /* lingering napalm flames — anyone standing in the pool keeps burning */
-const hazards = [];         // { pos:{x,y,z}, endAt, r, dps, acc }
-function igniteHazard(pos, def){
-  hazards.push({ pos:pos.clone(), endAt:Date.now() + def.life * 1000, r:def.r, dps:def.dps, nextTick:Date.now() + 500 });
+const hazards = [];         // { pos, endAt, r, dps, nextTick, visual }
+function igniteHazard(pos, def, visual=false){
+  hazards.push({ pos:pos.clone(), endAt:Date.now() + def.life * 1000, r:def.r, dps:def.dps, nextTick:Date.now() + 500, visual });
 }
 function stepHazards(dt){
   const now = Date.now();
@@ -2154,7 +2252,7 @@ function stepHazards(dt){
       scene.add(m);
       particles.push({ mesh:m, vel:new THREE.Vector3(rand(-0.5, 0.5), rand(1.2, 3.2), rand(-0.5, 0.5)), life:rand(0.25, 0.55), maxLife:0.55, grav:2, type:'spark' });
     }
-    if (now >= hz.nextTick){            // ticks run on the wall clock — slow render frames mustn't starve the fire
+    if (now >= hz.nextTick && !hz.visual){   // mirrored pools burn bright on your screen, but only the shooter's pool burns YOU
       const tick = hz.dps * 0.5 * (currentRarity.dmg || 1);
       hz.nextTick += 500;
       for (const e of enemies){
@@ -2216,8 +2314,12 @@ function explodePlayerShot(ps, point){
   const pos = point || ps.mesh.position.clone();
   window.__lastBoom = { x:+pos.x.toFixed(2), y:+pos.y.toFixed(2), z:+pos.z.toFixed(2), direct:!!ps.direct, kind:ps.kind, r:(ps.splash && ps.splash.r) || 0 };
   const mult = currentRarity.dmg || 1;
-  if (ps.kind === 'plasma' && !(ps.splash && ps.splash.r)){
-    spawnSparks(pos, 0x66ffe0, 14); SFX.plasma();
+  if (!(ps.splash && ps.splash.r)){                          // direct-hit ballistics pop, they don't boom
+    spawnSparks(pos, ps.kind === 'arrow' ? 0xe8dcb0 : 0x66ffe0, 14); SFX.plasma();
+  } else if (ps.kind === 'snowball'){
+    spawnSparks(pos, 0xf4f8ff, 28);
+    spawnRing(pos.clone(), 0xdfefff);
+    SFX.plasma();
   } else {
     spawnExplosion(pos);
     if (ps.kind === 'rocket'){ SFX.bigBoom(); spawnSparks(pos, 0xffd040, 12); }
@@ -2278,6 +2380,18 @@ function stepPlayerShots(dt){
       hitAt = from.clone().addScaledVector(_psDir, Math.max(0, wall - 0.02));
     } else if ((from.y && ps.vel.y < 0) && (from.y + ps.vel.y * dt) <= 0.12){
       hitAt = from.clone(); hitAt.y = 0.1;                       // the floor counts as a face
+    } else if (ps.visual){
+      // mirrored ordnance detonates on bodies too (purely cosmetic here)
+      for (const e of enemies){
+        if (e.dead) continue;
+        _psC.set(e.group.position.x, e.group.position.y + 1.0, e.group.position.z);
+        if (segPointD2(from, to, _psC) < 1.5 * 1.5){ hitAt = _psC.clone(); break; }
+      }
+      if (!hitAt && net.on) for (const rp of net.players.values()){
+        _psC.set(rp.group.position.x, rp.group.position.y + 1.0, rp.group.position.z);
+        if (segPointD2(from, to, _psC) < 1.4 * 1.4){ hitAt = _psC.clone(); break; }
+      }
+      from.copy(to);
     } else {
       // swept collision: explode the moment the flight path comes within arm's length of a runner
       for (const e of enemies){
@@ -2296,7 +2410,7 @@ function stepPlayerShots(dt){
     }
     ps.life -= dt;
     if (hitAt || ps.life <= 0){
-      explodePlayerShot(ps, hitAt);
+      if (ps.visual) explodeVisualShot(ps, hitAt); else explodePlayerShot(ps, hitAt);
       scene.remove(ps.mesh); ps.mesh.geometry.dispose(); ps.mesh.material.dispose();
       playerShots.splice(i, 1);
     } else if (Math.random() < 0.55){
@@ -2376,7 +2490,7 @@ function spawnPlayerPieces(pos, color=0x2c6eff){
 const grenadesLive = [];
 function throwGrenade(){
   if (!S.started || S.paused || S.dead || player.grenades <= 0) return;
-  if (knifeLocked()){ addKillFeed(null, 'FINAL TIER — <b style="color:#ffd040">GOLDEN SHANK</b> ONLY'); return; }
+  if (knifeLocked()){ addKillFeed(null, isKnifeFight() ? 'KNIFE FIGHT — <b>BLADES ONLY</b>' : 'FINAL TIER — <b style="color:#ffd040">GOLDEN SHANK</b> ONLY'); return; }
   player.grenades--;
   updateAmmoHUD();
   SFX.reload1();
@@ -2473,29 +2587,6 @@ function trySlide(){
   player.slideCd = 1.25;
   SFX.slide();
 }
-function findFinisherTarget(){
-  let best = null, bestD = 99;
-  for (const e of enemies){
-    if (e.dead || e.executing) continue;
-    const d = Math.hypot(e.group.position.x - player.pos.x, e.group.position.z - player.pos.z);
-    const eligible = e.hp <= e.maxHp * 0.35 || e.hurtT > 0 || e.type.boss && e.hp <= e.maxHp * 0.18;
-    if (eligible && d < bestD && d < (e.type.boss ? 3.6 : 2.65)){ best = e; bestD = d; }
-  }
-  return best;
-}
-function tryFinisher(){
-  if (!S.started || S.paused || S.dead) return;
-  let best = findFinisherTarget();
-  if (!best){ addKillFeed(null, 'NO FINISHER TARGET'); return; }
-  best.executing = true; best.executeT = 0.55; best._attackQueued = true; best.attackKind = 'execute'; best.attackT = 0.55; best.attackDur = 0.55;
-  showBanner('EXECUTION');
-  SFX.kill(); player.shake = Math.min(player.shake + 0.08, 0.22);
-  spawnRing(best.group.position, 0xffd040);
-  spawnSparks(best.group.position.clone().add(new THREE.Vector3(0,1.2*best.type.scale,0)), 0xffd040, 18);
-  grantProgress(120, 90, 'EXECUTION BONUS');
-  setTimeout(() => { if (!best.dead) damageEnemy(best, best.hp + 9999); }, 330);
-}
-
 /* ================= KILL STREAKS ================= */
 let streak = 0, streakT = 0;
 function registerKill(){
@@ -2919,14 +3010,6 @@ function updateEnemies(dt, now){
       queueEnemyMelee(e, dirX, dirZ, playerEye);
     }
 
-    if (e.executing){
-      e.executeT = Math.max(0, (e.executeT || 0) - dt);
-      e.moveBlend = lerp(e.moveBlend || 0, 0, 1 - Math.exp(-12*dt));
-      e.animT += dt * 3;
-      animateEnemyCinematic(e, t, e.animT, dist);
-      e.fireCd = Math.max(e.fireCd, 0.4); e.meleeCd = Math.max(e.meleeCd, 0.4);
-    }
-
     // movement
     let mvx = 0, mvz = 0;
     const desired = t.melee ? 0.5 : (t.name === 'BRUTE' ? 14 : 11);
@@ -2940,13 +3023,12 @@ function updateEnemies(dt, now){
       mvx += -dirZ * e.strafeDir * 0.7;
       mvz +=  dirX * e.strafeDir * 0.7;
     }
-    if (e.executing){ mvx = 0; mvz = 0; }
 
     /* ---- smarter navigation: sense walls ahead, route around, recover when stuck ---- */
     e.senseT = (e.senseT ?? rand(0, .25)) - dt;
     e.avoidT = Math.max(0, (e.avoidT || 0) - dt);
     const wantsMove = (mvx*mvx + mvz*mvz) > 0.01;
-    if (e.senseT <= 0 && wantsMove && !e.executing){
+    if (e.senseT <= 0 && wantsMove){
       e.senseT = 0.22;
       // sample the wall straight ahead at chest height; steer around it before getting pinned
       _botRay.set(p.x, Math.min(0.9*t.scale, 1.2), p.z);
@@ -2974,7 +3056,7 @@ function updateEnemies(dt, now){
         }
       }
     }
-    if (e.avoidT > 0 && !e.executing){
+    if (e.avoidT > 0){
       // detour override: move along the escape vector instead of beelining into the wall
       mvx = e.avoidDirX || 0; mvz = e.avoidDirZ || 0;
       if (!t.melee){ mvx += -mvz * e.strafeDir * 0.15; mvz += e.avoidDirX * e.strafeDir * 0.15; }
@@ -3152,6 +3234,7 @@ function updatePickups(dt, now){
       if (pk.kind === 'health'){
         if (player.hp >= player.maxHp) continue;
         player.hp = Math.min(player.maxHp, player.hp + 40);
+        if (mode === 'dm') netSend({ t:'heal' });   // patching up wipes everyone off your assist ledger
         addKillFeed(null, '+40 INTEGRITY RESTORED');
       } else {
         for (const w of WEAPONS) w.res = Math.min(w.reserve, w.res + w.mag * 2);
@@ -3258,8 +3341,10 @@ function setRemoteWeapon(rp, idx){
 function avatarTypeForSkin(skinId){ const sk = skinDef(skinId); return { color:sk.color, eye:sk.eye, scale:1, name:'PLAYER' }; }
 function applyAvatarSkin(group, skinId){
   const sk = skinDef(skinId), parts = group.userData.parts || {};
-  const bodyMat = getEnemyMat(sk.color), eyeMat = getEyeMat(sk.eye);
+  const bodyMat = getEnemyMat(sk.color), trimMat = getEnemyMat(sk.trim ?? sk.color), eyeMat = getEyeMat(sk.eye);
   for (const key of ['torso','head','armL','armR']) if (parts[key]) parts[key].material = bodyMat;
+  // seams/plating were locked to near-black gunmetal — that is why every skin read as dark
+  for (const key of ['pelvis','neck','shoulder','legL','legR','footL','footR','handL','handR']) if (parts[key]) parts[key].material = trimMat;
   for (const key of ['eye','chest','backGlow','clawL','clawR','gunGlow','muzzleOrb']) if (parts[key]) parts[key].material = eyeMat;
 }
 
@@ -3332,9 +3417,73 @@ function updateTeamHUD(){
   chip.classList.remove('hidden');
   chip.innerHTML = `<b class="${net.myTeam===1?'you-red':'you-blue'}">YOU ARE ${TEAM_NAMES[net.myTeam] || 'ON A TEAM'}</b>`;
 }
+/* --- teammate markers: a green dot floating over each squadmate's head ---
+   It is rendered as a HUD element, so walls never hide it — but a BODY in the way does:
+   a short raycast against player meshes (never world geometry) decides. */
+const teamDots = new Map();            // netId -> dot div
+const teamDotRay = new THREE.Raycaster();
+const _tdAim = new THREE.Vector3(), _tdProj = new THREE.Vector3(), _tdDir = new THREE.Vector3();
+function teamDotLayer(){
+  let layer = $('teamDots');
+  if (!layer){
+    const css = document.createElement('style');
+    css.textContent = '#teamDots{position:fixed;inset:0;pointer-events:none;z-index:12;overflow:hidden}'
+      + '.teamDot{position:absolute;left:0;top:0;width:11px;height:11px;margin:-6px 0 0 -6px;border-radius:50%;display:none;'
+      + 'background:radial-gradient(circle at 35% 35%,#c9ffde,#35e877 55%,#0c8f45);'
+      + 'box-shadow:0 0 6px 2px rgba(53,232,119,.9),0 0 16px 5px rgba(53,232,119,.30);'
+      + 'animation:teamDotPulse 1.7s ease-in-out infinite}'
+      + '@keyframes teamDotPulse{0%,100%{transform:scale(.84)}50%{transform:scale(1.06)}}';
+    document.head.appendChild(css);
+    layer = document.createElement('div');
+    layer.id = 'teamDots';
+    document.body.appendChild(layer);
+  }
+  return layer;
+}
+function playerBlocksTeamDot(aimPos, selfId, dist){
+  // ray from my eye to the dot — if another PLAYER's mesh eats it first, the dot is body-blocked
+  teamDotRay.set(camera.position, _tdDir.copy(aimPos).sub(camera.position).normalize());
+  teamDotRay.near = 0.4; teamDotRay.far = Math.max(0.6, dist - 0.5);
+  for (const [id, rp] of net.players){
+    if (id === selfId || !rp.group || !rp.group.visible || rp.group.position.y < -20) continue;
+    if (rp.group.position.distanceTo(camera.position) > dist + 3) continue;    // obviously behind the target
+    const hits = teamDotRay.intersectObject(rp.group, true);
+    for (const h of hits) if (h.object.isMesh) return true;   // nametag sprites don't count as cover
+  }
+  return false;
+}
+function updateTeamDots(){
+  const layer = teamDotLayer();
+  const active = !!(net.on && mode === 'dm' && net.dmMode === 'team' && S.started && !S.dead && !net.voteActive);
+  for (const [id, rp] of net.players){
+    let dot = teamDots.get(id);
+    const rpOk = rp && rp.group && rp.group.visible && rp.group.position.y > -20;
+    if (window.__tdProbe) (window.__tdLog = window.__tdLog || []).push([id, !!active, !!rpOk, !!isTeammate(rp), id === net.id, rp && rp.team, net.myTeam, net.dmMode, mode, !!net.voteActive, !!S.dead].join(':'));
+    if (!active || !rpOk || !isTeammate(rp) || id === net.id){
+      if (dot && dot.style.display !== 'none') dot.style.display = 'none';
+      continue;
+    }
+    _tdAim.set(rp.group.position.x, rp.group.position.y + 2.86, rp.group.position.z);
+    const dist = camera.position.distanceTo(_tdAim);
+    _tdProj.copy(_tdAim).project(camera);
+    const onScreen = _tdProj.z < 1 && _tdProj.x > -0.98 && _tdProj.x < 0.98 && _tdProj.y > -0.95 && _tdProj.y < 0.97;
+    if (window.__tdLog) window.__tdLog[window.__tdLog.length - 1] += ':' + (onScreen ? 1 : 0) + ':' + !!playerBlocksTeamDot(_tdAim, id, dist);
+    if (!onScreen || playerBlocksTeamDot(_tdAim, id, dist)){
+      if (dot && dot.style.display !== 'none') dot.style.display = 'none';
+      continue;
+    }
+    if (!dot){ dot = document.createElement('div'); dot.className = 'teamDot'; layer.appendChild(dot); teamDots.set(id, dot); }
+    dot.style.display = 'block';
+    dot.style.transform = '';
+    dot.style.left = ((_tdProj.x * .5 + .5) * innerWidth).toFixed(1) + 'px';
+    dot.style.top  = ((-_tdProj.y * .5 + .5) * innerHeight).toFixed(1) + 'px';
+  }
+}
 function removeRemotePlayer(id){
   const rp = net.players.get(id);
   if (rp){ scene.remove(rp.group); net.players.delete(id); }
+  const dot = teamDots.get(id);
+  if (dot){ dot.remove(); teamDots.delete(id); }
 }
 function netSend(o){ if (net.ws && net.ws.readyState === 1) net.ws.send(JSON.stringify(o)); }
 
@@ -3376,9 +3525,15 @@ function connectNet(){
       case 'mode':
         net.dmMode = m.mode || 'ffa'; net.myTeam = m.team || 0;
         if (net.dmMode === 'team'){ showBanner(`ASSIGNED — ${TEAM_NAMES[net.myTeam]}`); addKillFeed(null, `YOU PLAY FOR <span style="color:${TEAM_COLORS[net.myTeam]}">${TEAM_NAMES[net.myTeam]}</span>`); }
+        if (net.dmMode === 'knife'){ knifeMode = 1; updateWeaponVisibility(); addKillFeed(null, 'KNIFE FIGHT — <b>BLADES ONLY</b>'); }
         updateTeamHUD();
         break;
       case 'team': { const rp = net.players.get(m.id); if (rp) setRemoteTeam(rp, m.team || 0); break; }
+      case 'named':
+        net.myName = m.name;
+        if (m.taken) addKillFeed(null, `CALLSIGN TAKEN — YOU ARE <b>${m.name}</b>`);
+        else if (m.filtered) addKillFeed(null, `CALLSIGN REJECTED — WELCOME, <b>${m.name}</b>`);
+        break;
       case 'join': addRemotePlayer(m.id, m.name, m.skin || 'rift', m.team || 0); addKillFeed(null, `<b>${m.name}</b> JOINED THE MATCH${fmtTeamTag(m.team) ? ' — ' + fmtTeamTag(m.team) : ''}`); updateTopHUD(); break;
       case 'name': { const rp = net.players.get(m.id); if (rp){ rp.name = m.name; rp.group.remove(rp.tag); rp.tag = makeNameSprite(m.name, net.dmMode === 'team' && rp.team ? TEAM_COLORS[rp.team] : '#2cf2ff'); rp.tag.position.y = 2.45; rp.group.add(rp.tag); } break; }
       case 'skin': { const rp = net.players.get(m.id); if (rp) setRemoteSkin(rp, m.skin || 'rift'); break; }
@@ -3392,13 +3547,26 @@ function connectNet(){
         const p = new THREE.Vector3(m.p[0], m.p[1], m.p[2]);
         if (isKnifeShot){ playNoise(0.06, 2600, 0.3, 0.18); }
         else {
-          spawnTracer(o, p);
-          spawnSparks(p, 0x9ab0cc, 3);
-          playNoise(0.1, 1100, 0.8, 0.2);
+          const wDef = WEAPONS[m.w | 0] || {};
+          // ordnance is a real flying ball on every screen — a tracer line would be a lie
+          if (wDef.kind === 'gl' || wDef.kind === 'rocket' || wDef.kind === 'napalm' || wDef.kind === 'plasma' || wDef.kind === 'snowball' || wDef.kind === 'arrow'){
+            spawnRemoteProjectileVisual(o, p, wDef);
+            playNoise(0.1, 900, 0.7, 0.25);
+          } else if (wDef.kind === 'flame'){
+            const dir = p.clone().sub(o); if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1); dir.normalize();
+            spawnFlameJet(o, dir, Math.min(o.distanceTo(p) || 5, wDef.range || 13));
+            spawnSparks(o.clone().add(dir), 0xff7a20, 4);
+            playNoise(0.12, 700, 0.5, 0.25);
+          } else {
+            spawnTracer(o, p);
+            spawnSparks(p, 0x9ab0cc, 3);
+            playNoise(0.1, 1100, 0.8, 0.2);
+          }
         }
         break; }
       case 'hit': {
         net.lastHitBy = m.from;
+        if (m.burn) player.burnFxT = 3;   // you're alight — screen smoulders while the ticks keep coming
         const atk = net.players.get(m.from);
         damagePlayer(m.dmg, atk ? atk.group.position : null);
         break; }
@@ -3408,11 +3576,13 @@ function connectNet(){
           if (victim) remotePlayerKilled(victim, m.by);
         }
         if (m.by === net.id){ S.kills++; S.score += 150; PROGRESS.totalKills = (PROGRESS.totalKills || 0) + 1; trackChallenge('kill', 1); grantProgress(m.knife ? (m.bs ? 130 : 95) : 65, m.knife ? (m.bs ? 75 : 55) : 35, m.bs ? 'BACKSTAB EXECUTION' : m.knife ? 'SHANKED A RIVAL' : 'PLAYER ELIMINATED'); SFX.kill(); showHitmarker(true); registerKill(); }
+        if (m.assist === net.id && m.by !== net.id){ grantProgress(30, 20, 'ASSIST +1 POINT'); playTone(520, 780, 0.1, 0.22, 'square'); }
         net.scores = m.scores || net.scores;
         if (m.mode) net.dmMode = m.mode;
         if (m.totals){ net.teamTotals = m.totals; updateTeamHUD(); }
-        if (m.knife) addKillFeed(null, `<b>${fmtColoredName(m.names.k, m.kteam)}</b> <span style="color:#ffd040">⚔ ${m.bs ? 'BACKSTABBED' : 'SHANKED'}</span> ${fmtColoredName(m.names.v, m.vteam)}${m.demoted ? ' — DEMOTED ONE TIER' : ''}`);
-        else addKillFeed(null, `<b>${fmtColoredName(m.names.k, m.kteam)}</b> ⟶ ${fmtColoredName(m.names.v, m.vteam)}`);
+        const assistBit = (m.assist && m.names && m.names.a) ? ` <span style="color:#35e877">+ ${fmtColoredName(m.names.a, m.ateam)}</span>` : '';
+        if (m.knife) addKillFeed(null, `<b>${fmtColoredName(m.names.k, m.kteam)}</b>${assistBit} <span style="color:#ffd040">⚔ ${m.bs ? 'BACKSTABBED' : 'SHANKED'}</span> ${fmtColoredName(m.names.v, m.vteam)}${m.demoted ? ' — DEMOTED ONE TIER' : ''}`);
+        else addKillFeed(null, `<b>${fmtColoredName(m.names.k, m.kteam)}</b>${assistBit} ⟶ ${fmtColoredName(m.names.v, m.vteam)}`);
         updateScoreboardHUD();
         updateTopHUD();
         syncLadderWeapon();   // shared ladder: promotion on your kill, demotion if you were shanked
@@ -3461,6 +3631,7 @@ function connectNet(){
         if (m.totals) net.teamTotals = m.totals;
         updateTeamHUD();
         net.myScore = -1; knifeMode = 0;
+        if (typeof m.ladderSeed === 'number') shuffleLadder(m.ladderSeed);   // fresh deck, same deal for the whole lobby
         hideMapVote(); setMap(net.currentMap); resetMatchStats(); syncLadderWeapon(); respawnDMPlayer(true);
         SFX.roundStart(); showBanner('ROUND ' + net.round);
         updateScoreboardHUD(); updateTopHUD();
@@ -3541,6 +3712,7 @@ function respawnDMPlayer(silent=false){
   player.vel.set(0, 0, 0);
   player.hp = player.maxHp;
   player.invuln = 1.5;
+  player.invulnUntil = performance.now() + 1500;   // wall-clock: slow frames must not stretch spawn protection
   netSend({ t:'spawn' });
   S.dead = false;
   if (mode === 'dm' && !net.voteActive){ S.paused = false; fallbackMode = true; locked = true; canvas.style.cursor = 'none'; }
@@ -3555,6 +3727,7 @@ function respawnDMPlayer(silent=false){
 function dmDeath(){
   if (S.dead) return;
   S.dead = true; S.deaths++; mouseL = mouseR = false;
+  $('paused').classList.add('hidden');   // killed while AFK in the pause menu — spectate takes over
   const deathPos = player.pos.clone(); net.deathPos = deathPos.clone();
   net.spectateId = net.lastHitBy || 0; net.spectateT = 2.55;
   netSend({ t:'kill', by:net.lastHitBy });
@@ -3593,9 +3766,12 @@ function matchStatsHtml(label='RUN COMPLETE'){
     `EARNED <b>${S.cashEarned} CR</b> &nbsp;//&nbsp; <b>${S.xpEarned} XP</b> &nbsp;//&nbsp; TIME <b>${mins.toFixed(1)} MIN</b>`;
 }
 function damagePlayer(dmg, fromPos){
-  if (S.dead || S.paused) return;
+  if (S.dead) return;
+  // A paused runner is still standing in the arena — solo freeze-time is yours alone, but on LAN
+  // the world (and everyone aiming at you) never stops. No vanishing into the pause menu.
+  if (S.paused && mode !== 'dm') return;
   if (S.sandbox) return;            // sandbox hosts can get chewed on, never hurt
-  if (mode === 'dm' && player.invuln > 0) return;
+  if (mode === 'dm' && performance.now() < (player.invulnUntil || 0)) return;
   player.hp -= dmg;
   player.lastDamage = performance.now();
   player.shake = Math.min(player.shake + 0.06, 0.14);
@@ -3870,8 +4046,9 @@ function voteLocalEnd(endsAt=0, now=0){
   return Date.now() + rem;
 }
 const MODE_CARD = {
-  FFA:  { title:'FREE FOR ALL', sub:'every runner for themselves — first to 30 kills takes it', cls:'vmFFA' },
-  TEAM: { title:'RED v BLUE',   sub:'teammates can\'t hurt you — first runner to 30 kills still wins', cls:'vmTEAM' },
+  FFA:   { title:'FREE FOR ALL', sub:'every runner for themselves — first to 30 kills takes it', cls:'vmFFA' },
+  TEAM:  { title:'RED v BLUE',   sub:'teammates can\'t hurt you — first runner to 30 kills still wins', cls:'vmTEAM' },
+  KNIFE: { title:'KNIFE FIGHT',  sub:'blades only — first to 15 stabs, and the 15th is GOLDEN. shanks never demote', cls:'vmKNIFE' },
 };
 function enterVoteMode(paused=true){
   net.voteActive = true;
@@ -3896,12 +4073,12 @@ function showMapVote(winner, choices, counts={}, endsLocal=0){
 }
 function showModeVote(mapName, counts={}, endsLocal=0){
   enterVoteMode();
-  net.votePhase = 'mode'; net.pendingMap = mapName || net.pendingMap; net.voteChoices = ['FFA','TEAM']; net.voteCounts = counts;
+  net.votePhase = 'mode'; net.pendingMap = mapName || net.pendingMap; net.voteChoices = ['FFA','TEAM','KNIFE']; net.voteCounts = counts;
   if (endsLocal) net.voteEndsLocal = endsLocal;
   $('voteWinner').textContent = `${(mapName || 'MAP').toUpperCase()} LOCKED — VOTE THE MODE`;
   renderRoundStats();
   const box = $('voteChoices'); box.innerHTML = '';
-  ['FFA','TEAM'].forEach((m,i) => {
+  ['FFA','TEAM','KNIFE'].forEach((m,i) => {
     const c = MODE_CARD[m];
     const btn = document.createElement('button'); btn.className = 'voteBtn voteModeBtn ' + c.cls; btn.dataset.map = m;
     btn.innerHTML = `<b>${i+1}. ${c.title}</b><span>${c.sub}</span><span class="voteCount">${counts[m] || 0} VOTES</span>`;
@@ -3919,7 +4096,7 @@ function updateVoteCounts(){
   const secs = Math.max(0, Math.ceil(((net.voteEndsLocal || 0) - Date.now()) / 1000));
   if (secs !== net.__voteSecs){
     net.__voteSecs = secs;
-    $('voteTimer').textContent = net.votePhase === 'mode' ? `MODE VOTE — MOUSE OR KEYS 1–2 · ${secs}s` : `MAP VOTE — MOUSE OR KEYS 1–3 · ${secs}s`;
+    $('voteTimer').textContent = net.votePhase === 'mode' ? `MODE VOTE — MOUSE OR KEYS 1–3 · ${secs}s` : `MAP VOTE — MOUSE OR KEYS 1–3 · ${secs}s`;
   }
 }
 function hideMapVote(){
@@ -3948,7 +4125,9 @@ function updateAmmoHUD(){
     $('ammoMag').textContent = '—';
     $('ammoMag').classList.remove('lowammo');
     $('ammoReserve').textContent = ' ∞';
-    const av = $('arsenalVal'); if (av) av.textContent = mode === 'dm' ? `${Math.min((net.myScore || 0) + 1, 30)} / 30` : `${weaponIndex+1} / ${WEAPONS.length}`;
+    const av = $('arsenalVal'); if (av) av.textContent = mode === 'dm'
+      ? (isKnifeFight() ? `STABS ${net.myScore || 0} / ${net.limit || 15}` : `TIER ${Math.min((net.myScore || 0) + 1, 30)} / 30`)
+      : `${weaponIndex+1} / ${WEAPONS.length}`;
     $('nadeVal').textContent = '×' + player.grenades;
     $('reloadHint').textContent = knifeGolden() ? 'FINAL TIER — SHANK TO WIN' : '';
     return;
@@ -3959,10 +4138,11 @@ function updateAmmoHUD(){
   $('ammoMag').classList.toggle('lowammo', w.ammo <= w.mag * 0.25);
   $('ammoReserve').textContent = ' / ' + w.res;
   const av = $('arsenalVal');
-  if (av) av.textContent = mode === 'dm' ? `TIER ${Math.min((net.myScore || 0) + 1, 30)} / 30` : `${weaponIndex+1} / ${WEAPONS.length}`;
+  if (av) av.textContent = mode === 'dm'
+    ? (isKnifeFight() ? `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 15)} / ${net.limit || 15}` : `TIER ${Math.min((net.myScore || 0) + 1, 30)} / 30`)
+    : `${weaponIndex+1} / ${WEAPONS.length}`;
   $('nadeVal').textContent = '×' + player.grenades;
-  const fin = (S.started && !S.dead && !S.paused && enemies && findFinisherTarget()) ? 'PRESS F TO EXECUTE' : '';
-  $('reloadHint').textContent = w.reloading > 0 ? `RELOADING ${Math.round(reloadProgress(w)*100)}%` : (w.ammo === 0 ? 'PRESS R TO RELOAD' : fin);
+  $('reloadHint').textContent = w.reloading > 0 ? `RELOADING ${Math.round(reloadProgress(w)*100)}%` : (w.ammo === 0 ? 'PRESS R TO RELOAD' : '');
 }
 function updateHealthHUD(){
   const frac = clamp(player.hp / player.maxHp, 0, 1);
@@ -4057,7 +4237,7 @@ function updatePlayer(dt, now){
   const moving = ix !== 0 || iz !== 0;
   player.crouched = bindDown('crouch') && player.grounded && player.slideT <= 0;
   const sprinting = bindDown('sprint') && moving && !player.crouched && adsT < 0.3;   // sprint in ANY direction, not just forward — sideways strafe-sprints carry speed too; crouching cancels it
-  const adsHeld = (mouseR || bindDown('ads')) && !knifeMode;   // RMB or the rebindable CTRL aim key
+  const adsHeld = mouseR && !knifeMode;   // hold right-mouse to aim down the sights — the only way
   const ads = adsHeld && CW().reloading <= 0;
   adsT = clamp(adsT + (ads ? dt*8 : -dt*8), 0, 1);
 
@@ -4091,7 +4271,7 @@ function updatePlayer(dt, now){
   // gravity & jump — buffered input + coyote time so jumps always register even mid-sprint / mid-crowd
   player.vel.y -= 21 * dt;
   player.jumpBufferT = Math.max(0, (player.jumpBufferT || 0) - dt);
-  if (player.grounded) player.coyoteT = 0.12;
+  if (player.grounded){ player.coyoteT = 0.12; player.airJumpsUsed = 0; }
   else player.coyoteT = Math.max(0, (player.coyoteT || 0) - dt);
   if (player.jumpBufferT > 0 && player.coyoteT > 0){
     player.jumpBufferT = 0;
@@ -4099,6 +4279,14 @@ function updatePlayer(dt, now){
     player.vel.y = 7.6;
     player.grounded = false;
     player.slideT = 0;
+    SFX.jump();
+  } else if (player.jumpBufferT > 0 && !player.grounded && player.coyoteT <= 0 && knifeGolden() && (player.airJumpsUsed || 0) < 1){
+    // golden shank perk: one more kick of air under your feet, once per leap
+    player.jumpBufferT = 0;
+    player.airJumpsUsed = 1;
+    player.vel.y = 7.2;
+    player.slideT = 0;
+    spawnRing(player.pos.clone(), 0xffd040);
     SFX.jump();
   }
 
@@ -4291,7 +4479,10 @@ function updateEffects(dt){
     dmgVignette = Math.max(0, dmgVignette - dt * 1.4);
   }
   const lowHp = player.hp < 35 ? (0.35 + Math.sin(performance.now()*0.008)*0.12) : 0;
-  $('damageVignette').style.opacity = Math.max(dmgVignette, lowHp);
+  player.burnFxT = Math.max(0, (player.burnFxT || 0) - dt);
+  const smoulder = player.burnFxT > 0 ? (0.30 + Math.sin(performance.now()*0.011)*0.09) : 0;
+  $('damageVignette').classList.toggle('smouldering', player.burnFxT > 0);
+  $('damageVignette').style.opacity = Math.max(dmgVignette, lowHp, smoulder);
 
   // explosion light decay
   expLight.intensity = Math.max(0, expLight.intensity - dt * 480);
@@ -4328,7 +4519,7 @@ function loop(){
   requestAnimationFrame(loop);
   const dt = Math.min(clock.getDelta(), 0.05);
   const now = performance.now();
-  gunRoot.visible = S.started && !(CW().scoped && adsT > 0.7);
+  gunRoot.visible = S.started && !S.dead && !(CW().scoped && adsT > 0.7);   // no floating viewmodel on the death cam
 
   if (S.started && !S.paused && !S.dead){
     updatePlayer(dt, now);
@@ -4351,6 +4542,7 @@ function loop(){
   }
   if (S.started && S.dead && mode === 'dm') updateSpectate(dt);
   updateNet(dt);
+  updateTeamDots();
   updateWorldAtmosphere(dt, now);
   updateEffects(dt);
   if (frameCount % 2 === 0) drawMinimap();
@@ -4362,7 +4554,7 @@ updateAmmoHUD();
 updateHealthHUD();
 loop();
 window.__gameReady = true;
-window.__dbg = { player, S, camera, enemies, net, keys, spawnEnemy, fireWeapon, grenadesLive, explodeAt, throwGrenade, WEAPONS, RARITIES, waveComposition, tryReload, rotateWeaponForKill, setMap, spawnPlayerPieces, dmDeath, respawnDMPlayer, PROGRESS, SKINS, grantProgress, updateProgressUI, skinDef, trackChallenge, findFinisherTarget, tryFinisher, destructibles, weatherSystems, worldAnim, eventLights, damageDestructible, destroyDestructible, cleanupPlayerAvatar, savePlayerName, addRemotePlayer, tryKnifeSwing, knifeStrike, isBackstab, KNIFE_DEFS, knifeModels,
+window.__dbg = { player, S, camera, enemies, net, keys, spawnEnemy, fireWeapon, grenadesLive, explodeAt, throwGrenade, WEAPONS, RARITIES, waveComposition, tryReload, rotateWeaponForKill, setMap, spawnPlayerPieces, dmDeath, respawnDMPlayer, PROGRESS, SKINS, grantProgress, updateProgressUI, skinDef, trackChallenge, destructibles, weatherSystems, worldAnim, eventLights, damageDestructible, destroyDestructible, cleanupPlayerAvatar, savePlayerName, addRemotePlayer, tryKnifeSwing, knifeStrike, isBackstab, KNIFE_DEFS, knifeModels,
   MAP_NAMES, SETTINGS, DEFAULT_BINDS, BIND_LABELS, bindCode, bindDown, assignBind, friendlyKeyName, renderBindList, GUN_LADDER, FINAL_TIER_SCORE, equipLadderTier, syncLadderWeapon, equipGunSlot, equipKnifeSlot, tryKnifeSwing, knifeStrike, updateWeaponVisibility, knifeModels, solids, castWorld, hasLOS, resolvePenetration, updateEnemies, updatePlayer, isTeammate, setRemoteTeam, TEAM_COLORS, TEAM_NAMES, updateTeamHUD,
   get knifeSwingCt(){ return knifeSwingId; },
   get inputLocked(){ return locked; },
@@ -4371,6 +4563,11 @@ window.__dbg = { player, S, camera, enemies, net, keys, spawnEnemy, fireWeapon, 
   resetKnifeTimers(){ knifeSwingT = knifeSwingCd = 0; },
   getAdsT(){ return adsT; },
   get playerShotsCt(){ return playerShots.length; },
+  get ladderRound(){ return LADDER_ROUND.slice(); },
+  get gunRootVisible(){ return gunRoot.visible; },
+  shuffleLadder, get bsDot(){ return BS_DOT; },
+  applyBurn,
+  reloadDuration, applyAvatarSkin, spawnPlayerProjectile,
   get particlesCt(){ return particles.length; },
   get hazardsCt(){ return hazards.length; },
   SB, deploySandbox, openSandboxPanel, damagePlayer, damageEnemy,
