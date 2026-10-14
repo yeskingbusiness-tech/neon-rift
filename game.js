@@ -3495,8 +3495,9 @@ function connectNet(){
   net.ws = ws;
   ws.onopen = () => { net.on = true; net.dmMode = 'ffa'; net.myTeam = 0; net.teamTotals = { red:0, blue:0 }; netSend({ t:'hello', name:netName(), skin:PROGRESS.skin }); addKillFeed(null, 'CONNECTED — VOTE MAP & MODE'); };
   ws.onerror = () => addKillFeed(null, 'LAN CONNECTION FAILED');
-  ws.onclose = () => {
-    if (net.on) addKillFeed(null, 'DISCONNECTED FROM SERVER');
+  ws.onclose = ev => {
+    if (net.on) addKillFeed(null, ev && ev.code === 4003 ? 'REMOVED BY ANTI-CHEAT' : 'DISCONNECTED FROM SERVER');
+    if (ev && ev.code === 4003){ S.dead = false; showBanner('KICKED — ANTI-CHEAT'); }
     net.on = false;
     net.dmMode = 'ffa'; net.myTeam = 0; net.teamTotals = { red:0, blue:0 };
     updateTeamHUD();
@@ -3606,6 +3607,12 @@ function connectNet(){
         showBanner((m.winnerName || 'PLAYER') + ' WINS');
         showMapVote(m.winnerName || 'ROUND COMPLETE', m.choices || [], m.counts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0));
         updateScoreboardHUD(); updateTopHUD();
+        break;
+      case 'kick':
+        addKillFeed(null, `<b style="color:#ff5b5b">KICKED</b> — ${m.reason || 'ANTI-CHEAT'}`);
+        break;
+      case 'ac':     // lobby-wide heads-up when someone gets booted
+        addKillFeed(null, `<b style="color:#ff5b5b">ANTI-CHEAT</b> BOOTED ${m.name || 'A PLAYER'} — <span style="opacity:.75">${m.reason || ''}</span>`);
         break;
       case 'modeVote':   // map settled — the second ballot picks the rules
         net.pendingMap = m.map || net.pendingMap;
@@ -4554,6 +4561,8 @@ updateAmmoHUD();
 updateHealthHUD();
 loop();
 window.__gameReady = true;
+// the debug handle ships only in NR_DEBUG builds — the release artifact drops this whole branch
+if (window.__ALLOW_DBG__)
 window.__dbg = { player, S, camera, enemies, net, keys, spawnEnemy, fireWeapon, grenadesLive, explodeAt, throwGrenade, WEAPONS, RARITIES, waveComposition, tryReload, rotateWeaponForKill, setMap, spawnPlayerPieces, dmDeath, respawnDMPlayer, PROGRESS, SKINS, grantProgress, updateProgressUI, skinDef, trackChallenge, destructibles, weatherSystems, worldAnim, eventLights, damageDestructible, destroyDestructible, cleanupPlayerAvatar, savePlayerName, addRemotePlayer, tryKnifeSwing, knifeStrike, isBackstab, KNIFE_DEFS, knifeModels,
   MAP_NAMES, SETTINGS, DEFAULT_BINDS, BIND_LABELS, bindCode, bindDown, assignBind, friendlyKeyName, renderBindList, GUN_LADDER, FINAL_TIER_SCORE, equipLadderTier, syncLadderWeapon, equipGunSlot, equipKnifeSlot, tryKnifeSwing, knifeStrike, updateWeaponVisibility, knifeModels, solids, castWorld, hasLOS, resolvePenetration, updateEnemies, updatePlayer, isTeammate, setRemoteTeam, TEAM_COLORS, TEAM_NAMES, updateTeamHUD,
   get knifeSwingCt(){ return knifeSwingId; },

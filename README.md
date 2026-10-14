@@ -38,6 +38,19 @@ A 15-wave solo survival + LAN deathmatch shooter that runs in your browser.
 - Player bodies break apart into multiple physics pieces on death
 - Sniper scope, grenades, slide movement, kill streak banners, gibs, damage-direction indicator, particles and ambient audio
 
+## Anti-cheat: one strike, you're out
+
+The LAN protocol is client-reported (victims report their deaths, shooters report their hits), so the server polices what it can actually see — and it kicks **on the first unambiguous violation**, no warning ladder, no bans:
+
+- **Message flood** — over 240 messages/second from one socket (max ~60/s legit)
+- **Trigger-bot cadence** — over 24 hit-reports/second (fastest legit autofire ≈ 15/s)
+- **Kill/death spam** — over 7 kills *or* deaths in a 2.5s window from one player. Checking the reporter's death-ring too means a framer can't burn someone else's ring from a fake kill report without hanging themselves first
+- **Teleporting** — any position packet that moves you more than 15m from the last one (the first packet after a legit respawn travels free, however late it lands; spawn reports more often than every 0.8s are their own kick)
+- **Spawn spam** — more than one spawn report per 0.8s (the only way to smuggle a teleport, so it's capped)
+- **Garbage/oversized packets** — malformed position arrays or anything over 4KB
+
+The victim is told `ANTI-CHEAT — <reason>` and the rest of the lobby sees **"ANTI-CHEAT BOOTED &lt;name&gt;"** in the killfeed. Kicked players can just reconnect — the rules only care about live behavior, not grudges. Thresholds sit far above human play, and every one is env-tunable (`AC_MSG_MAX`, `AC_HIT_MAX`, `AC_KILL_MAX`, `AC_TPORT`) so the test suite can exercise them on a hot server.
+
 ## Requirements
 - **Node.js** (any recent version) — free from https://nodejs.org
 - A modern browser (Chrome, Edge, or Firefox recommended)

@@ -7,6 +7,33 @@ const WebSocket = require('ws');
 
 const PORT = process.env.PORT || 8000;
 const ROOT = __dirname;
+
+/* ================= ANTI-CHEAT =================
+   The protocol is client-reported (victims report deaths, shooters report hits),
+   so the server polices what it can see: message floods, inhuman fire/kill
+   cadence, teleporting position streams, and garbage payloads. One unambiguous
+   violation and the player is OUT of the match, instantly (socket closes, lobby
+   gets told who was booted and why). Thresholds are set far beyond human play so
+   legit rounds never trip them; env overrides let the test suite run hot:
+   AC_MSG_MAX / AC_HIT_MAX / AC_KILL_MAX / AC_TPORT                                    */
+const ENVN = (k, d) => { const v = Number(process.env[k]); return Number.isFinite(v) && v > 0 ? v : d; };
+const AC = {
+  MSG_WIN:  1000, MSG_MAX:  ENVN('AC_MSG_MAX', 240),   // even slide-cancelling esports gods stay under 240 msgs/s
+  HIT_WIN:  1000, HIT_MAX:  ENVN('AC_HIT_MAX', 24),    // fastest legit autos ~ 15 reports/s
+  KILL_WIN: 2500, KILL_MAX: ENVN('AC_KILL_MAX', 7),    // a spray + a splash can chain 4-5 legit; 7+ is a script
+  TPORT:                ENVN('AC_TPORT', 15),          // metres between consecutive state packets
+  MAX_IP_CONNS: 8,                                     // connection-flood bouncer (not a ban — instant kick only)
+};
+const ipConns = new Map();         // ip -> live socket count (LAN join-flood guard)
+function acOver(rate, events, now, win){
+  while (events.length && now - events[0] > win) events.shift();
+  return events.length > rate;
+}
+function acKick(p, reason){
+  console.log(new Date().toISOString().slice(11,19), `[anticheat] BOOTED ${p.name} (${p.ip}) — ${reason}`);
+  try { send(p.ws, { t:'kick', reason:'ANTI-CHEAT — ' + reason }); p.ws.close(4003); } catch {}
+  broadcast({ t:'ac', name:p.name, reason });
+}
 const MIME = {
   '.html':'text/html', '.js':'text/javascript', '.css':'text/css',
   '.png':'image/png', '.jpg':'image/jpeg', '.ico':'image/x-icon', '.json':'application/json',
@@ -15,8 +42,14 @@ const MIME = {
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent((req.url || '/').split('?')[0]);
   if (p === '/') p = '/index.html';
-  const file = path.normalize(path.join(ROOT, p));
+  let file = path.normalize(path.join(ROOT, p));
+  // release pipeline: unless you `NR_DEBUG=1 node server.js`, game.js is served obfuscated
+  // (game.obf.js, built by `npm run build`) and the debug handle is switched off in the payload.
+  const DEBUG = process.env.NR_DEBUG === '1';
+  const obfFile = path.join(ROOT, 'game.obf.js');
+  if (file === path.join(ROOT, 'game.js') && !DEBUG && fs.existsSync(obfFile)) file = obfFile;
   if (!file.startsWith(ROOT)){ res.writeHead(403); return res.end(); }
+  res._gameRaw = file === path.join(ROOT, 'game.js');
   fs.readFile(file, (err, data) => {
     if (err){ res.writeHead(404); return res.end('not found'); }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control':'no-store' });
@@ -26,6 +59,10 @@ const server = http.createServer((req, res) => {
     if (path.extname(file) === '.html'){
       const html = data.toString('utf8').replace(/__BUILD__/g, String(fs.statSync(path.join(ROOT, 'game.js')).mtimeMs | 0));
       return res.end(html);
+    }
+    if (res._gameRaw){
+      const js = data.toString('utf8').replace(/window\.__ALLOW_DBG__/g, DEBUG ? 'true' : 'false');
+      return res.end(js);
     }
     res.end(data);
   });
@@ -227,9 +264,16 @@ function welcomeState(id){
   };
 }
 
-wss.on('connection', ws => {
+wss.on('connection', (ws, req) => {
+  const ip = (req.socket.remoteAddress || '').replace(/^::ffff:/, '') || 'unknown';
+  if ((ipConns.get(ip) || 0) >= AC.MAX_IP_CONNS){
+    try { send(ws, { t:'kick', reason:'TOO MANY CONNECTIONS FROM THIS ADDRESS' }); ws.close(4003); } catch {}
+    return;
+  }
+  ipConns.set(ip, (ipConns.get(ip) || 0) + 1);
+
   const id = nextId++;
-  const p = { ws, name:'RIFT-' + id, skin:'rift', state:null, score:0, deaths:0, vote:null, team:0, invulnUntil:Date.now()+1500, lastHitFrom:0, lastHitKnife:false, lastHitAt:0, assists:0, dmgLog:new Map() };
+  const p = { ws, ip, name:'RIFT-' + id, skin:'rift', state:null, score:0, deaths:0, vote:null, team:0, invulnUntil:Date.now()+1500, lastHitFrom:0, lastHitKnife:false, lastHitAt:0, assists:0, dmgLog:new Map(), msgEvents:[], hitEvents:[], killEvents:[], spawnEvents:[], lastState:null, lastSpawnAt:0, spawnGrace:false };
   players.set(id, p);
   console.log(new Date().toISOString().slice(11,19), `[+] player ${id} connected (${players.size} online)`);
   ensureInitialVote();
@@ -237,6 +281,10 @@ wss.on('connection', ws => {
   send(ws, welcomeState(id));
 
   ws.on('message', data => {
+    const nowM = Date.now();
+    if (data.length > 4096){ acKick(p, 'oversized packet'); return; }
+    p.msgEvents.push(nowM);
+    if (acOver(AC.MSG_MAX, p.msgEvents, nowM, AC.MSG_WIN)){ acKick(p, `message flood (${p.msgEvents.length} msgs in ${AC.MSG_WIN}ms)`); return; }
     let m; try { m = JSON.parse(data); } catch { return; }
     switch (m.t){
       case 'hello': {
@@ -267,14 +315,31 @@ wss.on('connection', ws => {
         p.skin = String(m.skin || 'rift').replace(/[^a-z0-9_-]/gi, '').slice(0, 24) || 'rift';
         broadcast({ t:'skin', id, skin:p.skin }, id);
         break;
-      case 'state':
+      case 'state': {
+        const s = m.s;
+        if (!Array.isArray(s) || s.length < 3 || !s.slice(0, 3).every(Number.isFinite)){ acKick(p, 'garbage position packet'); break; }
+        const prev = p.lastState;
+        p.lastState = [s[0], s[1], s[2], nowM];
+        const dx = prev ? s[0] - prev[0] : 0, dy = prev ? s[1] - prev[1] : 0, dz = prev ? s[2] - prev[2] : 0;
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const jumped = prev && d > AC.TPORT;
+        if (p.spawnGrace){
+          if (jumped) p.spawnGrace = false;    // that jump was the respawn itself — exactly the one free pass
+          // small deltas while a stale in-flight stream drains keep the grace alive
+        } else if (jumped){
+          acKick(p, `teleport ${d.toFixed(1)}m in ${nowM - prev[3]}ms`); break;
+        }
         p.state = m.s;
         broadcast({ t:'state', id, s:m.s }, id);
         break;
+      }
       case 'shoot':
         broadcast({ t:'shoot', id, o:m.o, p:m.p, w:m.w }, id);
         break;
       case 'hit': {
+        // the cadence gate polices every phase — a legit client only fires during a live round anyway
+        p.hitEvents.push(nowM);
+        if (acOver(AC.HIT_MAX, p.hitEvents, nowM, AC.HIT_WIN)){ acKick(p, `hit-report flood (${p.hitEvents.length}/s — trigger-bot cadence)`); break; }
         if (!roundActive) break;
         const tgt = players.get(m.target);
         if (tgt && gameMode === 'team' && p.team && tgt.team === p.team) break;   // team mode: no friendly fire (or friendly shanks)
@@ -297,6 +362,13 @@ wss.on('connection', ws => {
       case 'kill': {
         const killerId = Number(m.by) || 0;
         const killer = players.get(killerId);
+        // cadence gates: inhuman kill chains, fake-death spam, and would-be framers (the reporter is the victim)
+        p.killEvents.push(nowM);
+        if (acOver(AC.KILL_MAX, p.killEvents, nowM, AC.KILL_WIN)){ acKick(p, `kill spam: ${p.killEvents.length} deaths in ${AC.KILL_WIN}ms`); break; }
+        if (killer && killerId !== id){
+          killer.killEvents.push(nowM);
+          if (acOver(AC.KILL_MAX, killer.killEvents, nowM, AC.KILL_WIN)){ acKick(killer, `kill spam: ${killer.killEvents.length} kills in ${AC.KILL_WIN}ms`); break; }
+        }
         let knifeKill = false, backstab = false, demoted = false, assistId = 0;
         if (roundActive){
           p.deaths = (p.deaths || 0) + 1;
@@ -329,7 +401,13 @@ wss.on('connection', ws => {
         break;
       }
       case 'spawn':
+        // grace grants exactly one free jump (see the state gate); cadence still capped because
+        // a welcome-spawn and a round-start respawn can legitimately land a second apart.
+        p.spawnEvents.push(nowM);
+        if (acOver(3, p.spawnEvents, nowM, 2000)){ acKick(p, `spawn spam (${p.spawnEvents.length} reports in 2s)`); break; }
         p.invulnUntil = Date.now() + 1500;
+        p.lastSpawnAt = Date.now();
+        p.spawnGrace = true;
         break;
       case 'vote': {
         const choice = String(m.map || '');
@@ -347,6 +425,7 @@ wss.on('connection', ws => {
 
   ws.on('close', () => {
     players.delete(id);
+    if (ipConns.get(p.ip)) ipConns.set(p.ip, Math.max(0, (ipConns.get(p.ip) || 1) - 1));
     broadcast({ t:'leave', id });
     broadcastScore();
     if (players.size === 0) resetEmptyLobby();
