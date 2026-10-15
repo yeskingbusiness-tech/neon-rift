@@ -10,7 +10,7 @@ const ROOT = __dirname;
 
 /* ================= ANTI-CHEAT =================
    The protocol is client-reported (victims report deaths, shooters report hits),
-   so the server polices what it can see: message floods, inhuman fire/kill
+   so the server polices what it can see: message floods, inhuman hit/kill
    cadence, teleporting position streams, and garbage payloads. One unambiguous
    violation and the player is OUT of the match, instantly (socket closes, lobby
    gets told who was booted and why). Thresholds are set far beyond human play so
@@ -26,7 +26,7 @@ const AC = {
 };
 const ipConns = new Map();      // ip -> live connections on this box
 
-// layer 2+: speed audit, weapon-verified fire cadence, facing physics, integrity heartbeat,
+// layer 2+: speed audit, facing physics, integrity heartbeat,
 //           recidivist probation, and a coherence auditor that runs even if rate rings are dodged
 Object.assign(AC, {
   SPEED_WIN: 3000, SPEED_MAX: ENVN('AC_SPEED', 75),          // metres travelled in the window (≈25 m/s sustained — legit ~9-12 with slides)
@@ -34,13 +34,10 @@ Object.assign(AC, {
   BEAT_MS: 13000,                                            // gameplay reporter without a heartbeat this long → socket bot
   AUDIT_MS: ENVN('AC_AUDIT_MS', 5000),                       // coherence auditor cadence (test rigs may shrink)
   PROB_MS: ENVN('AC_PROB_MS', 300000),                       // a kick earns 5 minutes of probation — halved thresholds
-  RPM_SLACK: 1.5,                                            // slack over a weapon's real cyclic rate before it counts as scripted
   HAND_MS: ENVN('AC_HAND_MS', 4100),                         // heartbeat challenge rotation
   AFK_MS: process.env.AC_AFK_MS === '0' ? 0 : ENVN('AC_AFK_MS', 15000),   // in-round inactivity eviction (explicit 0 = off; test rigs shrink/disable)
 });
 const BEAT = require('./shared/beat.js');
-let RPM_TABLE = [];                                          // weapon index -> claimed cyclic rate (server-side facts)
-try { RPM_TABLE = JSON.parse(fs.readFileSync(path.join(ROOT, 'weapon-table.json'), 'utf8')).rpm || []; } catch {}
 const probationList = new Map();      // ip -> probation end timestamp (set by every kick)
 
 function acOver(rate, events, now, win){
@@ -353,12 +350,7 @@ wss.on('connection', (ws, req) => {
       case 'shoot': {
         p.gameTraffic = p.gameTraffic || nowM;
         p.lastActiveAt = nowM;   // pulling a trigger counts as playing
-        const wi = Number(m.w) | 0, rpm = RPM_TABLE[wi] | 0;
-        p.shotEvents.push(nowM);
-        if (rpm > 0){
-          const cap = Math.max(3, Math.ceil(rpm / 60 * AC.RPM_SLACK * (p.probation ? 0.5 : 1)));
-          if (acOver(cap, p.shotEvents, nowM, 1000)){ acKick(p, `fire rate impossible for weapon #${wi} (${rpm}rpm reality, ${p.shotEvents.length}/s claimed)`); break; }
-        } else if (acOver(pg(p, 30), p.shotEvents, nowM, 1000)){ acKick(p, 'shot spam'); break; }
+        p.shotEvents.push(nowM); // kept as timestamps only: feeds the forged-hit coherence auditor (cap-free)
         broadcast({ t:'shoot', id, o:m.o, p:m.p, w:m.w }, id);
         break;
       }
