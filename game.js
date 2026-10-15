@@ -9,7 +9,7 @@ const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
 const lerp = (a,b,t) => a + (b-a)*t;
 const rand = (a,b) => a + Math.random()*(b-a);
 
-const DEFAULT_SETTINGS = { sens:1.0, fov:75, volume:0.55, quality:1.5 };
+const DEFAULT_SETTINGS = { sens:1.0, fov:75, volume:0.55, quality:1.5, binds:null, bindVersion:0 };
 function loadSettings(){
   try { return { ...DEFAULT_SETTINGS, ...(JSON.parse(localStorage.getItem('neonRiftSettings') || '{}')) }; }
   catch(e){ return { ...DEFAULT_SETTINGS }; }
@@ -77,18 +77,17 @@ const SKINS = [
   { id:'cobalt',   name:'Cobalt Wraith',  desc:'Deep blue recon shell',                  color:0x2f5fd0, trim:0x1c3472, eye:0x66aaff, cost:350,   level:5 },
   { id:'ember',    name:'Ember Jackal',   desc:'Scorched orange raider plating',         color:0xc06128, trim:0x6a3012, eye:0xff9a3c, cost:450,   level:6 },
   { id:'jade',     name:'Jade Ronin',     desc:'Temple green duelist frame',             color:0x1f8a5a, trim:0x0f4530, eye:0x66ffc2, cost:600,   level:8 },
-  { id:'solar',    name:'Solar Warden',   desc:'Gold reactive plating',                  color:0xd4892a, trim:0x7a4a12, eye:0xffd040, cost:650,   level:9 },
+  { id:'solar',    name:'Solar Warden',   desc:'Radiant sun-gold flaring into burning orange', color:0xffd23c, trim:0xc2451a, eye:0xfff2a0, cost:650,   level:9 },
   { id:'void',     name:'Void Specter',   desc:'Violet phase frame',                     color:0x5a3aae, trim:0x2f1d66, eye:0xd040ff, cost:900,   level:11 },
   { id:'hornet',   name:'Circuit Hornet', desc:'Hazard yellow shock trooper',            color:0xb59a20, trim:0x5e4e0d, eye:0xffea66, cost:1050,  level:13 },
   { id:'toxic',    name:'Toxic Phantom',  desc:'Green biohazard glow suit',              color:0x2f9a52, trim:0x1a5530, eye:0x8fe08a, cost:1250,  level:15 },
   { id:'siren',    name:'Plasma Siren',   desc:'Magenta nightclub combat shell',         color:0xa82580, trim:0x601448, eye:0xff5ad0, cost:1450,  level:17 },
   { id:'arctic',   name:'Arctic Neon',    desc:'White/blue high contrast shell',         color:0x9ec2e0, trim:0x4a6480, eye:0x66eaff, cost:1700,  level:19 },
-  { id:'ghost',    name:'Ghost Protocol', desc:'Pale grey special-operations frame',     color:0x9aa6b8, trim:0x48525f, eye:0xeafcff, cost:1900,  level:21 },
   { id:'duskfall', name:'Duskfall Fade',  desc:'Gradient: burning orange into violet',   color:0xff7a3c, trim:0x7a2d8a, eye:0xffe0a0, cost:2100,  level:23 },
   { id:'royal',    name:'Royal Blackout', desc:'Prestige purple-gold operator',          color:0x6a3fb0, trim:0x321f5e, eye:0xff9a3c, cost:2400,  level:25 },
   { id:'nebula',   name:'Nebula Sheath',  desc:'Gradient: deep indigo into hot magenta', color:0x3a3ac8, trim:0xc03a7a, eye:0x8ad0ff, cost:2800,  level:27 },
-  { id:'aurum',    name:'Aurum Prime',    desc:'Gilded champion frame of the rift',      color:0xb08a2a, trim:0x5a430f, eye:0xffe680, cost:3200,  level:30 },
-  { id:'monarch',  name:'Void Monarch',   desc:'Pitch-white shell, void-black seams',    color:0xf2f4f8, trim:0x08080f, eye:0x0a0a10, cost:100000, level:50 },
+  { id:'aurum',    name:'Aurum Prime',    desc:'Liquid-gold champion with a metal shine',color:0xf2b32a, trim:0x8a5a12, eye:0xffffff, cost:25000, level:40 },
+  { id:'monarch',  name:'Void Monarch',   desc:'A pure-black void crowned in blazing neon white', color:0xf8ffff, trim:0x000000, eye:0xffffff, cost:50000, level:50 },
 ];
 function xpForLevel(level){ return level <= 1 ? 0 : Math.floor(120 * Math.pow(level-1, 1.65) + 80 * (level-1)); }
 function levelFromXp(xp){ let lvl = 1; while (lvl < 99 && xp >= xpForLevel(lvl+1)) lvl++; return lvl; }
@@ -929,6 +928,7 @@ const player = {
   bobT: 0, stepT: 0, shake: 0,
   fovKick: 0,
   grenades: 3, slideT: 0, slideCd: 0, crouch: 0, invuln:0, invulnUntil:0,
+  crouched: false, coyoteT: 0, jumpBufferT: 0, airJumpsUsed: 0, burnFxT: 0, _firedHeld: false,   // predeclared — object is sealed at load
 };
 const slideDir = new THREE.Vector3();
 
@@ -1221,8 +1221,10 @@ function updateProgressUI(){
   setText('skinLevelText', 'LEVEL ' + lvl + ' // TOTAL KILLS ' + (PROGRESS.totalKills || 0));
   const bar = $('profileXpBar'); if (bar) bar.style.width = (frac*100).toFixed(1) + '%';
   renderSkinGrid();
+  if (!$('skinsMenu').classList.contains('hidden')) updateSkinDetail();
   updateChallengeUI();
 }
+var skinInspectId = null;      // which skin the detail panel is showing (equipped skin by default)
 function renderSkinGrid(){
   const grid = $('skinGrid'); if (!grid) return;
   const lvl = progressLevel();
@@ -1230,26 +1232,111 @@ function renderSkinGrid(){
   for (const sk of SKINS){
     const unlocked = PROGRESS.unlocked.includes(sk.id);
     const levelOk = lvl >= sk.level;
-    const afford = PROGRESS.cash >= sk.cost;
     const selected = PROGRESS.skin === sk.id;
+    const viewing = (skinInspectId || PROGRESS.skin) === sk.id;
     const card = document.createElement('button');
-    card.className = 'skinCard' + (selected ? ' selected' : '');
-    const state = selected ? 'EQUIPPED' : unlocked ? 'SELECT' : !levelOk ? `REQUIRES LVL ${sk.level}` : `${sk.cost.toLocaleString()} CR`;
+    card.className = 'skinCard' + (selected ? ' selected' : '') + (viewing ? ' viewing' : '');
+    const state = selected ? 'EQUIPPED' : unlocked ? 'OWNED' : !levelOk ? `REQUIRES LVL ${sk.level}` : `${sk.cost.toLocaleString()} CR`;
     const c = '#' + sk.color.toString(16).padStart(6,'0'), t = '#' + (sk.trim ?? sk.color).toString(16).padStart(6,'0'), e = '#' + sk.eye.toString(16).padStart(6,'0');
     card.innerHTML = `<div class="skinSwatch" style="background:linear-gradient(135deg,${c},${t} 55%,${e}); box-shadow:0 0 22px ${e}55 inset;"></div><b>${sk.name}</b><small>${sk.desc}</small><div class="skinAction">${state}</div>`;
-    card.onclick = () => {
-      if (unlocked){ PROGRESS.skin = sk.id; saveProgress(); applyLocalSkinAppearance(); updateProgressUI(); return; }
-      if (!levelOk){ addKillFeed(null, `SKIN LOCKED — REACH <b>LEVEL ${sk.level}</b>`); return; }
-      if (!afford){ addKillFeed(null, `NOT ENOUGH CREDITS — NEED <b>${sk.cost} CR</b>`); return; }
-      PROGRESS.cash -= sk.cost;
-      PROGRESS.unlocked.push(sk.id);
-      PROGRESS.skin = sk.id;
-      saveProgress(); applyLocalSkinAppearance(); updateProgressUI(); SFX.pickup();
-    };
+    card.onclick = () => inspectSkin(sk.id);
     grid.appendChild(card);
   }
 }
-$('skinsBtn').addEventListener('click', () => { updateProgressUI(); $('skinsMenu').classList.remove('hidden'); });
+function inspectSkin(id){
+  skinInspectId = id;
+  renderSkinGrid();
+  updateSkinDetail();
+  dressSkinPreview(id);
+}
+function updateSkinDetail(){
+  const sk = skinDef(skinInspectId || PROGRESS.skin);
+  const lvl = progressLevel();
+  const unlocked = PROGRESS.unlocked.includes(sk.id);
+  const equipped = PROGRESS.skin === sk.id;
+  const setText = (id, text) => { const el = $(id); if (el) el.textContent = text; };
+  setText('skinDetailName', sk.name);
+  setText('skinDetailMeta', `LVL ${sk.level} · ${sk.cost ? sk.cost.toLocaleString() + ' CR' : 'STANDARD ISSUE'}`);
+  setText('skinDetailDesc', sk.desc);
+  const btn = $('skinActionBtn'); if (!btn) return;
+  btn.classList.remove('hidden');
+  btn.disabled = equipped;
+  btn.textContent = equipped ? 'EQUIPPED' : unlocked ? 'EQUIP' : lvl < sk.level ? `REQUIRES LVL ${sk.level}` : `BUY — ${sk.cost.toLocaleString()} CR`;
+  btn.onclick = () => {
+    if (PROGRESS.skin === sk.id) return;
+    if (!unlocked){
+      if (lvl < sk.level){ addKillFeed(null, `SKIN LOCKED — REACH <b>LEVEL ${sk.level}</b>`); return; }
+      if (PROGRESS.cash < sk.cost){ addKillFeed(null, `NOT ENOUGH CREDITS — NEED <b>${sk.cost} CR</b>`); return; }
+      PROGRESS.cash -= sk.cost;
+      PROGRESS.unlocked.push(sk.id);
+      SFX.pickup();
+    }
+    PROGRESS.skin = sk.id;
+    saveProgress(); applyLocalSkinAppearance(); updateProgressUI();
+  };
+}
+/* ----- live 3D character preview: the exact avatar build + gradient bake the game uses ----- */
+let skinPv = null;
+function ensureSkinPreview(){
+  if (skinPv) return;
+  const canvas = $('skinPreview'); if (!canvas) return;
+  const w = canvas.clientWidth || 288, h = canvas.clientHeight || 342;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(w, h, false);
+  const pvScene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(33, w / h, .1, 50);
+  cam.position.set(1.05, 1.42, 3.05); cam.lookAt(0, 1.0, 0);
+  pvScene.add(new THREE.HemisphereLight(0xbfe8ff, 0x1a1428, 1.15));
+  const key = new THREE.DirectionalLight(0xffffff, 1.7); key.position.set(2.2, 3.6, 2.4); pvScene.add(key);
+  const rim = new THREE.DirectionalLight(0xff9a3c, .65); rim.position.set(-2.6, 2.0, -2.4); pvScene.add(rim);
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(.82, .82, .02, 48), new THREE.MeshBasicMaterial({ color:0x2cf2ff, transparent:true, opacity:.15 }));
+  disc.position.y = -.01; pvScene.add(disc);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(.84, .92, 48), new THREE.MeshBasicMaterial({ color:0x2cf2ff, transparent:true, opacity:.55, side:THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI/2; ring.position.y = .012; pvScene.add(ring);
+  skinPv = { renderer, scene:pvScene, cam, avatar:null, raf:0 };
+}
+function dressSkinPreview(id){
+  if (!skinPv || $('skinsMenu').classList.contains('hidden')) return;
+  if (skinPv.avatar) skinPv.scene.remove(skinPv.avatar);
+  const g = buildEnemyMesh(avatarTypeForSkin(id));
+  cleanupPlayerAvatar(g);
+  applyAvatarSkin(g, id);
+  const weaponRoot = new THREE.Group();
+  weaponRoot.position.set(0.08, 1.24, -0.54);
+  weaponRoot.rotation.set(-0.12, 0.02, -0.02);
+  weaponRoot.add(buildThirdPersonWeaponModel(WEAPONS[0]));
+  g.add(weaponRoot);
+  skinPv.avatar = g;
+  skinPv.scene.add(g);
+  runSkinPreviewLoop();
+}
+function runSkinPreviewLoop(){
+  if (!skinPv) return;
+  cancelAnimationFrame(skinPv.raf);
+  const tick = () => {
+    if ($('skinsMenu').classList.contains('hidden')) return;   // stop spinning once the shop closes
+    if (skinPv.avatar) skinPv.avatar.rotation.y += 0.013;
+    if (skinPv.avatar){                                        // idle breathing so it reads as a living character
+      const parts = skinPv.avatar.userData.parts || {};
+      const b = Math.sin(performance.now() * 0.0016) * 0.012;
+      if (parts.torso) parts.torso.position.y = parts.torso.userData.basePos.y + b;
+      if (parts.head) parts.head.position.y = parts.head.userData.basePos.y + b * .7;
+      if (parts.eye) parts.eye.position.y = parts.eye.userData.basePos.y + b * .7;
+    }
+    skinPv.renderer.render(skinPv.scene, skinPv.cam);
+    skinPv.raf = requestAnimationFrame(tick);
+  };
+  skinPv.raf = requestAnimationFrame(tick);
+}
+$('skinsBtn').addEventListener('click', () => {
+  if (!skinInspectId) skinInspectId = PROGRESS.skin;
+  updateProgressUI();
+  updateSkinDetail();
+  $('skinsMenu').classList.remove('hidden');
+  ensureSkinPreview();
+  dressSkinPreview(skinInspectId);
+});
 $('skinsBackBtn').addEventListener('click', () => $('skinsMenu').classList.add('hidden'));
 updateProgressUI();
 
@@ -3253,7 +3340,8 @@ function updatePickups(dt, now){
 const net = { on:false, ws:null, id:0, players:new Map(), sendT:0, lastHitBy:0,
   scores:[], limit:30, round:1, currentMap:'FORGE', voteChoices:[], voteCounts:{}, voteEndsAt:0, voteEndsLocal:0, votePhase:'map', voteActive:false, roundOver:false, pendingMap:'',
   spectateId:0, spectateT:0, myScore:-1,
-  dmMode:'ffa', myTeam:0, teamTotals:{ red:0, blue:0 }, __voteSecs:-1 };
+  dmMode:'ffa', myTeam:0, teamTotals:{ red:0, blue:0 }, __voteSecs:-1,
+  beatSalt:0, myName:'', deathPos:null };   // predeclared — the object is sealed at load (no late Property additions allowed)
 const TEAM_COLORS = ['', '#ff5040', '#4aa0ff'];
 const TEAM_NAMES = ['', 'RED TEAM', 'BLUE TEAM'];
 function otherTeam(t){ return t === 1 ? 2 : 1; }
@@ -3339,12 +3427,44 @@ function setRemoteWeapon(rp, idx){
   rp.weaponRoot.traverse(o => { if (o.isMesh){ o.userData.netId = rp.id; } });
 }
 function avatarTypeForSkin(skinId){ const sk = skinDef(skinId); return { color:sk.color, eye:sk.eye, scale:1, name:'PLAYER' }; }
+/* every skin is a true vertical GRADIENT now — the banner swatch flows down the body:
+   the main color crowns the head, the trim takes the boots, and the torso blends between.
+   One shared vertex-colored material dresses every skin; the colors live in the geometry. */
+const gradSkinMat = new THREE.MeshStandardMaterial({ color:0xffffff, vertexColors:true, roughness:.5, metalness:.55 });
+/* the monarch burns: the crown runs HDR-hot in the vertex bake and the void end sinks to PURE black on a whisper of grey sheen */
+const gradMonarchMat = new THREE.MeshStandardMaterial({ color:0xffffff, vertexColors:true, roughness:.38, metalness:.35, emissive:0x0a0a10, emissiveIntensity:.6 });
+/* aurum is polished metal, not matte paint — gloss-forward but the gold stays readable under arena night lights */
+const gradAurumMat = new THREE.MeshStandardMaterial({ color:0xffffff, vertexColors:true, roughness:.3, metalness:.62, emissive:0x2f1e02, emissiveIntensity:.6 });
+const SKIN_GRAD_PARTS = ['head','neck','torso','shoulder','armL','armR','pelvis','handL','handR','legL','legR','footL','footR'];
+function bakeSkinGradient(group, skinId){
+  const sk = skinDef(skinId), parts = group.userData.parts || {};
+  const monarch = skinId === 'monarch';
+  const cA = new THREE.Color(sk.color), cB = new THREE.Color(sk.trim ?? sk.color), c = new THREE.Color();
+  if (monarch) cA.multiplyScalar(2.3);              // crown over-drives so far past white that arena lighting can't tint it
+  /* the monarch is a VOID first: blazing white lives only on the head and upper chest —
+     from the shoulder line down she is pure crushed black */
+  const yTop = monarch ? 1.80 : 1.72, yBot = monarch ? 1.55 : 0.30;
+  for (const key of SKIN_GRAD_PARTS){
+    const part = parts[key]; if (!part || !part.geometry) continue;
+    const geo = part.geometry, pos = geo.getAttribute('position'); if (!pos) continue;
+    let col = geo.getAttribute('color');
+    if (!col || col.count !== pos.count){ col = new THREE.BufferAttribute(new Float32Array(pos.count * 3), 3); geo.setAttribute('color', col); }
+    const py = part.position.y;
+    for (let i = 0; i < pos.count; i++){
+      const y = py + pos.getY(i);                                    // ~0.04 soles .. ~2.06 crown
+      const u = Math.min(1, Math.max(0, (yTop - y) / (yTop - yBot))); // 0 at the crown, 1 at the shins
+      const k = u * u * (3 - 2 * u);                                 // hermite ease — gradual, not banded
+      c.lerpColors(cA, cB, k);
+      col.setXYZ(i, c.r, c.g, c.b);
+    }
+    col.needsUpdate = true;
+    part.material = monarch ? gradMonarchMat : skinId === 'aurum' ? gradAurumMat : gradSkinMat;
+  }
+}
 function applyAvatarSkin(group, skinId){
   const sk = skinDef(skinId), parts = group.userData.parts || {};
-  const bodyMat = getEnemyMat(sk.color), trimMat = getEnemyMat(sk.trim ?? sk.color), eyeMat = getEyeMat(sk.eye);
-  for (const key of ['torso','head','armL','armR']) if (parts[key]) parts[key].material = bodyMat;
-  // seams/plating were locked to near-black gunmetal — that is why every skin read as dark
-  for (const key of ['pelvis','neck','shoulder','legL','legR','footL','footR','handL','handR']) if (parts[key]) parts[key].material = trimMat;
+  bakeSkinGradient(group, skinId);
+  const eyeMat = getEyeMat(sk.eye);
   for (const key of ['eye','chest','backGlow','clawL','clawR','gunGlow','muzzleOrb']) if (parts[key]) parts[key].material = eyeMat;
 }
 
@@ -3486,6 +3606,17 @@ function removeRemotePlayer(id){
   if (dot){ dot.remove(); teamDots.delete(id); }
 }
 function netSend(o){ if (net.ws && net.ws.readyState === 1) net.ws.send(JSON.stringify(o)); }
+const _stateBuf = new ArrayBuffer(20), _stateView = new DataView(_stateBuf);
+function netSendState(){
+  if (!net.ws || net.ws.readyState !== 1) return;
+  _stateView.setUint8(0, 0xA1);
+  _stateView.setFloat32(1, player.pos.x, true); _stateView.setFloat32(5, player.pos.y, true); _stateView.setFloat32(9, player.pos.z, true);
+  _stateView.setFloat32(13, player.yaw, true);
+  _stateView.setUint8(17, knifeMode ? (knifeGolden() ? 101 : 100) : weaponIndex);
+  _stateView.setUint8(18, player.slideT > 0 ? 1 : 0);
+  _stateView.setUint8(19, player.crouched ? 1 : 0);
+  net.ws.send(_stateBuf);
+}
 
 function connectNet(){
   if (net.on || (net.ws && net.ws.readyState === 0)) return;
@@ -3493,21 +3624,36 @@ function connectNet(){
   let ws;
   try { ws = new WebSocket(proto + location.host); } catch (e){ addKillFeed(null, 'MULTIPLAYER UNAVAILABLE'); return; }
   net.ws = ws;
+  ws.binaryType = 'arraybuffer';   // enemy position relays ride 23-byte frames, not JSON
   ws.onopen = () => { net.on = true; net.dmMode = 'ffa'; net.myTeam = 0; net.teamTotals = { red:0, blue:0 }; netSend({ t:'hello', name:netName(), skin:PROGRESS.skin }); addKillFeed(null, 'CONNECTED — VOTE MAP & MODE'); };
   ws.onerror = () => addKillFeed(null, 'LAN CONNECTION FAILED');
   ws.onclose = ev => {
-    if (net.on) addKillFeed(null, ev && ev.code === 4003 ? 'REMOVED BY ANTI-CHEAT' : 'DISCONNECTED FROM SERVER');
+    if (net.on) addKillFeed(null, ev && ev.code === 4003 ? 'REMOVED BY ANTI-CHEAT' : ev && ev.code === 4004 ? 'KICKED FOR INACTIVITY' : 'DISCONNECTED FROM SERVER');
     if (ev && ev.code === 4003){ S.dead = false; showBanner('KICKED — ANTI-CHEAT'); }
+    if (ev && ev.code === 4004){ S.dead = false; showBanner('KICKED — AFK'); }
     net.on = false;
     net.dmMode = 'ffa'; net.myTeam = 0; net.teamTotals = { red:0, blue:0 };
     updateTeamHUD();
     for (const id of [...net.players.keys()]) removeRemotePlayer(id);
   };
   ws.onmessage = ev => {
+    if (ev.data instanceof ArrayBuffer){
+      // binary state relay: [0xA2 | id:u16 | x,y,z,yaw:f32 | slot:u8 | slide:u8 | crouch:u8]
+      const v = new DataView(ev.data);
+      if (ev.data.byteLength === 23 && v.getUint8(0) === 0xA2 && v.getUint8(3) === 0xA1){
+        const id = v.getUint16(1, true);
+        // payload (0xA1 frame) occupies bytes 3..22 — floats sit one byte after their in-frame offset
+        const s = [v.getFloat32(4, true), v.getFloat32(8, true), v.getFloat32(12, true), v.getFloat32(16, true), v.getUint8(20), v.getUint8(21), v.getUint8(22)];
+        const rp = net.players.get(id) || addRemotePlayer(id, 'PLAYER');
+        applyNetState(rp, s);
+      }
+      return;
+    }
     let m; try { m = JSON.parse(ev.data); } catch (e){ return; }
     switch (m.t){
       case 'welcome':
         net.id = m.id;
+        net.beatSalt = (m.salt >>> 0) || 0;
         net.limit = m.limit || 30; net.round = m.round || 1; net.scores = m.scores || []; net.currentMap = m.map || 'FORGE';
         net.dmMode = m.mode || 'ffa'; net.teamTotals = m.totals || net.teamTotals;
         net.myScore = -1;
@@ -3608,11 +3754,16 @@ function connectNet(){
         showMapVote(m.winnerName || 'ROUND COMPLETE', m.choices || [], m.counts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0));
         updateScoreboardHUD(); updateTopHUD();
         break;
+      case 'hand':   // integrity heartbeat challenge — echo the salted nonce, swear by the live code
+        netSend({ t:'beat', e:BEAT.nonceEcho(m.n >>> 0, net.beatSalt || 0), d:BEAT.digestRuntime(BEAT_FNS) });
+        break;
       case 'kick':
         addKillFeed(null, `<b style="color:#ff5b5b">KICKED</b> — ${m.reason || 'ANTI-CHEAT'}`);
         break;
-      case 'ac':     // lobby-wide heads-up when someone gets booted
-        addKillFeed(null, `<b style="color:#ff5b5b">ANTI-CHEAT</b> BOOTED ${m.name || 'A PLAYER'} — <span style="opacity:.75">${m.reason || ''}</span>`);
+      case 'ac':     // lobby-wide heads-up when someone gets booted (idle evictions wear amber, cheaters wear red)
+        addKillFeed(null, m.kind === 'idle'
+          ? `<b style="color:#ffb84a">IDLE</b> ${m.name || 'A PLAYER'} KICKED FOR INACTIVITY`
+          : `<b style="color:#ff5b5b">ANTI-CHEAT</b> BOOTED ${m.name || 'A PLAYER'} — <span style="opacity:.75">${m.reason || ''}</span>`);
         break;
       case 'modeVote':   // map settled — the second ballot picks the rules
         net.pendingMap = m.map || net.pendingMap;
@@ -3661,8 +3812,7 @@ function updateNet(dt){
   net.sendT -= dt;
   if (net.sendT <= 0 && S.started && !S.dead){
     net.sendT = 0.05;
-    const slotCode = knifeMode ? (knifeGolden() ? 101 : 100) : weaponIndex;
-    netSend({ t:'state', s:[+player.pos.x.toFixed(2), +player.pos.y.toFixed(2), +player.pos.z.toFixed(2), +player.yaw.toFixed(3), slotCode, player.slideT > 0 ? 1 : 0, player.crouched ? 1 : 0] });
+    netSendState();
   }
   const k = 1 - Math.exp(-12 * dt);
   for (const rp of net.players.values()){
@@ -4561,6 +4711,25 @@ updateAmmoHUD();
 updateHealthHUD();
 loop();
 window.__gameReady = true;
+// integrity heartbeat: the live functions we swear by — references, so obfuscation-safe
+const BEAT_FNS = BEAT.FN_NAMES.map(n => ({
+  fireWeapon, tryReload, equipLadderTier, syncLadderWeapon, equipGunSlot, equipKnifeSlot,
+  tryKnifeSwing, knifeStrike, throwGrenade, explodeAt, damageEnemy, applyBurn,
+  respawnDMPlayer, dmDeath, updatePlayer, updateEnemies, setMap, shuffleLadder,
+  updateNet, applyNetState, connectNet, netSend, bindDown,
+  castWorld, hasLOS, resolvePenetration, updateAmmoHUD, updateWeaponVisibility,
+  currentKnifeDef, knifeGolden, knifeLocked, isKnifeFight, isTeammate, grantProgress,
+  updateScoreboardHUD, showBanner, addKillFeed, registerKill,
+}[n]));
+
+/* ---- tamper containment: console-reachable cargo is sealed/frozen at boot ---- */
+Object.freeze(WEAPONS);                                   // the arsenal list can't be rewritten (entries stay mutable internally — ammo lives there)
+Object.freeze(RARITIES); RARITIES.forEach(Object.freeze);
+Object.freeze(ENEMY_TYPES); Object.values(ENEMY_TYPES).forEach(Object.freeze);
+Object.freeze(KNIFE_DEFS); KNIFE_DEFS.forEach(Object.freeze);
+Object.freeze(SKINS); SKINS.forEach(Object.freeze);
+Object.freeze(GUN_LADDER);
+Object.seal(net); Object.seal(player); Object.seal(S); Object.seal(SETTINGS);   // delete/add/watchers stay out of reach
 // the debug handle ships only in NR_DEBUG builds — the release artifact drops this whole branch
 if (window.__ALLOW_DBG__)
 window.__dbg = { player, S, camera, enemies, net, keys, spawnEnemy, fireWeapon, grenadesLive, explodeAt, throwGrenade, WEAPONS, RARITIES, waveComposition, tryReload, rotateWeaponForKill, setMap, spawnPlayerPieces, dmDeath, respawnDMPlayer, PROGRESS, SKINS, grantProgress, updateProgressUI, skinDef, trackChallenge, destructibles, weatherSystems, worldAnim, eventLights, damageDestructible, destroyDestructible, cleanupPlayerAvatar, savePlayerName, addRemotePlayer, tryKnifeSwing, knifeStrike, isBackstab, KNIFE_DEFS, knifeModels,
@@ -4568,6 +4737,8 @@ window.__dbg = { player, S, camera, enemies, net, keys, spawnEnemy, fireWeapon, 
   get knifeSwingCt(){ return knifeSwingId; },
   get inputLocked(){ return locked; },
   get knifeMode(){ return knifeMode; },
+  get beatDigest(){ return BEAT.digestRuntime(BEAT_FNS) >>> 0; },
+  get beatPerFn(){ return BEAT_FNS.map(f => f.name + '=' + (typeof f === 'function' ? (BEAT.fnv1a(BEAT.normWs(f.toString())) >>> 0).toString(16) : '∅')); },
   getKnifeState(){ return { mode:knifeMode, golden:knifeGolden(), locked:knifeLocked(), def:currentKnifeDef() }; },
   resetKnifeTimers(){ knifeSwingT = knifeSwingCd = 0; },
   getAdsT(){ return adsT; },

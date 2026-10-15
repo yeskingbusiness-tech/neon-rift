@@ -1,1 +1,1 @@
-{"name":"neon-vanguard","version":"1.0.0","scripts":{"start":"node server.js","build":"node scripts/build-release.js"},"dependencies":{"ws":"^8.18.0"},"devDependencies":{"javascript-obfuscator":"^4.1.1"}}
+{"name":"neon-vanguard","version":"1.0.0","scripts":{"start":"node server.js","build":"node scripts/gen-weapon-table.js && node scripts/build-release.js"},"dependencies":{"ws":"^8.18.0"},"devDependencies":{"javascript-obfuscator":"^4.1.1"}}

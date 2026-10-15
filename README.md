@@ -4,7 +4,7 @@ A 15-wave solo survival + LAN deathmatch shooter that runs in your browser.
 
 ## Current features
 - Saved progression: XP, levels, credits, total kills, solo wave records, LAN wins
-- 17 character skins in the shop, with saved unlocks and LAN-visible selected skins. **Skin colors are true to the swatch** — torso, arms, head, and every dark seam (legs, shoulder plate, boots, hands) follows the skin's color story. No stealth-black shells remain (they were pay-to-invisible): replaced by gradient frames like **Duskfall Fade** and **Nebula Sheath**. And the crown jewel: **VOID MONARCH** — a pitch-white shell with void-black seams, **$100,000 and level 50 required**
+- 16 character skins in the shop, with saved unlocks and LAN-visible selected skins. **Every skin is a living gradient** — the main color crowns the head and slides into the trim at the boots, a continuous blend through the torso, just like the shop swatch. Tap any skin and a live 3D preview panel shows it on your character before you spend a credit; the buy button under the preview flips into the equip button once it's yours. No stealth-black shells remain (they were pay-to-invisible): replaced by gradient frames like **Duskfall Fade** and **Nebula Sheath**. **AURUM PRIME** is polished liquid gold — metal shine, pitch-white neon optics, **$25,000 and level 40**. And the crown jewel: **VOID MONARCH** — a pure-black void crowned in blazing neon white, **$50,000 and level 50 required**
 - 72-weapon arsenal: rifles, SMGs, LMGs, pistols, shotguns, DMRs, snipers, rail/exotic weapons — plus an ordnance rack: **flamethrower** (sets targets burning for 3s at 6 dmg/s — victims see their screen smoulder), **grenade launcher**, **multi-grenade launcher** (3 shells a pull), **napalm lobber** (leaves a burning pool), **arc mortar**, **rocket launcher**, and **plasma lances** — all flown as real projectiles with swept impact detection, so they detonate on the runner they hit, in every mode. **Everyone's ordnance flies visibly on every screen** — you see the enemy's rockets and napalm orbs arc in, not just a tracer line
 - Forge wave 2 wrought 15 more frames: a **black-powder musket** (155 dmg, one ball, 3.2s reload), a **longbow** whose arrows fly with true arc ballistics, a **snowball slinger** (lobbed splash that pops white), a **flaregun**, a **slug shotgun**, an 8-shell **duck-gun**, a **blunderbuss**, a lever rifle, a scatter pistol, a jackhammer auto-shotty, battle rifles, a heavy HMG, and big-splash energy casters — muskets and breach-loaders even carry their own reload clocks
 - Solo waves: **every kill instantly rolls you to a random loaded weapon** plus a rarity roll
@@ -24,7 +24,7 @@ A 15-wave solo survival + LAN deathmatch shooter that runs in your browser.
 - Cinematic enemy animation: full-body locomotion, idle breathing, hit reactions, melee slash windups, ranged recoil, brute slam telegraphs, visible hands/claws/feet/gun muzzles
 - Full match stats screens with accuracy, headshots, streaks, earnings, and LAN round scoreboard
 - Premium map atmosphere: animated reactor/data/crane set pieces, weather particles, pulsing lights, signage, and destructible barrels/crates/data props
-- LAN Deathmatch rounds: first player to 30 points wins — **and the 30th point must be a kill you land yourself.** Assists (most recent other damager, claim lapses 5s after your last hit, heals wipe the claim) climb you to 29 — then they stop paying. No assist can ever close out the match
+- LAN Deathmatch rounds: first player to 30 points wins — **and the 30th point must be a kill you land yourself.** In Team mode only, assists (most recent same-squad damager, claim lapses 5s after your last hit, heals wipe the claim) climb you to 29 — then they stop paying. In FFA and Knife Fight, points are personal: nobody co-signs a kill, and no assist can ever close out the match
 - **Callsign hygiene on LAN:** duplicate names get auto-numbered (`VIPER 2`), and slur/profanity filters scrub leetspeak attempts — scrubbed players become `RIFT-<id>` and get told why
 - **Pausing is not an escape hatch on LAN:** your runner stays exactly where you left them — fully visible and fully shootable. The pause menu is a menu, not a hideout
 - **Squadmate markers:** in RED v BLUE, teammates carry a glowing green dot above the head. It renders through walls so you always know where your squad is — but it won't shine *through a body*: if another player blocks your line, the dot goes dark
@@ -37,19 +37,6 @@ A 15-wave solo survival + LAN deathmatch shooter that runs in your browser.
 - **Redeploys come in loaded:** respawning instantly tops off your mag and cancels any reload — no pressing R the second you land
 - Player bodies break apart into multiple physics pieces on death
 - Sniper scope, grenades, slide movement, kill streak banners, gibs, damage-direction indicator, particles and ambient audio
-
-## Anti-cheat: one strike, you're out
-
-The LAN protocol is client-reported (victims report their deaths, shooters report their hits), so the server polices what it can actually see — and it kicks **on the first unambiguous violation**, no warning ladder, no bans:
-
-- **Message flood** — over 240 messages/second from one socket (max ~60/s legit)
-- **Trigger-bot cadence** — over 24 hit-reports/second (fastest legit autofire ≈ 15/s)
-- **Kill/death spam** — over 7 kills *or* deaths in a 2.5s window from one player. Checking the reporter's death-ring too means a framer can't burn someone else's ring from a fake kill report without hanging themselves first
-- **Teleporting** — any position packet that moves you more than 15m from the last one (the first packet after a legit respawn travels free, however late it lands; spawn reports more often than every 0.8s are their own kick)
-- **Spawn spam** — more than one spawn report per 0.8s (the only way to smuggle a teleport, so it's capped)
-- **Garbage/oversized packets** — malformed position arrays or anything over 4KB
-
-The victim is told `ANTI-CHEAT — <reason>` and the rest of the lobby sees **"ANTI-CHEAT BOOTED &lt;name&gt;"** in the killfeed. Kicked players can just reconnect — the rules only care about live behavior, not grudges. Thresholds sit far above human play, and every one is env-tunable (`AC_MSG_MAX`, `AC_HIT_MAX`, `AC_KILL_MAX`, `AC_TPORT`) so the test suite can exercise them on a hot server.
 
 ## Requirements
 - **Node.js** (any recent version) — free from https://nodejs.org
@@ -124,6 +111,10 @@ Every key in this table can be rebound in **Settings → KEYBINDS**.
 | `game.js` | Game engine (rendering, AI, weapons, netcode) |
 | `three.module.js` | Three.js 3D library (bundled, no internet needed) |
 | `server.js` | Static file server + LAN multiplayer relay |
+| `shared/beat.js` | Small client/server helper module shared with the test rigs |
+| `weapon-table.json` | Generated weapon data table (from `scripts/gen-weapon-table.js`) |
+| `scripts/` | Build pipeline: `npm run build` regenerates the weapon data and writes the obfuscated `game.obf.js` release payload |
+| `tests/` | Full battery: LAN protocol, modes, weapons, tricky client behaviors |
 | `package.json` | Dependency list (`ws` websocket library) |
 
 Everything runs locally — no internet connection required after `npm install`.

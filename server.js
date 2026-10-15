@@ -24,15 +24,42 @@ const AC = {
   TPORT:                ENVN('AC_TPORT', 15),          // metres between consecutive state packets
   MAX_IP_CONNS: 8,                                     // connection-flood bouncer (not a ban — instant kick only)
 };
-const ipConns = new Map();         // ip -> live socket count (LAN join-flood guard)
+const ipConns = new Map();      // ip -> live connections on this box
+
+// layer 2+: speed audit, weapon-verified fire cadence, facing physics, integrity heartbeat,
+//           recidivist probation, and a coherence auditor that runs even if rate rings are dodged
+Object.assign(AC, {
+  SPEED_WIN: 3000, SPEED_MAX: ENVN('AC_SPEED', 75),          // metres travelled in the window (≈25 m/s sustained — legit ~9-12 with slides)
+  FACE_RAD: 1.65,                                            // shooter must LOOK at the victim (±95° slack for turn lag)
+  BEAT_MS: 13000,                                            // gameplay reporter without a heartbeat this long → socket bot
+  AUDIT_MS: ENVN('AC_AUDIT_MS', 5000),                       // coherence auditor cadence (test rigs may shrink)
+  PROB_MS: ENVN('AC_PROB_MS', 300000),                       // a kick earns 5 minutes of probation — halved thresholds
+  RPM_SLACK: 1.5,                                            // slack over a weapon's real cyclic rate before it counts as scripted
+  HAND_MS: ENVN('AC_HAND_MS', 4100),                         // heartbeat challenge rotation
+  AFK_MS: process.env.AC_AFK_MS === '0' ? 0 : ENVN('AC_AFK_MS', 15000),   // in-round inactivity eviction (explicit 0 = off; test rigs shrink/disable)
+});
+const BEAT = require('./shared/beat.js');
+let RPM_TABLE = [];                                          // weapon index -> claimed cyclic rate (server-side facts)
+try { RPM_TABLE = JSON.parse(fs.readFileSync(path.join(ROOT, 'weapon-table.json'), 'utf8')).rpm || []; } catch {}
+const probationList = new Map();      // ip -> probation end timestamp (set by every kick)
+
 function acOver(rate, events, now, win){
   while (events.length && now - events[0] > win) events.shift();
   return events.length > rate;
 }
+function acCount(events, now, win){ let c = 0; for (let i = events.length - 1; i >= 0 && now - events[i] < win; i--) c++; return c; }
+function pg(p, v){ return p.probation ? Math.max(2, Math.floor(v / 2)) : v; }   // probation halves every threshold
 function acKick(p, reason){
-  console.log(new Date().toISOString().slice(11,19), `[anticheat] BOOTED ${p.name} (${p.ip}) — ${reason}`);
+  console.log(new Date().toISOString().slice(11,19), `[anticheat] BOOTED ${p.name} (${p.ip}) — ${reason}${p.probation ? ' [on probation]' : ''}`);
+  if (p.ip) probationList.set(p.ip, Date.now() + AC.PROB_MS);   // recidivist trap: come back on probation
   try { send(p.ws, { t:'kick', reason:'ANTI-CHEAT — ' + reason }); p.ws.close(4003); } catch {}
   broadcast({ t:'ac', name:p.name, reason });
+}
+/* AFK eviction is a janitor, not a judge: no probation, its own close code, its own news line. */
+function idleKick(p){
+  console.log(new Date().toISOString().slice(11,19), `[afk] kicked ${p.name} (${p.ip}) — idle ${Math.round(AC.AFK_MS / 1000)}s during round ${roundNo}`);
+  try { send(p.ws, { t:'kick', reason:'KICKED FOR INACTIVITY' }); p.ws.close(4004); } catch {}
+  broadcast({ t:'ac', kind:'idle', name:p.name, reason:'stood around too long' });
 }
 const MIME = {
   '.html':'text/html', '.js':'text/javascript', '.css':'text/css',
@@ -106,7 +133,7 @@ function uniqueName(base, selfId){
 }
 function send(ws, o){ if (ws.readyState === 1) ws.send(JSON.stringify(o)); }
 function broadcast(o, exceptId){
-  const s = JSON.stringify(o);
+  const s = Buffer.isBuffer(o) ? o : JSON.stringify(o);
   for (const [id, p] of players)
     if (id !== exceptId && p.ws.readyState === 1) p.ws.send(s);
 }
@@ -243,6 +270,7 @@ function startRound(map){
   for (const p of players.values()){
     p.score = 0; p.deaths = 0; p.vote = null; p.modeVote = null; p.state = null; p.invulnUntil = Date.now() + 1500;
     p.lastHitFrom = 0; p.lastHitKnife = false; p.lastHitAt = 0; p.assists = 0; p.dmgLog = new Map();
+    p.lastActiveAt = Date.now();   // fresh round, fresh 15s to actually play it
   }
   const ladderSeed = (Math.random() * 0x7fffffff) | 0;   // one deck-shuffle per round, dealt to everyone equally
   broadcast({ t:'roundStart', map:currentMap, round:roundNo, limit:limitNow(), scores:scoreList(), mode:gameMode, totals:teamTotals(), ladderSeed });
@@ -256,11 +284,12 @@ function finishRound(winnerId){
   console.log(new Date().toISOString().slice(11,19), `[round] ${winner ? winner.name : winnerId} reached ${limitNow()} and won round ${roundNo}; voting open`);
 }
 function welcomeState(id){
+  const me = players.get(id);
   return {
-    t:'welcome', id, map:currentMap, round:roundNo, limit:limitNow(), active:roundActive, mode:(gameMode || 'ffa'), totals:teamTotals(),
+    t:'welcome', id, salt: me ? me.salt : 0, map:currentMap, round:roundNo, limit:limitNow(), active:roundActive, mode:(gameMode || 'ffa'), totals:teamTotals(),
     scores:scoreList(), voteChoices: votePhase === 'mode' ? MODE_CHOICES : voteChoices, voteCounts:voteCounts(), voteEndsAt,
     phase: votePhase, pendingMap, winnersName:(!roundActive && votePhase ? voteCtx.winnerName : ''), now:Date.now(),
-    players:[...players].filter(([pid]) => pid !== id).map(([pid, q]) => ({ id:pid, name:q.name, skin:q.skin || 'rift', state:q.state, score:q.score || 0, deaths:q.deaths || 0, team:q.team || 0 }))
+    players:[...players].filter(([pid]) => pid !== id).map(([pid, q]) => ({ id:pid, name:q.name, skin:q.skin || 'rift', state:q.stateArr || q.state, score:q.score || 0, deaths:q.deaths || 0, team:q.team || 0 }))
   };
 }
 
@@ -273,19 +302,22 @@ wss.on('connection', (ws, req) => {
   ipConns.set(ip, (ipConns.get(ip) || 0) + 1);
 
   const id = nextId++;
-  const p = { ws, ip, name:'RIFT-' + id, skin:'rift', state:null, score:0, deaths:0, vote:null, team:0, invulnUntil:Date.now()+1500, lastHitFrom:0, lastHitKnife:false, lastHitAt:0, assists:0, dmgLog:new Map(), msgEvents:[], hitEvents:[], killEvents:[], spawnEvents:[], lastState:null, lastSpawnAt:0, spawnGrace:false };
+  const p = { ws, ip, name:'RIFT-' + id, skin:'rift', state:null, stateArr:null, score:0, deaths:0, vote:null, team:0, invulnUntil:Date.now()+1500, lastHitFrom:0, lastHitKnife:false, lastHitAt:0, assists:0, dmgLog:new Map(),
+    msgEvents:[], hitEvents:[], knifeHitEvents:[], killEvents:[], spawnEvents:[], shotEvents:[], speedTrail:[], lastState:null, lastSpawnAt:0, spawnGrace:false,
+    salt:(Math.random() * 0xFFFFFFFF) >>> 0, dig:0, lastBeatAt:0, gameTraffic:0, lastActiveAt:Date.now(), probation:(probationList.get(ip) || 0) > Date.now() };
   players.set(id, p);
-  console.log(new Date().toISOString().slice(11,19), `[+] player ${id} connected (${players.size} online)`);
+  console.log(new Date().toISOString().slice(11,19), `[+] player ${id} connected (${players.size} online)${p.probation ? ' [PROBATION]' : ''}`);
   ensureInitialVote();
 
   send(ws, welcomeState(id));
 
-  ws.on('message', data => {
+  ws.on('message', (data, isBinary) => {
     const nowM = Date.now();
     if (data.length > 4096){ acKick(p, 'oversized packet'); return; }
     p.msgEvents.push(nowM);
-    if (acOver(AC.MSG_MAX, p.msgEvents, nowM, AC.MSG_WIN)){ acKick(p, `message flood (${p.msgEvents.length} msgs in ${AC.MSG_WIN}ms)`); return; }
-    let m; try { m = JSON.parse(data); } catch { return; }
+    if (acOver(pg(p, AC.MSG_MAX), p.msgEvents, nowM, AC.MSG_WIN)){ acKick(p, `message flood (${p.msgEvents.length} msgs in ${AC.MSG_WIN}ms)`); return; }
+    if (isBinary){ handleStateFrame(id, p, data, nowM); return; }               // position streams travel binary-only
+    let m; try { m = JSON.parse(data.toString()); } catch { return; }
     switch (m.t){
       case 'hello': {
         let base = safeName(m.name, id);
@@ -315,33 +347,43 @@ wss.on('connection', (ws, req) => {
         p.skin = String(m.skin || 'rift').replace(/[^a-z0-9_-]/gi, '').slice(0, 24) || 'rift';
         broadcast({ t:'skin', id, skin:p.skin }, id);
         break;
-      case 'state': {
-        const s = m.s;
-        if (!Array.isArray(s) || s.length < 3 || !s.slice(0, 3).every(Number.isFinite)){ acKick(p, 'garbage position packet'); break; }
-        const prev = p.lastState;
-        p.lastState = [s[0], s[1], s[2], nowM];
-        const dx = prev ? s[0] - prev[0] : 0, dy = prev ? s[1] - prev[1] : 0, dz = prev ? s[2] - prev[2] : 0;
-        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        const jumped = prev && d > AC.TPORT;
-        if (p.spawnGrace){
-          if (jumped) p.spawnGrace = false;    // that jump was the respawn itself — exactly the one free pass
-          // small deltas while a stale in-flight stream drains keep the grace alive
-        } else if (jumped){
-          acKick(p, `teleport ${d.toFixed(1)}m in ${nowM - prev[3]}ms`); break;
-        }
-        p.state = m.s;
-        broadcast({ t:'state', id, s:m.s }, id);
+      case 'state':   // legacy road — position streams are binary-only now; JSON here is forgery
+        acKick(p, 'non-binary state protocol');
         break;
-      }
-      case 'shoot':
+      case 'shoot': {
+        p.gameTraffic = p.gameTraffic || nowM;
+        p.lastActiveAt = nowM;   // pulling a trigger counts as playing
+        const wi = Number(m.w) | 0, rpm = RPM_TABLE[wi] | 0;
+        p.shotEvents.push(nowM);
+        if (rpm > 0){
+          const cap = Math.max(3, Math.ceil(rpm / 60 * AC.RPM_SLACK * (p.probation ? 0.5 : 1)));
+          if (acOver(cap, p.shotEvents, nowM, 1000)){ acKick(p, `fire rate impossible for weapon #${wi} (${rpm}rpm reality, ${p.shotEvents.length}/s claimed)`); break; }
+        } else if (acOver(pg(p, 30), p.shotEvents, nowM, 1000)){ acKick(p, 'shot spam'); break; }
         broadcast({ t:'shoot', id, o:m.o, p:m.p, w:m.w }, id);
         break;
+      }
       case 'hit': {
+        p.gameTraffic = p.gameTraffic || nowM;
+        p.lastActiveAt = nowM;   // landing steel counts as playing (kill reports don't — corpses have no inputs)
         // the cadence gate polices every phase — a legit client only fires during a live round anyway
         p.hitEvents.push(nowM);
-        if (acOver(AC.HIT_MAX, p.hitEvents, nowM, AC.HIT_WIN)){ acKick(p, `hit-report flood (${p.hitEvents.length}/s — trigger-bot cadence)`); break; }
+        if (m.knife) p.knifeHitEvents.push(nowM);
+        if (acOver(pg(p, AC.HIT_MAX), p.hitEvents, nowM, AC.HIT_WIN)){ acKick(p, `hit-report flood (${p.hitEvents.length}/s — trigger-bot cadence)`); break; }
+        const tgt0 = players.get(m.target);
+        // facing gate applies to gunfire only — melee swings are exempt deliberately (their range is
+        // policed by gameplay; the user scoped the geometry gates to guns when picking the option)
+        if (!m.knife && tgt0 && tgt0.lastState && tgt0.lastState[3] && p.lastState && p.lastState[3]
+            && nowM - p.lastState[3] < 1500 && nowM - tgt0.lastState[3] < 1500){
+          // facing physics, every phase: your crosshair lives in your yaw — shots can't come from behind your own head
+          const dx = tgt0.lastState[0] - p.lastState[0], dz = tgt0.lastState[2] - p.lastState[2];
+          const dist = Math.hypot(dx, dz);
+          if (dist > 4){
+            const fx = -Math.sin(p.lastState[4] || 0), fz = -Math.cos(p.lastState[4] || 0);
+            if ((fx * dx + fz * dz) / dist < Math.cos(AC.FACE_RAD)){ acKick(p, 'impossible shot: target outside your field of view'); break; }
+          }
+        }
         if (!roundActive) break;
-        const tgt = players.get(m.target);
+        const tgt = tgt0;
         if (tgt && gameMode === 'team' && p.team && tgt.team === p.team) break;   // team mode: no friendly fire (or friendly shanks)
         if (tgt && (tgt.invulnUntil || 0) <= Date.now()){
           // track the most recent hit so a kill can be attributed as a shank (demotion rules)
@@ -364,10 +406,10 @@ wss.on('connection', (ws, req) => {
         const killer = players.get(killerId);
         // cadence gates: inhuman kill chains, fake-death spam, and would-be framers (the reporter is the victim)
         p.killEvents.push(nowM);
-        if (acOver(AC.KILL_MAX, p.killEvents, nowM, AC.KILL_WIN)){ acKick(p, `kill spam: ${p.killEvents.length} deaths in ${AC.KILL_WIN}ms`); break; }
+        if (acOver(pg(p, AC.KILL_MAX), p.killEvents, nowM, AC.KILL_WIN)){ acKick(p, `kill spam: ${p.killEvents.length} deaths in ${AC.KILL_WIN}ms`); break; }
         if (killer && killerId !== id){
           killer.killEvents.push(nowM);
-          if (acOver(AC.KILL_MAX, killer.killEvents, nowM, AC.KILL_WIN)){ acKick(killer, `kill spam: ${killer.killEvents.length} kills in ${AC.KILL_WIN}ms`); break; }
+          if (acOver(pg(killer, AC.KILL_MAX), killer.killEvents, nowM, AC.KILL_WIN)){ acKick(killer, `kill spam: ${killer.killEvents.length} kills in ${AC.KILL_WIN}ms`); break; }
         }
         let knifeKill = false, backstab = false, demoted = false, assistId = 0;
         if (roundActive){
@@ -376,14 +418,19 @@ wss.on('connection', (ws, req) => {
           backstab = knifeKill && !!p.lastHitBackstab;
           if (knifeKill && p.score > 0 && gameMode !== 'knife'){ p.score -= 1; demoted = true; }   // shanked: lose a point, drop a gun tier (never below 0). KNIFE FIGHT: points are sacred, no demotions
           if (killer && killerId !== id) killer.score = (killer.score || 0) + 1;
-          // ASSIST: the kill goes to the finisher, but the OTHER most recent damager still gets a point.
-          // Claim lapses 5s after your last hit on the victim, and a heal wipes the ledger entirely.
+          // ASSIST — TEAM MODE ONLY, and ONLY inside the killer's own squad: the most recent same-team
+          // damager who didn't finish the kill still gets a point. Claim lapses 5s after your last hit
+          // on the victim, and a heal wipes the ledger. In FFA and KNIFE FIGHT points are personal
+          // business — nobody co-signs a kill.
           const nowK = Date.now();
           let bestT = 0;
-          for (const [aid, ts] of (p.dmgLog || [])){
-            if (aid === killerId || !players.has(aid)) continue;
-            if (nowK - ts > 5000) continue;
-            if (ts > bestT){ bestT = ts; assistId = aid; }
+          if (gameMode === 'team' && killer && killer.team){
+            for (const [aid, ts] of (p.dmgLog || [])){
+              if (aid === killerId || !players.has(aid)) continue;
+              if (nowK - ts > 5000) continue;
+              if (players.get(aid).team !== killer.team) continue;
+              if (ts > bestT){ bestT = ts; assistId = aid; }
+            }
           }
           if (assistId){
             const a = players.get(assistId);
@@ -400,11 +447,25 @@ wss.on('connection', (ws, req) => {
         if (roundActive && killer && killer.score >= limitNow()) finishRound(killerId);   // only a self-landed kill ends a round
         break;
       }
+      case 'beat': {  // integrity heartbeat — must echo the live nonce and swear a consistent build digest
+        const e = Number(m.e) >>> 0, d = Number(m.d) >>> 0;
+        if (e !== BEAT.nonceEcho(handNonce, p.salt) && e !== BEAT.nonceEcho((handNonce - 1) >>> 0, p.salt))
+          break;   // parroting stale noise, not a live client loop
+        p.lastBeatAt = nowM;
+        if (p.dig && d !== p.dig){ acKick(p, 'code digest drifted mid-match (patched at runtime?)'); break; }
+        p.dig = d;
+        // consensus: when ≥2 others swear one digest and you swear another, your build is the odd one out
+        const others = new Map();
+        for (const q of players.values()) if (q !== p && q.dig) others.set(q.dig, (others.get(q.dig) || 0) + 1);
+        let top = 0; for (const c of others.values()) top = Math.max(top, c);
+        if (top >= 2 && !others.has(d)) acKick(p, 'build digest diverges from lobby (patched client?)');
+        break;
+      }
       case 'spawn':
         // grace grants exactly one free jump (see the state gate); cadence still capped because
         // a welcome-spawn and a round-start respawn can legitimately land a second apart.
         p.spawnEvents.push(nowM);
-        if (acOver(3, p.spawnEvents, nowM, 2000)){ acKick(p, `spawn spam (${p.spawnEvents.length} reports in 2s)`); break; }
+        if (acOver(pg(p, 3), p.spawnEvents, nowM, 2000)){ acKick(p, `spawn spam (${p.spawnEvents.length} reports in 2s)`); break; }
         p.invulnUntil = Date.now() + 1500;
         p.lastSpawnAt = Date.now();
         p.spawnGrace = true;
@@ -432,5 +493,57 @@ wss.on('connection', (ws, req) => {
     console.log(`[-] player ${id} left (${players.size} online)`);
   });
 });
+
+/* ---- binary state protocol: [0xA1 | x,y,z,yaw:f32 | slot:u8 | slide:u8 | crouch:u8] ---- */
+function handleStateFrame(id, p, buf, nowM){
+  if (buf.length !== 20 || buf[0] !== 0xA1){ acKick(p, 'garbage binary state frame'); return; }
+  const x = buf.readFloatLE(1), y = buf.readFloatLE(5), z = buf.readFloatLE(9), yaw = buf.readFloatLE(13);
+  if (![x, y, z, yaw].every(Number.isFinite)){ acKick(p, 'garbage position packet'); return; }
+  const prev = p.lastState;
+  p.lastState = [x, y, z, nowM, yaw];
+  p.stateArr = [x, y, z, yaw, buf[17], buf[18], buf[19]];
+  const dx = prev ? x - prev[0] : 0, dy = prev ? y - prev[1] : 0, dz = prev ? z - prev[2] : 0;
+  const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  const jumped = prev && d > pg(p, AC.TPORT);
+  if (p.spawnGrace){
+    if (jumped) p.spawnGrace = false;    // that jump was the respawn itself — exactly the one free pass
+  } else if (jumped){
+    acKick(p, `teleport ${d.toFixed(1)}m in ${nowM - prev[3]}ms`); return;
+  }
+  if (!prev || d > 0.05 || Math.abs(yaw - (prev[4] || 0)) > 0.01) p.lastActiveAt = nowM;   // motion or looking around = alive
+  if (prev && !jumped){                // sustained-speed audit — bursts are fine, trends are not
+    p.speedTrail.push([nowM, d]);
+    const cutoff = nowM - AC.SPEED_WIN;
+    p.speedTrail = p.speedTrail.filter(e => e[0] > cutoff);
+    let sum = 0; for (const e of p.speedTrail) sum += e[1];
+    if (sum > pg(p, AC.SPEED_MAX)){ acKick(p, `speed hack: ${sum.toFixed(0)}m travelled in ${AC.SPEED_WIN}ms`); return; }
+  }
+  const head = Buffer.allocUnsafe(3); head[0] = 0xA2; head.writeUInt16LE(id, 1);
+  broadcast(Buffer.concat([head, buf]), id);
+}
+
+/* ---- integrity heartbeat rotation + coherence auditor ---- */
+let handNonce = (Math.random() * 0xFFFFFFFF) | 0;
+setInterval(() => {
+  if (!players.size) return;
+  handNonce = (handNonce + 1) >>> 0;   // sequential: the previous nonce is accepted as "in flight"
+  broadcast({ t:'hand', n:handNonce });
+}, AC.HAND_MS);
+
+setInterval(() => {
+  const now = Date.now();
+  for (const p of players.values()){
+    // failsafe 1a — gameplay reporters that never took the oath: forged clients, not browsers
+    if (p.gameTraffic && !p.lastBeatAt && now - p.gameTraffic > AC.BEAT_MS){ acKick(p, 'heartbeat silent — socket bot, not a client'); continue; }
+    // failsafe 2a — damage that flies without ballistics traffic (knife hits excluded — blades don't shoot)
+    const freshHits = acCount(p.hitEvents, now, 15000) - acCount(p.knifeHitEvents, now, 15000);
+    if (freshHits > 10 && acCount(p.shotEvents, now, 15000) === 0){ acKick(p, 'phantom damage: hits with no shots (coherence auditor)'); continue; }
+    // failsafe 2b — points accumulating on a dead position stream
+    if (roundActive && (p.score || 0) > 0 && p.lastState && now - p.lastState[3] > 12000){ acKick(p, 'ghost scoring: kills while position stream is dead (coherence auditor)'); continue; }
+    // inactivity eviction — mid-round only: no movement, no aim, no trigger for AC.AFK_MS (0 = off).
+    // Vote phases are exempt: watching a ballot isn't forsaking the match.
+    if (AC.AFK_MS > 0 && roundActive && now - (p.lastActiveAt || 0) > AC.AFK_MS) idleKick(p);
+  }
+}, AC.AUDIT_MS);
 
 server.listen(PORT, '0.0.0.0', () => console.log('NEON RIFT: BLACKOUT server running on http://0.0.0.0:' + PORT));

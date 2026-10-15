@@ -92,10 +92,24 @@
   .challengeRow em { position:relative; z-index:1; color:var(--orange); font:11px Consolas,monospace; font-style:normal; }
   .challengeRow i { position:absolute; left:0; bottom:0; height:2px; background:linear-gradient(90deg,var(--cyan),var(--orange)); box-shadow:0 0 8px rgba(44,242,255,.5); }
   .challengeRow.done { opacity:.8; }
-  .skinGrid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; max-height:55vh; overflow:auto; padding-right:4px; }
+  #skinsMenu .settingsPanel { padding:22px 26px; }
+  #skinsMenu .settingsTitle { margin-bottom:6px; }
+  .skinLayout { display:grid; grid-template-columns:1fr 316px; gap:14px; align-items:start; }
+  .skinGrid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px; max-height:52vh; overflow:auto; padding-right:4px; }
   .skinCard { text-align:left; border:1px solid rgba(44,242,255,.22); background:rgba(255,255,255,.035); padding:14px; cursor:pointer; color:#dfe9f5; position:relative; min-height:154px; }
   .skinCard:hover { border-color:var(--cyan); background:rgba(44,242,255,.08); }
   .skinCard.selected { border-color:var(--orange); box-shadow:0 0 20px rgba(255,154,60,.25), inset 0 0 0 1px rgba(255,154,60,.35); }
+  .skinCard.viewing { border-color:var(--cyan); box-shadow:0 0 16px rgba(44,242,255,.30), inset 0 0 0 1px rgba(44,242,255,.45); }
+  #skinDetail { border:1px solid rgba(44,242,255,.28); background:rgba(8,14,26,.6); padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .skinDetailName { font-size:15px; letter-spacing:4px; color:#fff; text-transform:uppercase; }
+  .skinDetailMeta { font-size:10px; letter-spacing:2px; color:var(--orange); text-transform:uppercase; }
+  #skinPreviewWrap { width:100%; height:min(220px, 30vh); border:1px solid rgba(44,242,255,.16); background:radial-gradient(circle at 50% 28%, rgba(44,242,255,.10), rgba(4,8,14,.55) 72%); overflow:hidden; }
+  #skinPreview { width:100%; height:100%; display:block; }
+  .skinDetailDesc { color:#8fa3bd; font-size:10px; letter-spacing:2px; line-height:1.6; text-transform:uppercase; }
+  #skinActionBtn { width:100%; font-size:13px; padding:12px 10px; }
+  #skinActionBtn:disabled { opacity:.55; cursor:default; }
+  @media (max-height:760px){ #skinPreviewWrap { height:180px; } .skinCard { min-height:120px; padding:10px 12px; } }
+  @media (max-width:880px){ .skinLayout { grid-template-columns:1fr; } .skinGrid { grid-template-columns:1fr 1fr; max-height:40vh; } }
   .skinSwatch { width:100%; height:48px; margin-bottom:11px; border:1px solid rgba(255,255,255,.16); box-shadow:0 0 22px rgba(44,242,255,.12) inset; }
   .skinCard b { display:block; font-size:14px; letter-spacing:3px; color:#fff; text-transform:uppercase; margin-bottom:6px; }
   .skinCard small { display:block; color:#8fa3bd; font-size:10px; letter-spacing:2px; line-height:1.5; text-transform:uppercase; }
@@ -586,14 +600,23 @@
 </div>
 
 <div id="skinsMenu" class="overlay settingsOverlay hidden">
-  <div class="settingsPanel" style="width:min(900px,94vw);">
+  <div class="settingsPanel" style="width:min(1120px,95vw);">
     <div class="settingsTitle">CHARACTER SKINS</div>
-    <div class="settingsSub">Earn credits and XP from kills, waves, wins, and missions. Progress is saved locally.</div>
-    <div class="profileCard" style="margin-bottom:18px;">
+    <div class="settingsSub">Tap a skin to see it on your character before you spend a single credit. Progress is saved locally.</div>
+    <div class="profileCard" style="margin-bottom:16px;">
       <div class="profileTop"><span>WALLET</span><b id="skinWallet">0 CR</b></div>
       <div class="profileStats"><span id="skinLevelText">LEVEL 1</span><b id="skinUnlockText">SELECT OR BUY A SKIN</b></div>
     </div>
-    <div id="skinGrid" class="skinGrid"></div>
+    <div class="skinLayout">
+      <div id="skinGrid" class="skinGrid"></div>
+      <div id="skinDetail">
+        <div id="skinDetailName" class="skinDetailName">RIFT RUNNER</div>
+        <div id="skinDetailMeta" class="skinDetailMeta">LVL 1 · STANDARD ISSUE</div>
+        <div id="skinPreviewWrap"><canvas id="skinPreview" width="576" height="684"></canvas></div>
+        <div id="skinDetailDesc" class="skinDetailDesc"></div>
+        <button class="btn orange" id="skinActionBtn">EQUIP</button>
+      </div>
+    </div>
     <div class="settingsActions">
       <button class="btn" id="skinsBackBtn">Back</button>
     </div>
@@ -669,6 +692,7 @@ document.addEventListener('DOMContentLoaded', function(){
   });
 });
 </script>
+<script src="./shared/beat.js?v=__BUILD__"></script>
 <script type="module" src="./game.js?v=__BUILD__"></script>
 </body>
 </html>
