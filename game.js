@@ -1286,7 +1286,7 @@ function ensureSkinPreview(){
   renderer.setSize(w, h, false);
   const pvScene = new THREE.Scene();
   const cam = new THREE.PerspectiveCamera(33, w / h, .1, 50);
-  cam.position.set(1.05, 1.42, 3.05); cam.lookAt(0, 1.0, 0);
+  cam.position.set(1.12, 1.56, 3.85); cam.lookAt(0, 1.04, 0);   // pull back so crown-to-boots fits the taller frame
   pvScene.add(new THREE.HemisphereLight(0xbfe8ff, 0x1a1428, 1.15));
   const key = new THREE.DirectionalLight(0xffffff, 1.7); key.position.set(2.2, 3.6, 2.4); pvScene.add(key);
   const rim = new THREE.DirectionalLight(0xff9a3c, .65); rim.position.set(-2.6, 2.0, -2.4); pvScene.add(rim);
@@ -1302,11 +1302,17 @@ function dressSkinPreview(id){
   const g = buildEnemyMesh(avatarTypeForSkin(id));
   cleanupPlayerAvatar(g);
   applyAvatarSkin(g, id);
-  const weaponRoot = new THREE.Group();
-  weaponRoot.position.set(0.08, 1.24, -0.54);
-  weaponRoot.rotation.set(-0.12, 0.02, -0.02);
-  weaponRoot.add(buildThirdPersonWeaponModel(WEAPONS[0]));
-  g.add(weaponRoot);
+  /* tuck the shoulder bar up/back and hang the arms just behind the chest plane —
+     from the spinning shop angle those parts used to straddle the chest's front edge
+     and read as a bolted-on second pair of forearms */
+  const pvParts = g.userData.parts;
+  if (pvParts.shoulder){ pvParts.shoulder.position.y = 1.60; pvParts.shoulder.position.z = 0.045; pvParts.shoulder.scale.x = 0.92; }
+  if (pvParts.armL){ pvParts.armL.position.z = 0.07; pvParts.armL.position.x = -0.53; pvParts.armL.rotation.z = 0.14; }
+  if (pvParts.armR){ pvParts.armR.position.z = 0.07; pvParts.armR.position.x =  0.53; pvParts.armR.rotation.z = -0.14; }
+  if (pvParts.handL){ pvParts.handL.position.z = 0.05; pvParts.handL.position.x = -0.60; pvParts.handL.position.y = 0.84; }
+  if (pvParts.handR){ pvParts.handR.position.z = 0.05; pvParts.handR.position.x =  0.60; pvParts.handR.position.y = 0.84; }
+  // skins preview CLEAN: no rifle glued to the chest and no second set of gun-holding
+  // arms — what you see is the character you wear into the arena
   skinPv.avatar = g;
   skinPv.scene.add(g);
   runSkinPreviewLoop();
@@ -1492,7 +1498,42 @@ function procMat(color, glow=false){
     ? new THREE.MeshBasicMaterial({ color })
     : new THREE.MeshStandardMaterial({ color, roughness:.42, metalness:.62 });
 }
+/* weapons must LOOK like what they fire: kind/slot first picks the archetype builder,
+   so a flamethrower is tanks + a bell nozzle, a launcher is drums / fat tubes, the
+   longbow is an actual bow — never just a recolored rifle. */
+const SPECIAL_ARCHS = new Set(['flame','gl','rocket','napalm','bow','sling','plasma','musket']);
+function archOf(w){
+  if (w.slot === 'PISTOL') return 'PISTOL';                 // flaregun rides the pistol frame
+  switch (w.kind){
+    case 'flame':    return 'flame';
+    case 'gl':       return 'gl';
+    case 'rocket':   return 'rocket';
+    case 'napalm':   return 'napalm';
+    case 'arrow':    return 'bow';
+    case 'snowball': return 'sling';
+    case 'plasma':   return 'plasma';
+  }
+  if (w.slot === 'VINTAGE') return 'musket';
+  return w.slot;
+}
+function torusRing(r, tube, mat, x, y, z, parent){        // ring wrapping a Z-aligned tube
+  const t = new THREE.Mesh(new THREE.TorusGeometry(r, tube, 8, 20), mat);
+  t.position.set(x, y, z); parent.add(t); return t;
+}
+function bellNozzle(r0, r1, len, mat, x, y, z, parent){   // flared muzzle bell along -Z
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, len, 14), mat);
+  m.rotation.x = Math.PI/2; m.position.set(x, y, z); parent.add(m); return m;
+}
 function buildProceduralGunModel(w, i){
+  const arch = archOf(w);
+  if (arch === 'flame')   return buildFlameModel(w);
+  if (arch === 'gl')      return buildDrumLauncherModel(w);
+  if (arch === 'rocket')  return buildRocketModel(w);
+  if (arch === 'napalm')  return buildNapalmModel(w);
+  if (arch === 'bow')     return buildBowModel(w);
+  if (arch === 'sling')   return buildSlingModel(w);
+  if (arch === 'plasma')  return buildPlasmaModel(w);
+  if (arch === 'musket')  return buildMusketModel(w);
   const g = new THREE.Group();
   const slot = w.slot;
   const accent = procMat(w.accent, true);
@@ -1545,10 +1586,208 @@ function buildProceduralGunModel(w, i){
     tagPart(g, 'frontSight', box(.014,.035,.014, accent, 0, height*.92, -len*.46, g));
   }
   const bolt = box(width*.42,.025,.07, hotMat, width*.58, height*.45, -len*.11, g); tagPart(g, 'bolt', bolt);
+  // silhouette tells the slot apart at a glance: SMGs collapse to wire stocks,
+  // LMGs carry the belt box + bipod, DMRs/low optics already differ from plain rifles
+  if (isSMG){
+    const stock = g.userData.stock;
+    if (stock){ stock.scale.set(.32, .75, .8); stock.position.x = -.04; stock.rotation.y = .18; }   // folding wire stock hugs the left side
+    tagPart(g, 'shroud', box(width*1.28, height*.8, .11, darkMat, 0, .01, -len*.5, g));             // vent shroud block
+  }
+  if (isLMG){
+    tagPart(g, 'beltBox', box(.05, .15, .18, darkMat, -width*.72, -.1, -len*.05, g));               // ammo box feeding from the left
+    const bipL = new THREE.Mesh(new THREE.CylinderGeometry(.006,.006,.2,6), darkMat);
+    bipL.position.set(-.045, -.13, -len*.62); bipL.rotation.set(.5, 0, -.35); g.add(bipL); tagPart(g,'bipL',bipL);
+    const bipR = bipL.clone(); bipR.position.x = .045; bipR.rotation.set(.5, 0, .35); g.add(bipR); tagPart(g,'bipR',bipR);
+    box(.04,.02,.08, darkMat, -width*.66, -.028, -len*.05, g);        // feed chute from belt box to receiver
+  }
   const muzzle = new THREE.Object3D(); muzzle.position.set(0, isShotgun ? .032 : .018, -len*.48 - barrelLen*.78); g.add(muzzle);
   g.userData.muzzle = muzzle;
   g.userData.weaponSlot = slot;
+  g.userData.archetype = 'gun';
   g.userData.variantScale = isPistol ? .72 : isLMG ? .86 : isSniper ? .83 : .78;
+  return prepareGunModel(g);
+}
+/* ---------- archetype models: specials get their own language ---------- */
+/* FLAMETHROWER — fuel tank on top, bell nozzle with pilot flame, hose, no "barrel" */
+function buildFlameModel(w){
+  const g = new THREE.Group();
+  const glow = procMat(w.accent, true);
+  const hot  = procMat(0xffb259, true);
+  const body = procMat(0x39424e);
+  const dark = procMat(0x232a34);
+  const tankMat = procMat(0x5c4830);
+  tagPart(g, 'receiver', box(.10,.12,.30, body, 0,0,-.1, g));
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(.052,.052,.4,14), tankMat);
+  tank.rotation.x = Math.PI/2; tank.position.set(0,.105,-.08); g.add(tank); tagPart(g,'tank',tank);
+  torusRing(.058,.007, glow, 0,.105,-.22, g); torusRing(.058,.007, glow, 0,.105,.06, g);   // glowing tank straps
+  const valve = new THREE.Mesh(new THREE.SphereGeometry(.016,10,8), glow);
+  valve.position.set(0,.165,.08); g.add(valve); tagPart(g,'valve',valve);
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(.026,.032,.30,12), body);
+  tube.rotation.x = Math.PI/2; tube.position.set(0,.02,-.34); g.add(tube); tagPart(g,'tube',tube);
+  bellNozzle(.062,.034,.10, dark, 0,.02,-.50, g);                                        // the business end flares out
+  const pilot = new THREE.Mesh(new THREE.SphereGeometry(.016,10,8), hot);
+  pilot.position.set(0,.02,-.545); g.add(pilot); tagPart(g,'pilot',pilot);               // always-lit pilot flame
+  const hose = new THREE.Mesh(new THREE.TorusGeometry(.10,.011,8,16,Math.PI), dark);
+  hose.rotation.y = Math.PI/2; hose.position.set(.02,.02,.14); g.add(hose); tagPart(g,'hose',hose);
+  const grip = box(.055,.16,.075, dark, 0,-.12,.08, g); grip.rotation.x = .26; tagPart(g,'grip',grip);
+  const fore = box(.06,.11,.07, dark, 0,-.09,-.22, g); fore.rotation.x = .12; tagPart(g,'foreGrip',fore);
+  tagPart(g, 'mag', box(.05,.12,.06, dark, 0,-.115,-.02, g));                            // pump canister animates on "reload"
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0,.02,-.55); g.add(muzzle);
+  g.userData.muzzle = muzzle; g.userData.archetype = 'flame'; g.userData.variantScale = .76;
+  return prepareGunModel(g);
+}
+/* GRENADE LAUNCHER — fat drum cylinder, stubby flared barrel, no magazine */
+function buildDrumLauncherModel(w){
+  const g = new THREE.Group();
+  const glow = procMat(w.accent, true);
+  const body = procMat(0x3f4a58);
+  const dark = procMat(0x272f3a);
+  tagPart(g, 'receiver', box(.11,.13,.26, body, 0,.03,-.02, g));
+  const drum = new THREE.Mesh(new THREE.CylinderGeometry(.078,.078,.11,14), dark);
+  drum.rotation.z = Math.PI/2; drum.position.set(0,-.045,-.1); g.add(drum); tagPart(g,'drum',drum);
+  for (let k=0;k<5;k++){
+    const a = (k/5)*Math.PI*2;
+    const pip = new THREE.Mesh(new THREE.CylinderGeometry(.016,.016,.118,8), glow);
+    pip.rotation.z = Math.PI/2; pip.position.set(0,-.045+Math.sin(a)*.052,-.1+Math.cos(a)*.052); g.add(pip);
+  }
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,.30,12), body);
+  barrel.rotation.x = Math.PI/2; barrel.position.set(0,.05,-.32); g.add(barrel); tagPart(g,'barrel',barrel);
+  bellNozzle(.06,.048,.07, dark, 0,.05,-.46, g);
+  const throat = new THREE.Mesh(new THREE.CylinderGeometry(.042,.042,.008,12), glow);
+  throat.rotation.x = Math.PI/2; throat.position.set(0,.05,-.488); g.add(throat);        // glowing bore
+  tagPart(g, 'stock', box(.10,.11,.20, dark, 0,-.01,.2, g));
+  const grip = box(.055,.16,.075, dark, 0,-.12,.06, g); grip.rotation.x = .26; tagPart(g,'grip',grip);
+  const fore = box(.06,.10,.08, dark, 0,-.07,-.26, g); fore.rotation.x = .1; tagPart(g,'foreGrip',fore);
+  tagPart(g, 'frontSight', box(.014,.03,.014, glow, 0,.115,-.4, g));
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0,.05,-.5); g.add(muzzle);
+  g.userData.muzzle = muzzle; g.userData.archetype = 'gl'; g.userData.variantScale = .8;
+  return prepareGunModel(g);
+}
+/* RPG — long wide tube: front + rear flares, glowing rocket cone visible in the mouth */
+function buildRocketModel(w){
+  const g = new THREE.Group();
+  const glow = procMat(0xff6a3b, true);
+  const body = procMat(0x46523f);
+  const dark = procMat(0x2a3026);
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(.056,.056,1.02,14), body);
+  tube.rotation.x = Math.PI/2; tube.position.set(0,.05,-.1); g.add(tube); tagPart(g,'tube',tube);
+  bellNozzle(.085,.056,.10, dark, 0,.05,-.66, g);                                        // front flare
+  bellNozzle(.056,.082,.09, dark, 0,.05,.46, g);                                         // rear venturi
+  const warhead = new THREE.Mesh(new THREE.ConeGeometry(.042,.15,12), glow);
+  warhead.rotation.x = -Math.PI/2; warhead.position.set(0,.05,-.55); g.add(warhead); tagPart(g,'warhead',warhead);
+  torusRing(.062,.007, glow, 0,.05,-.3, g);                                              // charge band
+  const grip = box(.055,.16,.075, dark, 0,-.12,.1, g); grip.rotation.x = .26; tagPart(g,'grip',grip);
+  const fore = box(.055,.14,.07, dark, 0,-.11,-.12, g); fore.rotation.x = .14; tagPart(g,'foreGrip',fore);
+  tagPart(g, 'shoulder', box(.08,.05,.16, dark, 0,-.08,.28, g));
+  tagPart(g, 'sight', box(.015,.05,.015, glow, -.06,.12,-.02, g));
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0,.05,-.62); g.add(muzzle);
+  g.userData.muzzle = muzzle; g.userData.archetype = 'rocket'; g.userData.variantScale = .9;
+  return prepareGunModel(g);
+}
+/* NAPALM LOBBER — squat cannon, side-mounted incendiary canister, bell mouth */
+function buildNapalmModel(w){
+  const g = new THREE.Group();
+  const glow = procMat(0xffb259, true);
+  const body = procMat(0x524a3c);
+  const dark = procMat(0x2e2b26);
+  tagPart(g, 'receiver', box(.11,.13,.28, body, 0,.01,-.06, g));
+  const cannon = new THREE.Mesh(new THREE.CylinderGeometry(.052,.052,.26,12), dark);
+  cannon.rotation.x = Math.PI/2; cannon.position.set(0,.03,-.36); g.add(cannon); tagPart(g,'cannon',cannon);
+  bellNozzle(.078,.055,.09, dark, 0,.03,-.53, g);                                        // wide belch mouth
+  const throat = new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,.008,12), glow);
+  throat.rotation.x = Math.PI/2; throat.position.set(0,.03,-.563); g.add(throat);
+  const fuel = new THREE.Mesh(new THREE.SphereGeometry(.055,14,10), procMat(0x8a3a1e));
+  fuel.position.set(.075,-.05,-.08); g.add(fuel); tagPart(g,'fuel',fuel);                // incendiary bulb on the flank
+  torusRing(.058,.007, glow, .075,-.05,-.08, g).rotation.y = Math.PI/2;
+  const feed = new THREE.Mesh(new THREE.TorusGeometry(.06,.009,8,14,Math.PI*.8), glow);
+  feed.rotation.set(0,Math.PI/2,1.2); feed.position.set(.045,.02,-.1); g.add(feed);
+  tagPart(g, 'stock', box(.10,.11,.18, dark, 0,-.01,.16, g));
+  const grip = box(.055,.16,.075, dark, 0,-.12,.02, g); grip.rotation.x = .26; tagPart(g,'grip',grip);
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0,.03,-.57); g.add(muzzle);
+  g.userData.muzzle = muzzle; g.userData.archetype = 'napalm'; g.userData.variantScale = .8;
+  return prepareGunModel(g);
+}
+/* LONGBOW — actually a bow: riser, recurve limbs, glowing string, nocked luminous arrow */
+function buildBowModel(w){
+  const g = new THREE.Group();
+  const bow = new THREE.Group();
+  bow.rotation.z = -0.30; bow.position.set(-0.02,-0.035,0);   // canted like a real FPS bow so the whole arch reads on screen
+  const B = bow;
+  const glow = procMat(w.accent, true);
+  const limbMat = procMat(0x2e3a4a);
+  const riserMat = procMat(0x1d2530);
+  tagPart(g, 'riser', box(.05,.5,.08, riserMat, 0,.03,.02, B));
+  tagPart(g, 'gripWrap', box(.062,.12,.092, glow, 0,-.02,.02, B));
+  const limbU = box(.028,.34,.05, limbMat, 0,.4,.06, B); limbU.rotation.x = -.34; tagPart(g,'limbU',limbU);
+  const limbL = box(.028,.34,.05, limbMat, 0,-.34,.06, B); limbL.rotation.x = .34; tagPart(g,'limbL',limbL);
+  const tipU = new THREE.Mesh(new THREE.SphereGeometry(.016,10,8), glow); tipU.position.set(0,.575,.123); B.add(tipU);
+  const tipL = new THREE.Mesh(new THREE.SphereGeometry(.016,10,8), glow); tipL.position.set(0,-.515,.123); B.add(tipL);
+  tagPart(g, 'string', box(.006,.99,.004, glow, 0,.025,.12, B));                          // bowstring connecting the tips
+  const arrow = new THREE.Mesh(new THREE.CylinderGeometry(.007,.007,.52,8), limbMat);
+  arrow.rotation.x = Math.PI/2; arrow.position.set(0,.025,-.16); B.add(arrow); tagPart(g,'arrow',arrow);
+  const arrowTip = new THREE.Mesh(new THREE.ConeGeometry(.015,.05,10), glow);
+  arrowTip.rotation.x = -Math.PI/2; arrowTip.position.set(0,.025,-.435); B.add(arrowTip); tagPart(g,'arrowTip',arrowTip);
+  tagPart(g, 'fletchA', box(.004,.03,.05, glow, .012,.028,.07, B));
+  tagPart(g, 'fletchB', box(.03,.004,.05, glow, 0,.03,.07, B));
+  g.add(B);
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0,.025,-.46); g.add(muzzle);
+  g.userData.muzzle = muzzle; g.userData.archetype = 'bow'; g.userData.variantScale = .55;
+  return prepareGunModel(g);
+}
+/* SNOWBALL SLINGER — honest Y slingshot with an actual snowball seated in the band */
+function buildSlingModel(w){
+  const g = new THREE.Group();
+  const glow = procMat(0xdfefff, true);
+  const dark = procMat(0x2b3542);
+  const forkMat = procMat(0x4a5a6e);
+  tagPart(g, 'handle', box(.05,.22,.07, dark, 0,-.14,.06, g));
+  const prongL = box(.038,.23,.038, forkMat, -.07,.045,.02, g); prongL.rotation.z = .5; tagPart(g,'prongL',prongL);
+  const prongR = box(.038,.23,.038, forkMat, .07,.045,.02, g); prongR.rotation.z = -.5; tagPart(g,'prongR',prongR);
+  tagPart(g, 'band', box(.2,.012,.02, glow, 0,.115,.02, g));
+  tagPart(g, 'pouch', box(.055,.012,.045, dark, 0,.115,.05, g));
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(.047,14,10), glow);
+  ball.position.set(0,.145,-.03); g.add(ball); tagPart(g,'ball',ball);
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0,.145,-.1); g.add(muzzle);
+  g.userData.muzzle = muzzle; g.userData.archetype = 'sling'; g.userData.variantScale = .8;
+  return prepareGunModel(g);
+}
+/* PLASMA — no barrel: twin emitter prongs, glowing coil rings, power cell under the spine */
+function buildPlasmaModel(w){
+  const g = new THREE.Group();
+  const glow = procMat(w.accent, true);
+  const body = procMat(0x35404f);
+  const dark = procMat(0x232b36);
+  tagPart(g, 'receiver', box(.07,.08,.34, body, 0,.015,-.02, g));
+  const prongL = box(.012,.022,.42, dark, -.032,.03,-.34, g); tagPart(g,'prongL',prongL);
+  const prongR = box(.012,.022,.42, dark, .032,.03,-.34, g); tagPart(g,'prongR',prongR);
+  torusRing(.035,.006, glow, 0,.03,-.2, g); torusRing(.035,.006, glow, 0,.03,-.33, g); torusRing(.035,.006, glow, 0,.03,-.46, g);
+  const cell = tagPart(g, 'mag', box(.05,.09,.12, glow, 0,-.07,.02, g));                  // ejecting fusion cell = reload anim
+  const fin1 = box(.04,.07,.10, dark, 0,.085,-.08, g); fin1.rotation.x = -.2;
+  tagPart(g, 'fin1', fin1);
+  tagPart(g, 'stock', box(.06,.09,.18, dark, 0,-.02,.17, g));
+  const grip = box(.052,.15,.07, dark, 0,-.125,.08, g); grip.rotation.x = .26; tagPart(g,'grip',grip);
+  tagPart(g, 'ventL', box(.02,.008,.2, glow, -.045,.055,-.2, g));
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0,.03,-.56); g.add(muzzle);
+  g.userData.muzzle = muzzle; g.userData.archetype = 'plasma'; g.userData.variantScale = .8;
+  return prepareGunModel(g);
+}
+/* MUSKET — long wooden furniture, brass hoops, side flintlock hammer */
+function buildMusketModel(w){
+  const g = new THREE.Group();
+  const brass = procMat(0xd9a94c, true);
+  const wood = procMat(0x6b4526);
+  const steel = procMat(0x4a5260);
+  const forestock = box(.058,.062,.62, wood, 0,0,-.14, g); tagPart(g,'receiver',forestock);
+  const butt = box(.065,.12,.24, wood, 0,-.045,.22, g); butt.rotation.x = .12; tagPart(g,'stock',butt);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(.013,.013,.66,10), steel);
+  barrel.rotation.x = Math.PI/2; barrel.position.set(0,.045,-.36); g.add(barrel); tagPart(g,'barrel',barrel);
+  torusRing(.017,.004, brass, 0,.045,-.2, g); torusRing(.017,.004, brass, 0,.045,-.42, g);  // brass barrel hoops
+  tagPart(g, 'lock', box(.014,.05,.05, brass, .045,.035,.0, g));
+  const hammer = box(.012,.05,.014, steel, .045,.075,.06, g); hammer.rotation.x = -.5; tagPart(g,'hammer',hammer);
+  tagPart(g, 'frontSight', box(.012,.022,.012, brass, 0,.068,-.63, g));
+  const grip = box(.05,.14,.065, wood, 0,-.1,.1, g); grip.rotation.x = .22; tagPart(g,'grip',grip);
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0,.045,-.7); g.add(muzzle);
+  g.userData.muzzle = muzzle; g.userData.archetype = 'musket'; g.userData.variantScale = .86;
   return prepareGunModel(g);
 }
 function buildGunModels(){
@@ -1623,6 +1862,8 @@ function buildGunModels(){
   return models;
 }
 function enhanceGunModel(g, w, i){
+  // special archetypes ship with their own fittings — never bolt rifle furniture onto a bow
+  if (SPECIAL_ARCHS.has(g.userData.archetype)){ prepareGunModel(g); return; }
   const accent = new THREE.MeshBasicMaterial({ color:w.accent || 0x2cf2ff });
   const dark = gunMats.grip;
   const metal = gunMats.body;
@@ -3382,6 +3623,14 @@ function makeNameSprite(text, color='#2cf2ff'){
   return sp;
 }
 function buildThirdPersonWeaponModel(w){
+  // special archetypes use the same silhouettes as first-person so remote players
+  // read as flamethrowers, bows, launchers and muskets from across the arena too
+  if (SPECIAL_ARCHS.has(archOf(w))){
+    const m = buildProceduralGunModel(w, w.index);
+    m.scale.setScalar(.92);
+    m.traverse(o => { if (o.isMesh){ o.castShadow = true; o.userData.netGun = true; } });
+    return m;
+  }
   const g = new THREE.Group();
   const accent = new THREE.MeshBasicMaterial({ color:w.accent || 0x2cf2ff });
   const body = new THREE.MeshStandardMaterial({ color:0x313a4a, roughness:.5, metalness:.55 });
