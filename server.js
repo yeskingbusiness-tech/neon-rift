@@ -26,11 +26,10 @@ const AC = {
 };
 const ipConns = new Map();      // ip -> live connections on this box
 
-// layer 2+: speed audit, facing physics, integrity heartbeat,
+// layer 2+: speed audit, integrity heartbeat,
 //           recidivist probation, and a coherence auditor that runs even if rate rings are dodged
 Object.assign(AC, {
   SPEED_WIN: 3000, SPEED_MAX: ENVN('AC_SPEED', 75),          // metres travelled in the window (≈25 m/s sustained — legit ~9-12 with slides)
-  FACE_RAD: 1.65,                                            // shooter must LOOK at the victim (±95° slack for turn lag)
   BEAT_MS: 13000,                                            // gameplay reporter without a heartbeat this long → socket bot
   AUDIT_MS: ENVN('AC_AUDIT_MS', 5000),                       // coherence auditor cadence (test rigs may shrink)
   PROB_MS: ENVN('AC_PROB_MS', 300000),                       // a kick earns 5 minutes of probation — halved thresholds
@@ -362,18 +361,6 @@ wss.on('connection', (ws, req) => {
         if (m.knife) p.knifeHitEvents.push(nowM);
         if (acOver(pg(p, AC.HIT_MAX), p.hitEvents, nowM, AC.HIT_WIN)){ acKick(p, `hit-report flood (${p.hitEvents.length}/s — trigger-bot cadence)`); break; }
         const tgt0 = players.get(m.target);
-        // facing gate applies to gunfire only — melee swings are exempt deliberately (their range is
-        // policed by gameplay; the user scoped the geometry gates to guns when picking the option)
-        if (!m.knife && tgt0 && tgt0.lastState && tgt0.lastState[3] && p.lastState && p.lastState[3]
-            && nowM - p.lastState[3] < 1500 && nowM - tgt0.lastState[3] < 1500){
-          // facing physics, every phase: your crosshair lives in your yaw — shots can't come from behind your own head
-          const dx = tgt0.lastState[0] - p.lastState[0], dz = tgt0.lastState[2] - p.lastState[2];
-          const dist = Math.hypot(dx, dz);
-          if (dist > 4){
-            const fx = -Math.sin(p.lastState[4] || 0), fz = -Math.cos(p.lastState[4] || 0);
-            if ((fx * dx + fz * dz) / dist < Math.cos(AC.FACE_RAD)){ acKick(p, 'impossible shot: target outside your field of view'); break; }
-          }
-        }
         if (!roundActive) break;
         const tgt = tgt0;
         if (tgt && gameMode === 'team' && p.team && tgt.team === p.team) break;   // team mode: no friendly fire (or friendly shanks)

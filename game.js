@@ -79,14 +79,14 @@ const SKINS = [
   { id:'jade',     name:'Jade Ronin',     desc:'Temple green duelist frame',             color:0x1f8a5a, trim:0x0f4530, eye:0x66ffc2, cost:1100,  level:9 },
   { id:'solar',    name:'Solar Warden',   desc:'Radiant sun-gold flaring into burning orange', color:0xffd23c, trim:0xc2451a, eye:0xfff2a0, cost:1500, level:12 },
   { id:'void',     name:'Void Specter',   desc:'Violet phase frame',                     color:0x5a3aae, trim:0x2f1d66, eye:0xd040ff, cost:2100,  level:15 },
-  { id:'hornet',   name:'Circuit Hornet', desc:'Hazard yellow shock trooper',            color:0xb59a20, trim:0x5e4e0d, eye:0xffea66, cost:2900,  level:18 },
+  { id:'hornet',   name:'Circuit Hornet', desc:'Hazard yellow shock trooper',            color:0xf2b32a, trim:0x8a5a12, eye:0xffffff, cost:2900,  level:18 },
   { id:'toxic',    name:'Toxic Phantom',  desc:'Green biohazard glow suit',              color:0x2f9a52, trim:0x1a5530, eye:0x8fe08a, cost:4000,  level:21 },
   { id:'siren',    name:'Plasma Siren',   desc:'Magenta nightclub combat shell',         color:0xa82580, trim:0x601448, eye:0xff5ad0, cost:5500,  level:24 },
   { id:'arctic',   name:'Arctic Neon',    desc:'White/blue high contrast shell',         color:0x9ec2e0, trim:0x4a6480, eye:0x66eaff, cost:7500,  level:27 },
   { id:'duskfall', name:'Duskfall Fade',  desc:'Gradient: burning orange into violet',   color:0xff7a3c, trim:0x7a2d8a, eye:0xffe0a0, cost:10000, level:30 },
   { id:'royal',    name:'Royal Blackout', desc:'Prestige purple-gold operator',          color:0x6a3fb0, trim:0x321f5e, eye:0xff9a3c, cost:13500, level:33 },
   { id:'nebula',   name:'Nebula Sheath',  desc:'Gradient: deep indigo into hot magenta', color:0x3a3ac8, trim:0xc03a7a, eye:0x8ad0ff, cost:18000, level:37 },
-  { id:'aurum',    name:'Aurum Prime',    desc:'Liquid-gold champion with a metal shine',color:0xf2b32a, trim:0x8a5a12, eye:0xffffff, cost:25000, level:40 },
+  { id:'aurum',    name:'Aurum Prime',    desc:'Liquid-gold champion with a metal shine',color:0xb59a20, trim:0x5e4e0d, eye:0xffea66, cost:25000, level:40 },
   { id:'monarch',  name:'Void Monarch',   desc:'A pure-black void crowned in blazing neon white', color:0xf8ffff, trim:0x000000, eye:0xffffff, cost:50000, level:50 },
 ];
 function xpForLevel(level){ return level <= 1 ? 0 : Math.floor(120 * Math.pow(level-1, 1.65) + 80 * (level-1)); }
@@ -963,7 +963,7 @@ addEventListener('keydown', e => {
   else if (action === 'slide') trySlide();
   else if (action === 'gun') equipGunSlot();
   else if (action === 'knife') equipKnifeSlot();
-  else if (action === 'jump') player.jumpBufferT = 0.14;
+  else if (action === 'jump') player.jumpBufferT = 0.22;
 }, { capture:false });
 addEventListener('keyup', e => keys[e.code] = false);
 addEventListener('mousedown', e => {
@@ -1082,7 +1082,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Escape') pauseGame();
 });
 
-$('startBtn').addEventListener('click', () => { S.sandbox = false; mode = 'solo'; setMap(MAP_NAMES[(Math.random()*MAP_NAMES.length)|0]); savePlayerName(); showDeploySequence('solo'); startGame(); });
+$('startBtn').addEventListener('click', () => { if (!passNameGate()) return; S.sandbox = false; mode = 'solo'; setMap(MAP_NAMES[(Math.random()*MAP_NAMES.length)|0]); savePlayerName(); showDeploySequence('solo'); startGame(); });
 function requestLAN(){
   const el = $('callsign');
   const typed = String(el ? el.value : '').trim();          // LAN requires a callsign — no ghosting in as a default name
@@ -1096,6 +1096,7 @@ function requestLAN(){
     }
     return;
   }
+  if (!passNameGate()) return;         // reserved callsign still locked — no melting into the LAN with it
   S.sandbox = false; mode = 'dm';
   savePlayerName();
   connectNet();
@@ -1458,6 +1459,7 @@ function rollRarity(){
   return RARITIES[0];
 }
 let weaponIndex = 0;
+let jumpPollPrev = false;   // edge latch for the keydown-independent jump poll
 const CW = () => WEAPONS[weaponIndex];
 
 /* ---- viewmodels ---- */
@@ -3087,8 +3089,12 @@ function damageEnemy(e, dmg){
     e.dead = true;
     S.kills++;
     PROGRESS.totalKills = (PROGRESS.totalKills || 0) + 1;
-    trackChallenge('kill', 1);
-    grantProgress(Math.round(e.type.score * 0.25), Math.round(e.type.score * 0.08), e.type.name + ' ELIMINATED');
+    // Sandbox is a practice range: no credits, no XP, and no challenge progress — nothing you spawn
+    // yourself should pay out. Score and kill stats still count; only money/XP are withheld.
+    if (!S.sandbox){
+      trackChallenge('kill', 1);
+      grantProgress(Math.round(e.type.score * 0.25), Math.round(e.type.score * 0.08), e.type.name + ' ELIMINATED');
+    }
     S.score += e.type.score;
     if (e.type.boss) showBanner('BOSS ELIMINATED');
     registerKill();
@@ -3601,6 +3607,40 @@ function savePlayerName(){
   return PROGRESS.name;
 }
 function netName(){ return savePlayerName(); }
+
+/* Reserved callsigns — vanity locks. Typing a reserved name raises an inline password row
+   (window.prompt is off-limits: the game runs inside pointer-lock + sandboxed iframe contexts
+   where prompt() never opens). The right password unlocks the name on this machine forever;
+   a locked reserved name blocks every play button — solo, LAN and sandbox alike. */
+const RESERVED_CALLSIGNS = { YESKING:'gniksey' };
+let unlockedNames;
+try { unlockedNames = new Set(JSON.parse(localStorage.getItem('neonRiftNameKeys') || '[]')); } catch(e){ unlockedNames = new Set(); }
+function persistNameKeys(){ try { localStorage.setItem('neonRiftNameKeys', JSON.stringify([...unlockedNames])); } catch(e){} }
+function callsignKey(){
+  const el = $('callsign');
+  const raw = el ? (el.value.trim() || PROGRESS.name) : PROGRESS.name;
+  return cleanPlayerName(raw);
+}
+function nameGateLocked(){ const k = callsignKey(); return !!(RESERVED_CALLSIGNS[k] && !unlockedNames.has(k)); }
+function refreshNameGate(){
+  const gate = $('nameGate'); if (!gate) return;
+  gate.classList.toggle('hidden', !nameGateLocked());
+}
+function passNameGate(){
+  if (!nameGateLocked()) return true;
+  refreshNameGate();
+  const key = $('nameKey');
+  if (key){
+    key.value = '';
+    key.placeholder = 'PASSWORD REQUIRED';
+    key.classList.remove('keyBad'); void key.offsetWidth; key.classList.add('keyBad');
+    try { key.focus(); } catch(e){}
+    setTimeout(() => { key.placeholder = 'PASSWORD'; }, 1400);
+  }
+  const el = $('callsign');
+  if (el){ el.classList.add('needName'); setTimeout(() => el.classList.remove('needName'), 900); }
+  return false;
+}
 const nameInput = $('callsign');
 if (nameInput){
   // restore a saved custom callsign, but never ghost-fill the default — LAN requires typing one
@@ -3608,9 +3648,23 @@ if (nameInput){
   nameInput.addEventListener('input', () => {
     nameInput.classList.remove('needName');
     if (nameInput.value.trim()){ PROGRESS.name = cleanPlayerName(nameInput.value); saveProgress(); }
+    refreshNameGate();
   });
   nameInput.addEventListener('blur', savePlayerName);
 }
+const nameKey = $('nameKey');
+if (nameKey){
+  nameKey.addEventListener('input', () => {
+    const k = callsignKey();
+    if (RESERVED_CALLSIGNS[k] && nameKey.value === RESERVED_CALLSIGNS[k]){
+      unlockedNames.add(k); persistNameKeys();
+      nameKey.value = ''; nameKey.blur();
+      refreshNameGate();
+      const el = $('callsign'); if (el) el.classList.remove('needName');
+    }
+  });
+}
+refreshNameGate();   // a restored saved callsign may itself be reserved — arm the gate at boot
 function makeNameSprite(text, color='#2cf2ff'){
   const c = document.createElement('canvas'); c.width = 256; c.height = 64;
   const g = c.getContext('2d');
@@ -3884,6 +3938,10 @@ function connectNet(){
     net.dmMode = 'ffa'; net.myTeam = 0; net.teamTotals = { red:0, blue:0 };
     updateTeamHUD();
     for (const id of [...net.players.keys()]) removeRemotePlayer(id);
+    // A kick must return you to the main menu — the same exit the pause-menu MAIN MENU button takes.
+    // Leaving you standing in-connection-off was the "ghost private match" bug. The reason banner
+    // stays up long enough to read, then we reload.
+    if (ev && (ev.code === 4003 || ev.code === 4004)) setTimeout(() => location.reload(), 2200);
   };
   ws.onmessage = ev => {
     if (ev.data instanceof ArrayBuffer){
@@ -4348,6 +4406,7 @@ function sandboxApplyPick(){
 }
 function deploySandbox(){
   const inGame = S.sandbox && S.started;
+  if (!inGame && !passNameGate()) return;   // starting a fresh sandbox still consumes the callsign
   closeSandboxPanel();
   if (inGame){
     if (currentMapName !== SB.map) setMap(SB.map);
@@ -4371,7 +4430,7 @@ function deploySandbox(){
   showBanner('SANDBOX');
   updateTopHUD();
 }
-$('sandboxBtn').addEventListener('click', () => openSandboxPanel());
+$('sandboxBtn').addEventListener('click', () => { if (!passNameGate()) return; openSandboxPanel(); });
 $('sbBackBtn').addEventListener('click', () => closeSandboxPanel());
 $('sbDeployBtn').addEventListener('click', () => deploySandbox());
 addEventListener('keydown', e => {
@@ -4674,7 +4733,12 @@ function updatePlayer(dt, now){
   }
   player.crouch = lerp(player.crouch, player.slideT > 0 ? 1 : (player.crouched ? 0.92 : 0), 1 - Math.exp(-13*dt));
 
-  // gravity & jump — buffered input + coyote time so jumps always register even mid-sprint / mid-crowd
+  // gravity & jump — buffered input + coyote time so jumps always register even mid-sprint / mid-crowd.
+  // Polling fallback: if the browser eats the Space keydown event (ghosting boards, overlays,
+  // overlay focus hiccups), the held key still shows in the key-state poll — treat its rising edge as a press.
+  const jumpHeldNow = !!bindDown('jump');
+  if (jumpHeldNow && !jumpPollPrev && (player.jumpBufferT || 0) < 0.22) player.jumpBufferT = 0.22;
+  jumpPollPrev = jumpHeldNow;
   player.vel.y -= 21 * dt;
   player.jumpBufferT = Math.max(0, (player.jumpBufferT || 0) - dt);
   if (player.grounded){ player.coyoteT = 0.12; player.airJumpsUsed = 0; }

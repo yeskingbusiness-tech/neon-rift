@@ -50,6 +50,11 @@
   .menuLabel { font-size:10px; letter-spacing:4px; color:#8fa3bd; text-transform:uppercase; margin:0 0 9px; }
   #callsign { width:100%; margin:0 0 18px !important; }
   #callsign.needName { border-color:#ff4b35 !important; box-shadow:0 0 0 1px #ff4b35, 0 0 18px rgba(255,75,53,.35) !important; animation: nameShake .45s ease; }
+  #nameGate { margin:-12px 0 16px !important; text-align:center; }
+  #nameGateLabel { font-size:10px; letter-spacing:3px; color:#ff8a75; margin:0 0 6px; }
+  #nameGate input { width:100%; box-sizing:border-box; background:rgba(30,10,10,.72); border:1px solid rgba(255,75,53,.55); color:#ffe9e4; font-size:13px; letter-spacing:3px; text-align:center; padding:11px 16px; outline:none; }
+  #nameGate input::placeholder { color:#b06a5e; }
+  #nameGate input.keyBad { border-color:#ff4b35 !important; box-shadow:0 0 0 1px #ff4b35, 0 0 18px rgba(255,75,53,.35) !important; animation: nameShake .45s ease; }
   #callsign.needName::placeholder { color:#ff8a75; }
   @keyframes nameShake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-7px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(3px)} }
   .modeBtn { width:100%; display:block; text-align:left; margin-bottom:12px; letter-spacing:3px; padding:17px 18px; }
@@ -553,6 +558,10 @@
       <input id="callsign" placeholder="NAME" maxlength="14" autocomplete="off"
         style="background:rgba(10,16,28,.7); border:1px solid rgba(44,242,255,.35); color:#eafcff; font-size:14px; letter-spacing:4px;
         text-align:center; text-transform:uppercase; padding:12px 18px; outline:none;">
+      <div id="nameGate" class="hidden">
+        <div id="nameGateLabel">RESERVED CALLSIGN — ENTER PASSWORD</div>
+        <input id="nameKey" type="password" placeholder="PASSWORD" maxlength="24" autocomplete="off">
+      </div>
 
       <div class="menuLabel">Select Operation</div>
       <div id="profileCard" class="profileCard">
