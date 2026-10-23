@@ -89,10 +89,11 @@ const SKINS = [
   { id:'aurum',    name:'Aurum Prime',    desc:'Liquid-gold champion with a metal shine',color:0xb59a20, trim:0x5e4e0d, eye:0xffea66, cost:25000, level:40 },
   { id:'monarch',  name:'Void Monarch',   desc:'A pure-black void crowned in blazing neon white', color:0xf8ffff, trim:0x000000, eye:0xffffff, cost:50000, level:50 },
 ];
+/* XP curve (inlined — matches original file before extraction) */
 function xpForLevel(level){ return level <= 1 ? 0 : Math.floor(120 * Math.pow(level-1, 1.65) + 80 * (level-1)); }
 function levelFromXp(xp){ let lvl = 1; while (lvl < 99 && xp >= xpForLevel(lvl+1)) lvl++; return lvl; }
 function skinDef(id){ return SKINS.find(s => s.id === id) || SKINS[0]; }
-function defaultProgress(){ return { xp:0, cash:0, skin:'rift', unlocked:['rift'], totalKills:0, soloWaves:0, dmWins:0, name:'RIFT-OPS', challengeState:{} }; }
+function defaultProgress(){ return { xp:0, cash:0, skin:'rift', unlocked:['rift'], totalKills:0, soloWaves:0, dmWins:0, name:'RIFT-OPS', challengeState:{}, peakLevel:1 }; }
 function loadProgress(){
   try {
     const p = { ...defaultProgress(), ...(JSON.parse(localStorage.getItem('neonRiftProgress') || '{}')) };
@@ -102,16 +103,25 @@ function loadProgress(){
     p.name = String(p.name || 'RIFT-OPS').toUpperCase().replace(/[<>]/g,'').slice(0,14);
     if (!p.unlocked.includes('rift')) p.unlocked.push('rift');
     if (!SKINS.some(s => s.id === p.skin) || !p.unlocked.includes(p.skin)) p.skin = 'rift';
+    // SAFEGUARD: level never goes backwards (old veterans capped at 45, future curve tweaks)
+    if (!p.peakLevel || typeof p.peakLevel !== 'number') p.peakLevel = levelFromXp(p.xp) || 1;
     return p;
   } catch(e){ return defaultProgress(); }
 }
 const PROGRESS = loadProgress();
 function saveProgress(){ localStorage.setItem('neonRiftProgress', JSON.stringify(PROGRESS)); }
-function progressLevel(){ return levelFromXp(PROGRESS.xp); }
+function progressLevel(){
+  const cur = levelFromXp(PROGRESS.xp);
+  if (PROGRESS.peakLevel && PROGRESS.peakLevel > cur) return PROGRESS.peakLevel;
+  return cur;
+}
 function grantProgress(xp=0, cash=0, reason=''){
   const before = progressLevel();
   PROGRESS.xp = Math.max(0, Math.floor(PROGRESS.xp + xp));
   PROGRESS.cash = Math.max(0, Math.floor(PROGRESS.cash + cash));
+  // pin peak — only ever goes up; existing stuck-at-45 players will climb again
+  const curLvl = levelFromXp(PROGRESS.xp);
+  if (!PROGRESS.peakLevel || curLvl > PROGRESS.peakLevel) PROGRESS.peakLevel = curLvl;
   if (typeof S !== 'undefined' && S.started){ S.xpEarned += xp; S.cashEarned += cash; }
   saveProgress();
   updateProgressUI();
@@ -119,13 +129,14 @@ function grantProgress(xp=0, cash=0, reason=''){
   if (after > before){ showBanner('LEVEL ' + after); SFX.roundStart(); }
   if ((xp || cash) && reason) addKillFeed(null, `+${cash} CR &nbsp;//&nbsp; +${xp} XP &nbsp;<b>${reason}</b>`);
 }
-function dateKey(){ const d = new Date(); return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`; }
-function weekKey(){ const d = new Date(); const oneJan = new Date(d.getFullYear(),0,1); return `${d.getFullYear()}-W${Math.ceil((((d-oneJan)/86400000)+oneJan.getDay()+1)/7)}`; }
+function dateKey(){ return new Date().toISOString().slice(0,10); }
+function weekKey(){ const d=new Date(); const s=new Date(d.getFullYear(),0,1); const days=Math.floor((d-s)/86400000); const w=Math.ceil((days+d.getDay()+1)/7); return d.getFullYear()+'-W'+String(w).padStart(2,'0'); }
 function activeChallenges(){
+  const dk=dateKey(), wk=weekKey();
   return [
-    { id:'daily-kills-'+dateKey(), kind:'daily', type:'kill', title:'Daily Hunt', desc:'Get 30 eliminations', target:30, xp:500, cash:350 },
-    { id:'daily-waves-'+dateKey(), kind:'daily', type:'wave', title:'Wavebreaker', desc:'Clear 5 solo waves', target:5, xp:450, cash:300 },
-    { id:'weekly-wins-'+weekKey(), kind:'weekly', type:'dmWin', title:'Blackout Champion', desc:'Win 2 LAN rounds', target:2, xp:1500, cash:900 },
+    { id:'daily_kill_'+dk, kind:'daily', type:'kill', target:25, xp:200, cash:150, title:'Daily Hunt', desc:'25 eliminations' },
+    { id:'daily_wave_'+dk, kind:'daily', type:'wave', target:3, xp:150, cash:100, title:'Daily Survival', desc:'Clear 3 waves' },
+    { id:'weekly_win_'+wk, kind:'weekly', type:'dmWin', target:3, xp:600, cash:400, title:'Weekly Domination', desc:'3 LAN wins' },
   ];
 }
 function challengeEntry(ch){
@@ -161,6 +172,8 @@ function mulberry32(seed){ return function(){ let t = seed += 0x6D2B79F5;
   t = Math.imul(t ^ t>>>15, t|1); t ^= t + Math.imul(t ^ t>>>7, t|61);
   return ((t ^ t>>>14) >>> 0) / 4294967296; }; }
 const mrand = mulberry32(1337);
+function hashSeed(s){ let h = 2166136261 >>> 0; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0 || 1337; }
+function seededRng(seedStr){ return mulberry32(hashSeed(seedStr)); }
 
 /* ================= RENDERER / SCENE ================= */
 const canvas = $('game');
@@ -391,7 +404,7 @@ function addSolid(cx, cz, w, d, h, mat, { y0=0, glow=null, visual=true } = {}){
 }
 
 let currentMapName = 'FORGE';
-const MAP_NAMES = ['FORGE','NEXUS','DUSK YARD','COLD STORAGE','RIFT DOCKS'];
+const MAP_NAMES = ['FORGE','NEXUS','DUSK YARD','COLD STORAGE','RIFT DOCKS','ASHEN CITADEL'];
 let activeSpawnPoints = [[40,0],[-40,0],[0,40],[0,-40],[34,34],[-34,34],[34,-34],[-34,-34]];
 let activePickupLayout = [[-20,0,'health'],[20,0,'health'],[0,-28,'health'],[0,0,'ammo'],[28,28,'ammo'],[-28,-28,'ammo'],[0,28,'health'],[28,-14,'ammo']];
 let mapLampPositions = [];
@@ -622,12 +635,16 @@ function buildForgeLayout(){
   addSolid( 16, -10, 10, 1.4, 2.6, MAT.wall, { glow:MAT.cyanGlow });
   addSolid( 10,  18, 1.4, 10, 2.6, MAT.wall, { glow:MAT.orangeGlow });
   addSolid(-10, -18, 1.4, 10, 2.6, MAT.wall, { glow:MAT.orangeGlow });
+  // FIX: forge scatter must be identical for every player — a global mrand that advances
+  // with every buildMap call desyncs LAN peers who built thumbnails in different order.
+  // Use a map-seeded local RNG so the 16 crates land in the same spots for everyone.
   let placed = 0;
+  const rng = seededRng('FORGE_v2');
   while (placed < 16){
-    const x = (mrand()*2-1) * 38, z = (mrand()*2-1) * 38;
+    const x = (rng()*2-1) * 38, z = (rng()*2-1) * 38;
     if (Math.hypot(x,z) < 12 || (Math.abs(x) > 28 && Math.abs(z) > 28)) continue;
-    const s = 1.4 + mrand()*1.4, h = 0.9 + mrand()*1.3;
-    addSolid(x, z, s, s, h, mrand() > .5 ? MAT.crate : MAT.crate2, { glow: mrand() > .6 ? MAT.cyanGlow : null });
+    const s = 1.4 + rng()*1.4, h = 0.9 + rng()*1.3;
+    addSolid(x, z, s, s, h, rng() > .5 ? MAT.crate : MAT.crate2, { glow: rng() > .6 ? MAT.cyanGlow : null });
     placed++;
   }
   for (const [x,z,w,d,h] of [[-24,-2,6,1,1.15],[24,2,6,1,1.15],[-2,24,1,6,1.15],[2,-24,1,6,1.15],[12,8,5,1,1.15],[-12,-8,5,1,1.15]])
@@ -703,35 +720,209 @@ function addCrane(x,z){
   addSolid(x, z, 1.0, 20, 0.7, MAT.dark, { y0: 6.1, glow: MAT.orangeGlow });
 }
 function addRiftDocksDressing(){
-  addCrane(-26,-26); addCrane(26,26);
-  addRotatingRing(0,34,4.6,3.4,0xff9a3c,0.8);
-  addBeacon(0,-34,0xff9a3c,2.6); addBeacon(0,34,0x2cf2ff,2.6);
-  for (const [x,z] of [[-12,0],[12,0],[-34,-12],[34,12]]) addDestructibleProp(x,z,'crate');
-  for (const [x,z] of [[-6,-24],[6,24],[24,-20],[-24,20]]) addDestructibleProp(x,z,'barrel');
-  addWorldSign('RIFT DOCKS', -40.9, 3.4, 12, Math.PI/2, '#2cf2ff', 'CONTAINER BERTH 7');
-  addWorldSign('NO MANIFEST', 12, 3.4, -40.9, 0, '#ff9a3c', 'BLACKOUT RAIN FRONT');
-  const l1 = new THREE.SpotLight(0x2cf2ff, 2.8, 64, 0.3, 0.45, 1.2); l1.position.set(-30,9,30); l1.target.position.set(0,0,0); worldGroup.add(l1); worldGroup.add(l1.target);
-  const l2 = new THREE.SpotLight(0xff9a3c, 2.4, 58, 0.32, 0.45, 1.2); l2.position.set(30,9,-30); l2.target.position.set(0,0,0); worldGroup.add(l2); worldGroup.add(l2.target);
-  worldAnim.push({ spot:l1, target:l1.target, center:new THREE.Vector3(0,0,0), radius:20, speed:0.5, phase:1.2 });
-  worldAnim.push({ spot:l2, target:l2.target, center:new THREE.Vector3(0,0,0), radius:18, speed:-0.6, phase:3.1 });
-  addWeather('rain', 540);
+  // RIFT DOCKS — vertical harbor
+  addRotatingRing(0,0,5.2,3.2,0x2cf2ff,0.6);
+  addWorldSign('RIFT DOCKS', -40.9,3.8,0, Math.PI/2, '#2cf2ff', 'VERTICAL YARD // CRANE HOLD');
+  addWorldSign('YARD HIGH', 0,3.6,40.9, Math.PI, '#ff9a3c', 'STACKS 3-HIGH — CLIMB');
+  addWeather('rain', 280);
 }
 function buildRiftDocksLayout(){
-  // rain-slick dockside: long container lanes, gantry cranes, pier cover
-  for (const [x,z,w,d,h] of [[0,-14,26,3,3.0],[0,14,26,3,3.0]]) addSolid(x,z,w,d,h,MAT.crate2,{glow:MAT.orangeGlow});
-  addSolid(0, 0, 4, 10, 1.2, MAT.dark, { glow:MAT.cyanGlow });
-  addSolid(0, 0, 2.4, 4, 2.8, MAT.wall, { y0:1.2, glow:MAT.cyanGlow });
-  for (const sx of [-1,1]){
-    addSolid(sx*20, 0, 6, 14, 1.5, MAT.crate, { glow:MAT.cyanGlow });
-    addSolid(sx*30, 0, 3.4, 24, 3.6, MAT.wall, { glow:MAT.orangeGlow });
-    addSolid(sx*12, -28, 10, 2.6, 2.4, MAT.crate2, { glow:MAT.cyanGlow });
-    addSolid(sx*12, 28, 10, 2.6, 2.4, MAT.crate2, { glow:MAT.cyanGlow });
+  // === RIFT DOCKS — VERTICAL HARBOR v2 (usable buildings, not giant blocks) ===
+  // central pier
+  addSolid(0,0, 48,14,0.4, MAT.dark, {glow:MAT.cyanGlow});
+  // freighter north — 2-level, boardable
+  addSolid(0,15, 30,8,2.4, MAT.dark, {glow:MAT.orangeGlow}); // hull
+  addSolid(0,15, 22,5,2.8, MAT.wall, {y0:2.4, glow:MAT.cyanGlow}); // lower deck
+  addSolid(0,15, 14,3,2.0, MAT.dark, {y0:5.2, glow:MAT.orangeGlow}); // bridge
+  addSolid(-9,15, 2.8,2.8,3.2, MAT.wall, {y0:2.4}); addSolid(9,15, 2.8,2.8,3.2, MAT.wall, {y0:2.4});
+  addSolid(-8,8.5, 2.4,4,0.6, MAT.dark); addSolid(8,8.5, 2.4,4,0.6, MAT.dark); // ramps
+  // ---- north warehouses — hollow, enterable, windowed, walkable roof ----
+  for(const wx of [-21,21]){
+    // north wall solid — shifted outward 1m for wider center
+    addSolid(wx, 33.5, 12,1,4.2, MAT.wall, {glow:MAT.orangeGlow});
+    // south wall with 3m door gap centered
+    addSolid(wx-3.75, 24.5, 4.5,1,4.2, MAT.wall, {glow:MAT.orangeGlow});
+    addSolid(wx+3.75, 24.5, 4.5,1,4.2, MAT.wall, {glow:MAT.orangeGlow});
+    // west wall split with 2m window gap at center
+    addSolid(wx-5.5, 26.25, 1,3.5,4.2, MAT.wall);
+    addSolid(wx-5.5, 31.75, 1,3.5,4.2, MAT.wall);
+    // east wall split with window
+    addSolid(wx+5.5, 26.25, 1,3.5,4.2, MAT.wall);
+    addSolid(wx+5.5, 31.75, 1,3.5,4.2, MAT.wall);
+    // roof walkable
+    addSolid(wx,29, 12,10,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+    // interior cover crates
+    addSolid(wx-2.5,29, 2.2,2.2,1.2, MAT.crate);
+    addSolid(wx+2.5,29, 2.2,2.2,1.0, MAT.crate2);
+    // interior loft walkable at 2.2m (north half)
+    addSolid(wx,31.8, 8,2.2,0.35, MAT.dark, {y0:2.2});
+    // exterior stairs to roof (south side, outside warehouse)
+    for(let i=0;i<7;i++) addSolid(wx, 22.2 - i*0.9, 2.0,0.85,0.6, MAT.crate2, {y0:i*0.6});
   }
-  for (const [x,z,c] of [[-20,-14,0xff9a3c],[20,14,0xff9a3c],[20,-14,0x2cf2ff],[-20,14,0x2cf2ff],[0,36,0x2cf2ff],[0,-36,0xff9a3c]]) addLamp(x,z,c);
+  // north perimeter cover behind warehouses (low wall for north spawns) — widened 32
+  addSolid(0,39, 32,1.2,2.6, MAT.crate, {glow:MAT.cyanGlow});
+  // east/west container lanes — split with gap, moved outward for better sightline
+  for(const ex of [-27.5,27.5]){
+    addSolid(ex, 3.6, 2.4,5,3.2, MAT.wall, {glow:MAT.cyanGlow}); // north segment
+    addSolid(ex,-3.6, 2.4,5,3.2, MAT.wall, {glow:MAT.cyanGlow}); // south segment
+  }
+  // south container towers — moved south 2m and outward 1m, more diagonal
+  for(const tx of [-15,15]){
+    addSolid(tx,-20, 8,6,2.2, MAT.crate, {glow:MAT.cyanGlow}); // base
+    addSolid(tx,-20, 8,6,2.0, MAT.crate2, {y0:2.2}); // mid
+    addSolid(tx,-20, 6,4,1.6, MAT.crate, {y0:4.2, glow:MAT.cyanGlow}); // top crate
+    // stairs to mid then top on south face
+    for(let i=0;i<4;i++) addSolid(tx, -24.2 - i*0.85, 2.0,0.85,0.55, MAT.crate2, {y0:i*0.55});
+    for(let i=0;i<3;i++) addSolid(tx, -22.5 + i*0.85, 1.8,0.75,0.55, MAT.crate, {y0:2.2+i*0.55});
+  }
+  addSolid(0,-26, 14,3.2,2.2, MAT.crate2); // south low wall connecting towers — lengthened
+  // harbor offices — rearranged diagonal for cross-fire (was east/west, now NW/SE offset)
+  // west office shifted NW to  -28,6
+  addSolid(-28, 6, 8,5,3.0, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid(-28, 8.6, 8,0.9,1.0, MAT.dark, {y0:3.0, glow:MAT.orangeGlow}); // roof parapet north
+  addSolid(-28,3.4, 8,0.9,1.0, MAT.dark, {y0:3.0});
+  addSolid(-31.5, 6, 0.9,5,1.0, MAT.dark, {y0:3.0});
+  addSolid(-24.5, 6, 0.9,5,1.0, MAT.dark, {y0:3.0});
+  addSolid(-28,6, 6,4,0.4, MAT.dark, {y0:3.0}); // roof
+  addSolid(-28, 7, 2,1.2,1.0, MAT.crate2);
+  // east office shifted SE to 28,-8
+  addSolid(28, -8, 8,5,3.0, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid(28, -5.4, 8,0.9,1.0, MAT.dark, {y0:3.0, glow:MAT.orangeGlow});
+  addSolid(28,-10.6, 8,0.9,1.0, MAT.dark, {y0:3.0});
+  addSolid(31.5, -8, 0.9,5,1.0, MAT.dark, {y0:3.0});
+  addSolid(24.5, -8, 0.9,5,1.0, MAT.dark, {y0:3.0});
+  addSolid(28,-8, 6,4,0.4, MAT.dark, {y0:3.0});
+  addSolid(28, -7, 2,1.2,1.0, MAT.crate);
+  // central elevated walkway — connects over pier at 4.2m
+  addSolid(0,0, 36,2.0,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid(0,7, 2.0,8,3.0, MAT.wall, {y0:0.4}); addSolid(0,-7, 2.0,8,3.0, MAT.wall, {y0:0.4}); // supports
+  for(let i=0;i<8;i++) addSolid(-16, -6 + i*0.9, 2.2,0.9,0.55, MAT.crate2, {y0:i*0.55}); // west stairs to walkway — moved inward 2m
+  for(let i=0;i<8;i++) addSolid(16, -6 + i*0.9, 2.2,0.9,0.55, MAT.crate2, {y0:i*0.55}); // east stairs
+  // crane — tall beam — pillars moved outward 1m for wider span
+  addSolid(-17,0, 1.2,1.2,7.2, MAT.dark); addSolid(17,0, 1.2,1.2,7.2, MAT.dark);
+  addSolid(0,0, 36,1.0,0.6, MAT.dark, {y0:6.8, glow:MAT.orangeGlow});
+  // control tower northwest — pushed to corner
+  addSolid(-32,32, 7,7,6.8, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid(-32,32, 5,5,0.4, MAT.dark, {y0:3.2, glow:MAT.cyanGlow}); // mid platform
+  addSolid(-32,32, 4,4,1.6, MAT.dark, {y0:6.8, glow:MAT.orangeGlow}); // cab
+  for(let i=0;i<6;i++) addSolid(-28,32, 1.2,0.9,0.55, MAT.crate2, {y0:i*0.55});
+  // southeast watch platform (mirrors tower, low) — pushed to corner
+  addSolid(32,-32, 6,6,3.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid(32,-32, 4,4,0.4, MAT.dark, {y0:3.2});
+  for(let i=0;i<4;i++) addSolid(32,-28.2 + i*0.9, 1.2,0.9,0.55, MAT.crate2, {y0:i*0.55});
   addRiftDocksDressing();
-  activeSpawnPoints = [[38,-20],[-38,20],[38,20],[-38,-20],[0,34],[0,-34],[34,0],[-34,0]];
-  activePickupLayout = [[0,0,'ammo'],[-20,7,'health'],[20,-7,'health'],[0,22,'ammo'],[0,-22,'ammo'],[-34,20,'health'],[34,-20,'health'],[34,20,'ammo'],[-34,-20,'ammo']];
+  activeSpawnPoints = [[30,30],[-30,30],[30,-30],[-30,-30],[0,34],[0,-34],[34,0],[-34,0]];
+  activePickupLayout = [[0,0,'ammo'],[14,14,'health'],[-14,14,'health'],[14,-14,'health'],[-14,-14,'health'],[0,20,'ammo'],[0,-20,'ammo'],[20,0,'ammo'],[-20,0,'ammo']];
 }
+
+function addAshenCitadelDressing(){
+  // minimal castle — no clutter, no lag
+  addRotatingRing(0,0,5.5,2.8,0xff6a2c,0.6);
+  addRotatingRing(0,0,4.0,1.8,0xff9a3c,-0.8);
+  addWorldSign('ASHEN CITADEL', -40.9,3.8,-10, Math.PI/2, '#ff6a2c', 'BURNED THRONE // ASH FALL');
+  addWorldSign('HOLD THE GATES', 10,3.6,40.9, Math.PI, '#ff9a3c', 'FOUR GATES // FOUR BASTIONS');
+  addWeather('embers', 220);
+}
+function buildAshenCitadelLayout(){
+  // === ASHEN CITADEL — CLEAN CITADEL (rebuilt keep + fixed bastion stairs) ===
+  // outer curtain wall — continuous ring with 4 gate gaps (7.5m), connected to bastions
+  addSolid(-17.25, 33, 22.5,2.2,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid( 17.25, 33, 22.5,2.2,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid( 33, 17.25, 2.2,22.5,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid( 33,-17.25, 2.2,22.5,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid(-17.25,-33, 22.5,2.2,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid( 17.25,-33, 22.5,2.2,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid(-33, 17.25, 2.2,22.5,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid(-33,-17.25, 2.2,22.5,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  // gatehouses — 4.5x4.5 towers 5.2m tall flanking each gate
+  for (const [x,z] of [[-6,33],[6,33],[-6,-33],[6,-33],[-33,-6],[-33,6],[33,-6],[33,6]]){
+    addSolid(x,z,4.5,4.5,5.2, MAT.wall, {glow:MAT.orangeGlow});
+    addSolid(x, z+1.65, 4.5,0.7,0.9, MAT.dark, {y0:5.2, glow:MAT.orangeGlow});
+    addSolid(x, z-1.65, 4.5,0.7,0.9, MAT.dark, {y0:5.2, glow:MAT.orangeGlow});
+    addSolid(x+1.65, z, 0.7,4.5,0.9, MAT.dark, {y0:5.2, glow:MAT.orangeGlow});
+    addSolid(x-1.65, z, 0.7,4.5,0.9, MAT.dark, {y0:5.2, glow:MAT.orangeGlow});
+  }
+  // gate lintels
+  addSolid(0,33, 7.5,2.0,1.0, MAT.dark, {y0:3.2, glow:MAT.cyanGlow});
+  addSolid(0,-33,7.5,2.0,1.0, MAT.dark, {y0:3.2, glow:MAT.cyanGlow});
+  addSolid(33,0,2.0,7.5,1.0, MAT.dark, {y0:3.2, glow:MAT.cyanGlow});
+  addSolid(-33,0,2.0,7.5,1.0, MAT.dark, {y0:3.2, glow:MAT.cyanGlow});
+  // corner bastions — 10x10 towers 5.4m tall, with crenellations
+  for (const [sx,sz] of [[1,1],[1,-1],[-1,1],[-1,-1]]){
+    addSolid(sx*33, sz*33, 10,10,5.4, MAT.wall, {glow:MAT.cyanGlow});
+    addSolid(sx*33, sz*38.0, 10,1.0,1.0, MAT.dark, {y0:5.4, glow:MAT.orangeGlow});
+    addSolid(sx*38.0, sz*33, 1.0,10,1.0, MAT.dark, {y0:5.4, glow:MAT.orangeGlow});
+    addSolid(sx*33, sz*28.0, 10,0.6,0.7, MAT.dark, {y0:5.4});
+    addSolid(sx*28.0, sz*33, 0.6,10,0.7, MAT.dark, {y0:5.4});
+  }
+  // wall-walks — walkable slabs on top of curtain walls
+  addSolid(-17.25,33,22.5,1.6,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid( 17.25,33,22.5,1.6,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid( 33, 17.25,1.6,22.5,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid( 33,-17.25,1.6,22.5,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid(-17.25,-33,22.5,1.6,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid( 17.25,-33,22.5,1.6,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid(-33, 17.25,1.6,22.5,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid(-33,-17.25,1.6,22.5,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  // wall outer parapets
+  addSolid(-17.25,33.85,22.5,0.6,1.0, MAT.wall, {y0:4.6});
+  addSolid( 17.25,33.85,22.5,0.6,1.0, MAT.wall, {y0:4.6});
+  addSolid(-17.25,-33.85,22.5,0.6,1.0, MAT.wall, {y0:4.6});
+  addSolid( 17.25,-33.85,22.5,0.6,1.0, MAT.wall, {y0:4.6});
+  addSolid(33.85, 17.25,0.6,22.5,1.0, MAT.wall, {y0:4.6});
+  addSolid(33.85,-17.25,0.6,22.5,1.0, MAT.wall, {y0:4.6});
+  addSolid(-33.85, 17.25,0.6,22.5,1.0, MAT.wall, {y0:4.6});
+  addSolid(-33.85,-17.25,0.6,22.5,1.0, MAT.wall, {y0:4.6});
+  // bastion access stairs — fixed: pulled 3m inside from wall so not stuck inside wall
+  // 8 steps 3.2 wide, straight toward bastion face, ends just shy of bastion/wall
+  for(const [sx,sz] of [[1,1],[1,-1],[-1,1],[-1,-1]]){
+    for(let i=0;i<8;i++){
+      const z = sz*20 + sz*i*1.0;
+      addSolid(sx*30, z, 3.2,1.0,0.55, MAT.crate2, {y0:i*0.55});
+    }
+  }
+  // central keep — REBUILT from scratch (clean geometry)
+  // keep foundation 14x14
+  addSolid(0,0,14,14,1.0, MAT.dark, {glow:MAT.cyanGlow});
+  // keep outer walls with 3.5m doors — 4 sides, 2 segments each
+  addSolid(-4.0, 6.4, 5.0,1.2,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  addSolid( 4.0, 6.4, 5.0,1.2,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  addSolid(-4.0,-6.4, 5.0,1.2,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  addSolid( 4.0,-6.4, 5.0,1.2,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  addSolid( 6.4,-4.0, 1.2,5.0,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  addSolid( 6.4, 4.0, 1.2,5.0,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  addSolid(-6.4,-4.0, 1.2,5.0,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  addSolid(-6.4, 4.0, 1.2,5.0,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  // keep corner towers — integrated 3.5x3.5
+  for(const [sx,sz] of [[1,1],[1,-1],[-1,1],[-1,-1]]){
+    addSolid(sx*6.2, sz*6.2, 3.5,3.5,6.4, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+    addSolid(sx*6.2, sz*7.5, 3.5,0.7,0.9, MAT.dark, {y0:7.4});
+    addSolid(sx*6.2, sz*4.9, 3.5,0.7,0.9, MAT.dark, {y0:7.4});
+    addSolid(sx*7.5, sz*6.2, 0.7,3.5,0.9, MAT.dark, {y0:7.4});
+    addSolid(sx*4.9, sz*6.2, 0.7,3.5,0.9, MAT.dark, {y0:7.4});
+  }
+  // keep interior — clean open hall
+  // keep roof — solid 12x12 walkable with parapet ring
+  addSolid(0,0,12,12,0.5, MAT.dark, {y0:5.5, glow:MAT.orangeGlow});
+  addSolid(0,6,12,0.8,1.0, MAT.dark, {y0:6.0});
+  addSolid(0,-6,12,0.8,1.0, MAT.dark, {y0:6.0});
+  addSolid(6,0,0.8,12,1.0, MAT.dark, {y0:6.0});
+  addSolid(-6,0,0.8,12,1.0, MAT.dark, {y0:6.0});
+  // keep entry steps — 2 per door
+  for(const [dx,dz,wo,ho] of [[0,8.2,3.2,1.6],[0,-8.2,3.2,1.6],[8.2,0,1.6,3.2],[-8.2,0,1.6,3.2]]){
+    addSolid(dx,dz,wo,ho,0.5, MAT.crate2, {y0:0});
+    addSolid(dx*0.85,dz*0.85,wo*0.85,ho*0.85,0.5, MAT.crate2, {y0:0.5});
+  }
+  // simple corner walls — tall L-shaped cover
+  addSolid(-14, 14, 6,1.0,4.4, MAT.crate); addSolid(-17, 11, 1.0,4,4.4, MAT.crate);
+  addSolid( 14, 14, 6,1.0,4.4, MAT.crate); addSolid( 17, 11, 1.0,4,4.4, MAT.crate);
+  addSolid(-14,-14, 6,1.0,4.4, MAT.crate2); addSolid(-17,-11, 1.0,4,4.4, MAT.crate2);
+  addSolid( 14,-14, 6,1.0,4.4, MAT.crate2); addSolid( 17,-11, 1.0,4,4.4, MAT.crate2);
+  addAshenCitadelDressing();
+  activeSpawnPoints = [[0,28],[0,-28],[28,0],[-28,0],[22,22],[-22,22],[22,-22],[-22,-22]];
+  activePickupLayout = [[0,0,'ammo'],[10,10,'health'],[-10,-10,'health'],[14,0,'ammo'],[-14,0,'ammo'],[0,18,'health'],[0,-18,'health'],[18,18,'health'],[-18,-18,'health']];
+}
+
 function buildMap(name='FORGE'){
   currentMapName = (name || 'FORGE').toUpperCase();
   clearWorld();
@@ -741,6 +932,7 @@ function buildMap(name='FORGE'){
   else if (currentMapName === 'DUSK YARD') buildDuskYardLayout();
   else if (currentMapName === 'COLD STORAGE') buildColdStorageLayout();
   else if (currentMapName === 'RIFT DOCKS') buildRiftDocksLayout();
+  else if (currentMapName === 'ASHEN CITADEL') buildAshenCitadelLayout();
   else { currentMapName = 'FORGE'; buildForgeLayout(); }
 }
 function setMap(name){
@@ -762,7 +954,7 @@ function setMap(name){
 /* map vote thumbnails: a top-down blueprint render of each arena, generated once
    from the real solid data so every map offers a true picture of itself */
 const MAP_THUMBS = {};
-const MAP_THUMB_TINT = { 'FORGE':'#ff9a2c', 'NEXUS':'#2cf2ff', 'DUSK YARD':'#b06cff', 'COLD STORAGE':'#9fd8ff', 'RIFT DOCKS':'#2c9fff' };
+const MAP_THUMB_TINT = { 'FORGE':'#ff9a2c', 'NEXUS':'#2cf2ff', 'DUSK YARD':'#b06cff', 'COLD STORAGE':'#9fd8ff', 'RIFT DOCKS':'#2c9fff', 'ASHEN CITADEL':'#ff6a2c' };
 function blueprintThumb(mapName){
   const canvas = document.createElement('canvas'); canvas.width = 360; canvas.height = 220;
   const g = canvas.getContext('2d');
@@ -928,7 +1120,7 @@ const player = {
   bobT: 0, stepT: 0, shake: 0,
   fovKick: 0,
   grenades: 3, slideT: 0, slideCd: 0, crouch: 0, invuln:0, invulnUntil:0,
-  crouched: false, coyoteT: 0, jumpBufferT: 0, airJumpsUsed: 0, burnFxT: 0, _firedHeld: false,   // predeclared — object is sealed at load
+  crouched: false, coyoteT: 0, jumpBufferT: 0, airJumpsUsed: 0, burnFxT: 0, burnUntil: 0, burnNext: 0, burnDps: 0, _firedHeld: false,   // predeclared — object is sealed at load
 };
 const slideDir = new THREE.Vector3();
 
@@ -1201,6 +1393,10 @@ updateSettingsUI();
 applyRuntimeSettings();
 
 function applyLocalSkinAppearance(){
+  if (isInfect()){
+    applyInfectSkin();
+    return;
+  }
   const sk = skinDef(PROGRESS.skin);
   try {
     if (armMats?.plate) armMats.plate.color.setHex(sk.eye);
@@ -1208,6 +1404,16 @@ function applyLocalSkinAppearance(){
   } catch(e){}
   try { if (net && net.on) netSend({ t:'skin', skin:PROGRESS.skin }); } catch(e){}
 }
+function applyInfectSkin(){
+  const forced = net.infected ? 'toxic' : 'rift';
+  const sk = skinDef(forced);
+  try {
+    if (armMats?.plate) armMats.plate.color.setHex(sk.eye);
+    if (armMats?.sleeve) armMats.sleeve.color.setHex(Math.max(0x111111, sk.color));
+  } catch(e){}
+  // do NOT send skin to server — server already forced it; suppress to avoid overwrite
+}
+function isInfectSurvivor(){ return isInfect() && !net.infected; }
 function updateProgressUI(){
   const lvl = progressLevel();
   const cur = xpForLevel(lvl), next = xpForLevel(lvl+1);
@@ -1263,8 +1469,23 @@ function updateSkinDetail(){
   btn.classList.remove('hidden');
   btn.disabled = equipped;
   btn.textContent = equipped ? 'EQUIPPED' : unlocked ? 'EQUIP' : lvl < sk.level ? `REQUIRES LVL ${sk.level}` : `BUY — ${sk.cost.toLocaleString()} CR`;
-  btn.onclick = () => {
+  btn.onclick = async () => {
     if (PROGRESS.skin === sk.id) return;
+    // online: the server's wallet is the only one that matters — buy AND equip ride the books
+    if (apiUp.ok !== false){
+      if (!unlocked && lvl < sk.level){ addKillFeed(null, `SKIN LOCKED — REACH <b>LEVEL ${sk.level}</b>`); return; }
+      btn.disabled = true;
+      const r = await apiPost('buy', { key: syncKey, skin: sk.id });
+      btn.disabled = false;
+      if (r && r.ok){
+        adoptServerProfile(r.profile);
+        if (r.bought) SFX.pickup();
+        applyLocalSkinAppearance(); updateProgressUI(); updateSkinDetail();
+        return;
+      }
+      if (r){ addKillFeed(null, `SERVER DENIED — <b>${String(r.reason || 'purchase failed').toUpperCase()}</b>`); return; }
+      // r === null → the probe says offline; drop through to the legacy local wallet
+    }
     if (!unlocked){
       if (lvl < sk.level){ addKillFeed(null, `SKIN LOCKED — REACH <b>LEVEL ${sk.level}</b>`); return; }
       if (PROGRESS.cash < sk.cost){ addKillFeed(null, `NOT ENOUGH CREDITS — NEED <b>${sk.cost} CR</b>`); return; }
@@ -1409,7 +1630,7 @@ const WEAPON_BLUEPRINTS = [
   ['MIRAGE PDW',         'SMG',     true,  17,1000, 44, 264, .021, .0095, .008, .036, 1,  'rifle',    88, false],
   ['PROTOCOL ZERO',      'EXOTIC',  false,155,  48,  4,  24, .035, .0005, .060, .220, 1,  'sniper',  275, true ],
   // --- specials: kind hits at 15th slot, splash def at 16th ---
-  ['HELLFIRE MK-7',      'HEAVY',   true,   5, 900, 90, 270, .030, .0200, .004, .020, 1,  'flame',   13, false, 'flame'],
+  ['HELLFIRE MK-7',      'HEAVY',   true,   8, 920, 120, 320, .022, .0160, .006, .020, 1,  'flame',   18, false, 'flame'],
   ['LOBBER GL',          'LAUNCHER',false, 55,  80,  4,  24, .030, .0100, .050, .180, 1,  'launch', 200, false, 'gl', { r:4.5, dmg:45 }],
   ['ATLAS ROCKET',       'LAUNCHER',false, 85,  45,  1,  12, .010, .0020, .080, .240, 1,  'launch', 240, false, 'rocket', { r:5.5, dmg:60 }],
   ['HAVOC MGL',          'LAUNCHER',false, 40,  60,  6,  30, .045, .0180, .050, .160, 3,  'launch', 200, false, 'gl', { r:3.4, dmg:35 }],
@@ -1422,7 +1643,7 @@ const WEAPON_BLUEPRINTS = [
   ['SABLE-6 AR',           'RIFLE',   true,  20, 700, 33, 198, .014, .0038, .011, .050, 1,  'rifle',   121, false],
   ['VERDICT LEVER',        'RIFLE',   false, 72,  95,  8,  48, .010, .0012, .030, .130, 1,  'rifle',   200, false],
   ['JACKHAMMER-8',         'SHOTGUN', true,   5, 300, 20,  80, .070, .0520, .020, .070, 6,  'shotgun',  33, false],
-  ['CYCLOPS SLUG-12',      'SHOTGUN', false, 95,  55,  3,  21, .020, .0060, .050, .200, 1,  'shotgun',  95, false],
+  ['CYCLOPS SLUG-12',      'SHOTGUN', false,105,  65,  4,  28, .016, .0050, .045, .180, 1,  'shotgun', 110, false],
   ['LONG TOM FOWLER',      'SHOTGUN', false, 18,  30,  2,  14, .050, .0300, .060, .240,14,  'shotgun',  60, false, 'hitscan', null, 3.6],
   ['BLUNDERBUSS ROYALE',   'SHOTGUN', false, 15,  70,  4,  24, .078, .0560, .042, .180,12,  'shotgun',  28, false],
   ['DUST DEVIL',           'PISTOL',  false, 11, 130,  6,  36, .046, .0300, .030, .120, 5,  'shotgun',  40, false],
@@ -1434,6 +1655,42 @@ const WEAPON_BLUEPRINTS = [
   ['HAVOC FLAREGUN',       'PISTOL',  false, 45,  65,  1,  14, .020, .0080, .028, .110, 1,  'launch',  160, false, 'gl', { r:2.6, dmg:32, speed:24, grav:13 }, 1.6],
   ['ICICLE CARBINE',       'ENERGY',  false, 58, 260, 12,  72, .010, .0014, .019, .075, 1,  'plasma',  225, false, 'plasma', { speed:72 }],
   ['SUPERNOVA CASTER',     'ENERGY',  false,110,  22,  1,   6, .030, .0012, .050, .180, 1,  'plasma',  240, false, 'plasma', { r:4.6, dmg:70, speed:44 }],
+  // === EXPANSION PACK — 28 new frames (fictional names, balanced) ===
+  // pistols: heavy, auto, dual
+  ['D-9 DEVASTATOR',       'PISTOL',  false, 68, 165,  7,  35, .012, .0020, .028, .115, 1,  'pistol',  155, false],
+  ['TEMPEST G-18',         'PISTOL',  true,  18, 850, 20, 100, .020, .0080, .009, .036, 1,  'pistol',   90, false],
+  ['TWIN VIPER MK-II',     'PISTOL',  true,  26, 620, 22, 110, .018, .0060, .011, .045, 1,  'pistol',  115, false],
+  // smgs: p90 / mp5 / ppsh drum
+  ['VERTEX P-50',          'SMG',     true,  17, 900, 50, 200, .022, .0100, .008, .032, 1,  'rifle',   85, false],
+  ['STRIKER MP-5',         'SMG',     true,  19, 800, 30, 150, .016, .0060, .010, .040, 1,  'rifle',  100, false],
+  ['STORMDRUM V-41',       'SMG',     true,  13,1100, 71, 213, .026, .0120, .007, .030, 1,  'rifle',   82, false],
+  // rifles / battle rifles
+  ['KRONOS KR-47',         'RIFLE',   true,  28, 600, 30, 120, .018, .0050, .020, .080, 1,  'rifle',  135, false],
+  ['VANGUARD V-4',         'RIFLE',   true,  23, 700, 30, 150, .014, .0035, .012, .050, 1,  'rifle',  125, false],
+  ['CHIMERA AUG-X',        'RIFLE',   true,  24, 680, 30, 150, .015, .0030, .013, .055, 1,  'rifle',  128, false],
+  ['FRENZY FAM-3',         'RIFLE',   true,  17, 950, 25, 125, .016, .0040, .015, .060, 1,  'rifle',  118, false],
+  // shotguns: auto drum + double-barrel
+  ['THUNDERMAW AA-X',      'SHOTGUN', true,   7, 260, 20,  80, .066, .0500, .024, .080, 8,  'shotgun',  34, false],
+  ['DOUBLETHORN DT-2',     'SHOTGUN', false, 14,  70,  2,  20, .074, .0520, .050, .180, 12, 'shotgun',  32, false, 'hitscan', null, 3.0],
+  // snipers / dmr
+  ['WIDOW AWP-IX',         'SNIPER',  false,145,  42,  5,  20, .045, .0004, .055, .205, 1,  'sniper',  260, true ],
+  ['DRACO DMR-7',          'DMR',     false, 62, 220, 10,  50, .011, .0016, .020, .085, 1,  'rifle',  190, false],
+  // machine guns: sustained + minigun
+  ['COVERFIRE M-249',      'LMG',     true,  27, 600, 80, 240, .020, .0070, .014, .065, 1,  'rifle',  135, false],
+  ['VORTEX MINIGUN',       'LMG',     true,  14,1200,100, 300, .028, .0130, .006, .028, 1,  'rifle',  110, false],
+  // --- specials (12) — bow / rail / energy / launchers / vintage ---
+  ['RIFTBOLT CROSSFIRE',   'BOW',     false,115,  45,  1,  24, .012, .0006, .025, .090, 1,  'pistol',  220, false, 'arrow',  { speed:52, grav:6 }, 1.1],
+  ['STARFIRE RAIL-9',      'RAIL',    false,110,  60,  5,  20, .018, .0008, .040, .160, 1,  'sniper',  280, true ],
+  ['VOLT STORM ARC',       'ENERGY',  true,  22, 620, 30, 150, .020, .0070, .010, .040, 1,  'plasma',  115, false, 'plasma', { r:2.4, dmg:14, speed:55 }],
+  ['TITAN ARM X-1',        'HEAVY',   false, 90,  55,  1,  12, .020, .0080, .080, .240, 1,  'launch',  240, false, 'rocket', { r:5.8, dmg:70 }],
+  ['GALE AUTOBOW',         'BOW',     true,  32, 240, 12,  72, .014, .0030, .012, .045, 1,  'pistol',  150, false, 'arrow',  { speed:48, grav:7 }],
+  ['QUAKE PULSE RIFLE',    'LAUNCHER',false, 55,  75,  4,  20, .030, .0100, .050, .180, 1,  'launch',  180, false, 'gl',     { r:4.8, dmg:50, speed:28, grav:12 }],
+  ['HELIOS LASER XR',      'ENERGY',  true,  20, 760, 30, 180, .014, .0040, .009, .035, 1,  'plasma',  135, false, 'plasma', { speed:85 }],
+  ['SHARD NAILSTORM',      'SMG',     true,  16, 720, 32, 160, .018, .0060, .011, .040, 1,  'rifle',   95, false],
+  ['NOVA PLASMA ORB',      'ENERGY',  false, 70,  80,  5,  25, .030, .0100, .045, .160, 1,  'launch',  175, false, 'plasma', { r:4.0, dmg:45, speed:32, grav:10 }],
+  ['SKYWARD JUMPER',       'LAUNCHER',false, 45,  60,  1,  12, .030, .0100, .040, .120, 1,  'launch',  200, false, 'rocket', { r:6.5, dmg:45, speed:28, grav:12 }],
+  ['THUMPER M79',          'LAUNCHER',false, 75,  50,  1,  18, .030, .0100, .060, .200, 1,  'launch',  180, false, 'gl',     { r:5.0, dmg:65, speed:24, grav:14 }],
+  ['PULSE MUSKET ECHO',    'VINTAGE', false,142,  52,  1,  18, .030, .0008, .060, .220, 1,  'sniper',  230, false, 'hitscan', null, 2.8],
 ];
 const WEAPONS = WEAPON_BLUEPRINTS.map((b, i) => ({
   name:b[0], slot:b[1], auto:b[2], dmg:b[3], rpm:b[4], mag:b[5], reserve:b[6],
@@ -2025,14 +2282,17 @@ const KNIFE_DEFS = [
   { name:'RIPPER SHANK', dmg:25,  backstab:99999, golden:false, speedMul:1.05 },
   { name:'GOLDEN SHANK', dmg:50,  backstab:99999, golden:true,  speedMul:1.15 },
 ];
-const BS_DOT = -0.5;                // attacker must sit inside the victim's rear 120° cone for a backstab
+const BS_DOT = -0.5;                // attacker must sit inside the victim's rear 60° cone for a backstab
+const BS_MIN_DIST = 0.72;            // do not execute while the attacker is inside/overlapping the victim's body
+const BS_ATTACK_DOT = 0.25;          // when supplied, attacker must be facing the victim (no drive-by/backward stabs)
 const KNIFE_CODE = 100;            // replicated weapon slot: 100 = knife, 101 = golden knife
 let knifeMode = 0;                 // 0 = gun, 1 = knife
 let knifeSwingT = 0, knifeSwingCd = 0, knifeSwingId = 0;
 function isKnifeFight(){ return mode === 'dm' && net.dmMode === 'knife'; }   // the ballot's third option: KNIFE FIGHT
+function isInfect(){ return mode === 'dm' && net.dmMode === 'infect'; }
 function finalTierScore(){ return isKnifeFight() ? 14 : FINAL_TIER_SCORE; }  // knife fight goes golden one stab early
-function knifeGolden(){ return mode === 'dm' && (net.myScore || 0) >= finalTierScore(); }
-function knifeLocked(){ return isKnifeFight() || knifeGolden(); }       // final tier or knife fight: blades only
+function knifeGolden(){ return mode === 'dm' && !isInfect() && (net.myScore || 0) >= finalTierScore(); }
+function knifeLocked(){ return isKnifeFight() || knifeGolden() || (isInfect() && net.infected); }       // final tier or knife fight: blades only — zombies locked to knife
 function currentKnifeDef(){ return KNIFE_DEFS[knifeGolden() ? 1 : 0]; }
 
 function buildKnifeModel(golden){
@@ -2076,6 +2336,7 @@ function updateWeaponVisibility(){
 }
 function equipGunSlot(){
   if (!knifeMode) return;
+  if (isInfect() && net.infected){ addKillFeed(null, '<b style="color:#2fd04a">INFECTED — BLADES ONLY</b>'); return; }
   if (knifeLocked()){ addKillFeed(null, isKnifeFight() ? 'KNIFE FIGHT — <b>BLADES ONLY</b>' : 'FINAL TIER — <b style="color:#ffd040">GOLDEN SHANK</b> ONLY'); return; }
   knifeMode = 0;
   switchT = Math.max(switchT, 0.2);
@@ -2102,10 +2363,20 @@ function tryKnifeSwing(){
       p:[+player.pos.x.toFixed(2), +(player.pos.y+1.3).toFixed(2), +player.pos.z.toFixed(2)] });
   }
 }
-function isBackstab(fx, fz, vx, vz){
-  // fx/fz = victim's visual forward, v = unit vector from victim to attacker
-  const vl = Math.hypot(vx, vz) || 1;
-  return (fx*vx + fz*vz) / vl < BS_DOT;
+function isBackstab(fx, fz, vx, vz, afx=null, afz=null){
+  // fx/fz = victim's visual forward; v = vector from victim to attacker.
+  // Keep a real gap between the two capsules: at zero/near-zero separation the
+  // rear-cone sign becomes unstable and a timed overlap could be rewarded as a stab.
+  const vl = Math.hypot(vx, vz);
+  if (vl < BS_MIN_DIST) return false;
+  if ((fx*vx + fz*vz) / vl >= BS_DOT) return false;
+  // In live combat also require the attacker to be looking toward the victim.
+  // The optional arguments preserve the small geometry helper API used by tests.
+  if (afx != null && afz != null){
+    const al = Math.hypot(afx, afz) || 1;
+    if ((afx*(-vx) + afz*(-vz)) / (al * vl) < BS_ATTACK_DOT) return false;
+  }
+  return true;
 }
 function knifeStrike(){
   if (!S.started || S.dead || S.paused || !knifeMode) return;
@@ -2123,7 +2394,7 @@ function knifeStrike(){
     if ((dx*fx+dy*fy+dz*fz)/len < minDot && d > 1.1) continue;
     anyHit = true;
     const eth = e.group.rotation.y;
-    const bs = isBackstab(-Math.sin(eth), -Math.cos(eth), player.pos.x - tp.x, player.pos.z - tp.z);
+    const bs = isBackstab(-Math.sin(eth), -Math.cos(eth), player.pos.x - tp.x, player.pos.z - tp.z, fx, fz);
     const dmg = bs ? def.backstab : def.dmg;
     if (bs){
       spawnSparks(new THREE.Vector3(tp.x, tp.y + 1.1*e.type.scale, tp.z), 0xff7040, 22);
@@ -2147,7 +2418,7 @@ function knifeStrike(){
       const len = Math.sqrt(dx*dx+dy*fy+dz*dz) || 1;
       if ((dx*fx+dy*fy+dz*fz)/len < minDot && d > 1.1) continue;
       anyHit = true;
-      const bs = isBackstab(-Math.sin(rp.yaw), -Math.cos(rp.yaw), player.pos.x - tp.x, player.pos.z - tp.z);
+      const bs = isBackstab(-Math.sin(rp.yaw), -Math.cos(rp.yaw), player.pos.x - tp.x, player.pos.z - tp.z, fx, fz);
       const dmg = bs ? 200 : def.dmg;                 // server caps dmg at 200 — enough to drop 100 hp instantly
       if (bs){
         spawnSparks(new THREE.Vector3(tp.x, tp.y + 1.15, tp.z), 0xff7040, 24);
@@ -2179,16 +2450,11 @@ function knifeStrike(){
    Every player gets the same weapon at the same score. Kills promote you
    one tier; getting shanked costs you one point and one tier. The final
    tier (29+) locks you to the golden knife — the 30th kill is knife-only. */
-const GUN_LADDER = [
-  42, 20,  2, 22, 43,               // pistols
-   9,  8,  7, 47, 30, 31, 36,       // smgs
-  17, 18, 38, 19,  1, 16,           // shotguns
-  24, 26,  6, 34, 44,               // rifles
-  49, 52, 50, 53, 51, 15,           // ordnance tier: flamer → havoc → grenades → napalm → rockets → rail sniper
-];
+const GUN_LADDER = Array.from({ length: WEAPONS.length }, (_, i) => i);
 const FINAL_TIER_SCORE = 29;
 /* the ladder's 29 stops stay the ladder — but the deck is re-dealt every LAN round from the
-   server's seed, so tier 7 means something different each match, for everyone equally */
+   server's seed, so tier 7 means something different each match, for everyone equally.
+   Now the full 100-gun armory is the deck: each round you get 29 random guns from the whole pool. */
 let LADDER_ROUND = GUN_LADDER.slice();
 function shuffleLadder(seed){
   const rnd = mulberry32(((seed >>> 0) || 1) >>> 0);   // seeded PRNG lives up at the world-gen helpers
@@ -2429,7 +2695,7 @@ function fireWeapon(){
       S.shotsHit++; if (headshot) S.headshots++;
       spawnSparks(_hitPoint, headshot ? 0xffd040 : 0xff8040, headshot ? 14 : 8);
       spawnDamagePopup(_hitPoint, Math.round(dmg), headshot);
-      if (w.kind === 'flame') applyBurn(hitEnemy, 3, 6);   // afterburn: ~18dmg over 3s once the jet lets go
+      if (w.kind === 'flame') applyBurn(hitEnemy, 4, 10);   // BUFFED: Hellfire afterburn 40 dmg over 4s
       if (damageEnemy(hitEnemy, dmg)) anyKill = true;
     } else if (hitNetId){
       anyHit = true;
@@ -2437,7 +2703,7 @@ function fireWeapon(){
       S.shotsHit++; if (headshot) S.headshots++;
       spawnSparks(_hitPoint, headshot ? 0xffd040 : 0xff8040, headshot ? 14 : 8);
       spawnDamagePopup(_hitPoint, Math.round(dmg), headshot);
-      if (w.kind === 'flame'){ const rpBurn = net.players.get(hitNetId); if (rpBurn) applyBurn(rpBurn, 3, 6); }
+      if (w.kind === 'flame'){ const rpBurn = net.players.get(hitNetId); if (rpBurn) applyBurn(rpBurn, 4, 10); }
       netSend({ t:'hit', target:hitNetId, dmg, burn: w.kind === 'flame' || undefined });
     } else if (hitDestructible){
       anyHit = true;
@@ -2529,7 +2795,7 @@ function spawnPlayerProjectile(origin, dir, w){
   scene.add(m);
   const sp = (w.splash && w.splash.speed) || st.speed;
   const gv = (w.splash && w.splash.grav != null) ? w.splash.grav : st.grav;
-  playerShots.push({ mesh:m, vel:dir.clone().multiplyScalar(sp), grav:gv, kind:w.kind, splash:w.splash, dmg:w.dmg, life:6, direct:null });
+  playerShots.push({ mesh:m, vel:dir.clone().multiplyScalar(sp), grav:gv, kind:w.kind, splash:w.splash, dmg:w.dmg, life:6, direct:null, weapon:w });
 }
 
 /* another runner's ordnance should LOOK the same as your own — same ball, same arc, same boom —
@@ -2600,7 +2866,7 @@ function stepHazards(dt){
 }
 
 /* flamethrower victims smoulder: ticks drip-fire damage for a few seconds after the jet connects */
-function applyBurn(target, sec=3, dps=4){
+function applyBurn(target, sec=4, dps=10){
   target.burnUntil = Date.now() + sec * 1000;
   target.burnDps = dps;
   if (!target.burnNext || target.burnNext < Date.now()) target.burnNext = Date.now() + 250;
@@ -2623,10 +2889,29 @@ function stepBurns(dt){
     }
     if (now > e.burnUntil) e.burnUntil = 0;
   }
+  // local player burn — YOU can be set alight too (was missing: burnFxT showed flames but dealt no damage)
+  if (player.burnUntil && !S.dead){
+    if (now >= player.burnNext){
+      const t = player.pos;
+      const mat = new THREE.MeshBasicMaterial({ color:FLAME_COLORS[(Math.random() * 3) | 0], transparent:true, opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false });
+      const m = new THREE.Mesh(sparkGeo, mat);
+      m.position.set(t.x + rand(-0.35, 0.35), t.y + rand(0.6, 1.6), t.z + rand(-0.35, 0.35));
+      m.scale.setScalar(rand(1.0, 2.0));
+      scene.add(m);
+      particles.push({ mesh:m, vel:new THREE.Vector3(rand(-0.3, 0.3), rand(1.2, 2.6), rand(-0.3, 0.3)), life:rand(0.2, 0.4), maxLife:0.4, grav:2, type:'spark' });
+      damagePlayer(Math.round(player.burnDps * 0.5), player.pos);
+      player.burnNext = now + 500;
+    }
+    if (now > player.burnUntil) { player.burnUntil = 0; player.burnFxT = 0; }
+  } else if (player.burnUntil && S.dead){
+    // keep the timer ticking while spectating so burn doesn't cling through respawn invuln unfairly
+    if (now > player.burnUntil) { player.burnUntil = 0; player.burnFxT = 0; }
+  }
+  // remote burn visuals — the victim handles their own burn damage (victim-authoritative),
+  // but the shooter still sees the flames on their target for feedback
   if (net.on) for (const rp of net.players.values()){
     if (!rp.burnUntil) continue;
     if (now >= rp.burnNext){
-      netSend({ t:'hit', target:rp.id, dmg:Math.round(rp.burnDps * 0.5 * mult) });
       const t = rp.group.position;
       const mat = new THREE.MeshBasicMaterial({ color:FLAME_COLORS[(Math.random() * 3) | 0], transparent:true, opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false });
       const m = new THREE.Mesh(sparkGeo, mat);
@@ -2682,6 +2967,35 @@ function explodePlayerShot(ps, point){
   const camD = camera.position.distanceTo(pos);
   if (r && camD < 12) player.shake = Math.min(player.shake + (1 - camD / 12) * 0.45, 0.7);
   if (r){ flashTimer = Math.max(flashTimer, 0.1); flashLight.intensity = Math.max(flashLight.intensity, 7); }
+  // self knockback — SKYWARD JUMPER rocket jump (jump + shoot ground below = launch)
+  if (r && !S.dead && !ps.visual){
+    const isSkyward = (ps.weapon && ps.weapon.name === 'SKYWARD JUMPER') || (ps.kind === 'rocket' && ps.splash && ps.splash.r === 6.5);
+    const isRocket = ps.kind === 'rocket';
+    if (isSkyward || isRocket){
+      const pCenter = player.pos.clone().add(new THREE.Vector3(0, 0.95, 0));
+      const pd = pCenter.distanceTo(pos);
+      const knockR = isSkyward ? 7.8 : 5.8;
+      if (pd < knockR){
+        const fall = 1 - clamp(pd / knockR, 0, 1);
+        const dir = pCenter.clone().sub(pos).normalize();
+        if (dir.y < 0.25){ dir.y = 0.38; dir.normalize(); }
+        const power = (isSkyward ? 15.0 : 6.5) * fall;
+        const upBoost = (isSkyward ? 6.8 : 2.4) * fall;
+        const jumpBonus = (!player.grounded && player.vel.y > -2) ? (isSkyward ? 2.4 : 0.6) : 0;
+        player.vel.x += dir.x * power;
+        player.vel.z += dir.z * power;
+        player.vel.y = Math.max(player.vel.y, -1.5) + dir.y * power * 0.62 + upBoost + jumpBonus;
+        player.grounded = false;
+        player.coyoteT = 0;
+        // self damage — skyward is forgiving so rocket jumps aren't punished
+        if (pd < r + 0.8){
+          const sd = isSkyward ? Math.round(10 * fall * 0.35) : Math.round(16 * fall);
+          if (sd > 0) damagePlayer(sd, pos);
+        }
+        if (isSkyward){ spawnRing(player.pos.clone().add(new THREE.Vector3(0,0.12,0)), 0xffd040); }
+      }
+    }
+  }
 }
 
 /* distance from a point to the segment the projectile covers THIS frame —
@@ -2830,8 +3144,28 @@ function throwGrenade(){
   m.position.copy(camera.position).addScaledVector(_dir, 0.5);
   m.castShadow = true;
   scene.add(m);
-  grenadesLive.push({ mesh:m, fuse:1.7,
-    vel:_dir.clone().multiplyScalar(15.5).add(new THREE.Vector3(player.vel.x*0.4, 3.4, player.vel.z*0.4)) });
+  const vel = _dir.clone().multiplyScalar(15.5).add(new THREE.Vector3(player.vel.x*0.4, 3.4, player.vel.z*0.4));
+  grenadesLive.push({ mesh:m, fuse:1.7, vel });
+  if (net.on) netSend({ t:'nade', o:[+m.position.x.toFixed(2), +m.position.y.toFixed(2), +m.position.z.toFixed(2)], v:[+vel.x.toFixed(2), +vel.y.toFixed(2), +vel.z.toFixed(2)] });
+}
+function spawnRemoteGrenadeVisual(originArr, velArr){
+  const mat = new THREE.MeshStandardMaterial({ color:0x39424f, roughness:.4, metalness:.6, emissive:0x22ff88, emissiveIntensity:0.9 });
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), mat);
+  m.position.set(originArr[0], originArr[1], originArr[2]);
+  m.castShadow = true;
+  scene.add(m);
+  const vel = new THREE.Vector3(velArr[0], velArr[1], velArr[2]);
+  grenadesLive.push({ mesh:m, fuse:1.7, vel, visual:true });
+}
+function explodeVisualGrenade(pos){
+  SFX.bigBoom();
+  spawnSparks(pos, 0xffb050, 26);
+  spawnSparks(pos, 0xff5040, 14);
+  spawnSmoke(pos, 7);
+  spawnRing(pos, 0xffa050);
+  spawnRing(pos, 0xff5040);
+  expLight.position.copy(pos); expLight.position.y += 0.6;
+  expLight.intensity = 90;
 }
 function explodeAt(pos){
   SFX.bigBoom();
@@ -2899,7 +3233,8 @@ function updateGrenades(dt, now){
       m2.emissiveIntensity = 2.2;
     }
     if (g.fuse <= 0){
-      explodeAt(g.mesh.position.clone());
+      if (g.visual) explodeVisualGrenade(g.mesh.position.clone());
+      else explodeAt(g.mesh.position.clone());
       scene.remove(g.mesh); m2.dispose();
       grenadesLive.splice(i, 1);
     }
@@ -3588,11 +3923,18 @@ const net = { on:false, ws:null, id:0, players:new Map(), sendT:0, lastHitBy:0,
   scores:[], limit:30, round:1, currentMap:'FORGE', voteChoices:[], voteCounts:{}, voteEndsAt:0, voteEndsLocal:0, votePhase:'map', voteActive:false, roundOver:false, pendingMap:'',
   spectateId:0, spectateT:0, myScore:-1,
   dmMode:'ffa', myTeam:0, teamTotals:{ red:0, blue:0 }, __voteSecs:-1,
-  beatSalt:0, myName:'', deathPos:null };   // predeclared — the object is sealed at load (no late Property additions allowed)
+  beatSalt:0, myName:'', deathPos:null, profileLinked:false,
+  infected:false, infectionEndAt:0, infectedIds:new Set() };   // predeclared — the object is sealed at load (no late Property additions allowed)
 const TEAM_COLORS = ['', '#ff5040', '#4aa0ff'];
 const TEAM_NAMES = ['', 'RED TEAM', 'BLUE TEAM'];
+const INFECT_COLORS = ['', '#4aa0ff', '#2fd04a'];
+const INFECT_NAMES = ['', 'SURVIVORS', 'INFECTED'];
 function otherTeam(t){ return t === 1 ? 2 : 1; }
-function isTeammate(rp){ return net.dmMode === 'team' && net.myTeam && rp.team === net.myTeam; }
+function isTeammate(rp){ 
+  if (net.dmMode === 'team' && net.myTeam && rp.team === net.myTeam) return true;
+  if (net.dmMode === 'infect' && net.infected === rp.infected) return true;
+  return false; 
+}
 function fmtTeamTag(t){ return t ? `<span style="color:${TEAM_COLORS[t]}">${TEAM_NAMES[t]}</span>` : ''; }
 function fmtColoredName(name, t){ return net.dmMode === 'team' && t ? `<span style="color:${TEAM_COLORS[t]}">${name}</span>` : name; }
 
@@ -3608,23 +3950,163 @@ function savePlayerName(){
 }
 function netName(){ return savePlayerName(); }
 
-/* Reserved callsigns — vanity locks. Typing a reserved name raises an inline password row
-   (window.prompt is off-limits: the game runs inside pointer-lock + sandboxed iframe contexts
-   where prompt() never opens). The right password unlocks the name on this machine forever;
-   a locked reserved name blocks every play button — solo, LAN and sandbox alike. */
-const RESERVED_CALLSIGNS = { YESKING:'gniksey' };
-let unlockedNames;
-try { unlockedNames = new Set(JSON.parse(localStorage.getItem('neonRiftNameKeys') || '[]')); } catch(e){ unlockedNames = new Set(); }
-function persistNameKeys(){ try { localStorage.setItem('neonRiftNameKeys', JSON.stringify([...unlockedNames])); } catch(e){} }
+/* SYNC KEY — the player's invisible account. The server mints a random token on first flight,
+   this browser keeps it in localStorage, and every hello/API call carries it. Nothing is ever
+   asked of the player: press play and the books follow this browser. Callsigns stay pure costume. */
+const SYNC_LS = 'neonRiftSyncKey';
+let syncKey = '';
+try { syncKey = String(localStorage.getItem(SYNC_LS) || ''); } catch(e){ syncKey = ''; }
+function saveSyncKey(k){
+  syncKey = String(k || '');
+  try { localStorage.setItem(SYNC_LS, syncKey); } catch(e){}
+}
+
+/* Reserved callsigns — a vanity lock for impersonation-proof LAN names, nothing more. Local
+   fast-path only; the server no longer cares what you call yourself. (window.prompt is
+   off-limits: pointer-lock + sandboxed iframes never open it — hence the inline row.) */
+const RESERVED_CALLSIGNS = { YESKING:'1gniksey1' };
+/* the lock is spoof-proof: squeeze any typed callsign to letters only with leetspeak folded
+   in (1→i, 3→e …) so y3sk1ng collapses to YESKING; then demand it as a substring ("yesking 1",
+   "xxYesKingxx") or a same-bag letter window (transposed typos like yeskign). Every variant is
+   the SAME reserved callsign, so a single password unlocks them all. */
+const LEET_MAP = { '0':'o', '1':'i', '2':'z', '3':'e', '4':'a', '5':'s', '6':'g', '7':'t', '8':'b', '9':'g',
+                   '!':'i', '$':'s', '@':'a', '+':'t', '¡':'i', '|':'i' };
+function reservedSqueeze(s){
+  return String(s || '').toLowerCase().split('').map(c => LEET_MAP[c] || c).join('').replace(/[^a-z]/g, '');
+}
+function reservedCallsign(name){
+  const sq = reservedSqueeze(name);
+  if (!sq) return null;
+  for (const k of Object.keys(RESERVED_CALLSIGNS)){
+    const t = k.toLowerCase(), tBag = t.split('').sort().join('');
+    if (sq.includes(t)) return k;
+    if (sq.length === t.length && sq.split('').sort().join('') === tBag) return k;      // pure anagram: yeskign
+    for (let i = 0; i + t.length <= sq.length; i++){                                     // variant buried in a longer name
+      if (sq.slice(i, i + t.length).split('').sort().join('') === tBag) return k;
+    }
+  }
+  return null;
+}
+let namePw = {};                          // RESERVED callsign -> password proven here
+try {
+  const raw = JSON.parse(localStorage.getItem('neonRiftNameKeys') || '[]');
+  if (Array.isArray(raw)) for (const k of raw) if (RESERVED_CALLSIGNS[k]) namePw[k] = RESERVED_CALLSIGNS[k];
+  else if (raw && typeof raw === 'object') for (const k of Object.keys(raw)) if (RESERVED_CALLSIGNS[k]) namePw[k] = raw[k];
+} catch(e){ namePw = {}; }
+function persistNameKeys(){
+  try { localStorage.setItem('neonRiftNameKeys', JSON.stringify(namePw)); } catch(e){}
+}
+
+/* progression API — the menu's line to the server's books. Offline static hosting just answers
+   null and the game quietly degrades to the legacy local behaviour */
+const apiUp = { ok: null };               // null = not probed yet, false = definitely offline
+async function apiPost(route, body){
+  try {
+    const r = await fetch('/' + route, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok || !(r.headers.get('content-type') || '').includes('json')){ apiUp.ok = false; return null; }
+    apiUp.ok = true;
+    return await r.json();
+  } catch(e){ apiUp.ok = false; return null; }
+}
+
 function callsignKey(){
   const el = $('callsign');
   const raw = el ? (el.value.trim() || PROGRESS.name) : PROGRESS.name;
   return cleanPlayerName(raw);
 }
-function nameGateLocked(){ const k = callsignKey(); return !!(RESERVED_CALLSIGNS[k] && !unlockedNames.has(k)); }
+function nameGateLocked(){
+  const el = $('callsign');
+  const k = reservedCallsign(el ? el.value : '') || reservedCallsign(callsignKey());
+  if (!k) return false;
+  if (namePw[k]) return false;
+  // live storage check — a module-load/persist race on some engines can strand the in-memory map
+  try {
+    const raw = JSON.parse(localStorage.getItem('neonRiftNameKeys') || 'null');
+    if (raw && typeof raw === 'object' && raw[k] === RESERVED_CALLSIGNS[k]){ namePw[k] = raw[k]; return false; }
+  } catch(e){}
+  return true;
+}
 function refreshNameGate(){
   const gate = $('nameGate'); if (!gate) return;
-  gate.classList.toggle('hidden', !nameGateLocked());
+  const show = nameGateLocked();
+  gate.classList.toggle('hidden', !show);
+  const label = $('nameGateLabel');
+  if (label) label.textContent = 'RESERVED CALLSIGN — ENTER PASSWORD';
+  const key = $('nameKey');
+  if (key && show) key.placeholder = 'PASSWORD REQUIRED';
+}
+function unlockName(k, pw){
+  namePw[k] = pw;
+  persistNameKeys();
+  const key = $('nameKey');
+  if (key){ key.value = ''; key.blur(); }
+  const el = $('callsign'); if (el) el.classList.remove('needName');
+  refreshNameGate();
+}
+
+/* the menu's wallet refresh — the server is the wallet of record; local progress is a cache */
+async function refreshProfile(writeMint){
+  const r = await apiPost('profile', { key: syncKey });
+  if (!r) return;                                   // offline — legacy local behaviour
+  if (!r.ok){
+    if (/unknown sync key/i.test(r.reason || '') && syncKey){
+      saveSyncKey('');                              // a wiped server can't know us — mint quietly and move on
+      return refreshProfile(false);
+    }
+    return;
+  }
+  if (r.key) saveSyncKey(r.key);
+  // the migration owns the adoption when it fires — adopting the fresh books first could
+  // overwrite a rich local save before the ride-in reply lands
+  const migrated = await maybeImportLegacy(r.profile);
+  if (!migrated) adoptServerProfile(r.profile);
+}
+
+/* the localStorage era ends well: your old grind rides into your server profile exactly once */
+function snapshotLegacy(){ return { xp: PROGRESS.xp, cash: PROGRESS.cash, unlocked: PROGRESS.unlocked.slice(), dmWins: PROGRESS.dmWins, soloWaves: PROGRESS.soloWaves, totalKills: PROGRESS.totalKills, skin: PROGRESS.skin }; }
+let importRequesting = false;
+async function maybeImportLegacy(freshServerProfile){
+  if (importRequesting) return false;
+  const legacy = snapshotLegacy();
+  // FIX: level-1 players earning 65 XP/kill never hit 200, so they stayed stuck at 0 after reload.
+  // Any real grind (>0) should ride into the fresh server profile.
+  const richer = legacy.xp > 0 || legacy.cash > 0 || legacy.unlocked.length > 1;
+  const serverFresh = freshServerProfile && freshServerProfile.xp === 0 && freshServerProfile.cash === 0 && freshServerProfile.unlocked.length <= 1 && !freshServerProfile.imported;
+  if (!richer || !serverFresh) return false;
+  importRequesting = true;
+  const r = await apiPost('import', { key: syncKey, ...legacy });
+  importRequesting = false;
+  if (r && r.ok){ adoptServerProfile(r.profile); return true; }
+  return false;
+}
+
+function adoptServerProfile(prof){
+  const prevSkin = PROGRESS.skin;
+  const prevUnlocked = PROGRESS.unlocked.slice();
+  PROGRESS.xp = prof.xp; PROGRESS.cash = prof.cash;
+  PROGRESS.unlocked = Array.isArray(prof.unlocked) && prof.unlocked.length ? prof.unlocked.slice() : ['rift'];
+  // skin memory: keep what you had equipped when you leave — server only wins if you were on default rift
+  if (prevSkin && SKINS.some(s=>s.id===prevSkin) && (PROGRESS.unlocked.includes(prevSkin) || prevUnlocked.includes(prevSkin))){
+    // if you had a real skin equipped, keep it (persisted locally)
+    if (prevSkin !== 'rift' || !prof.skin || prof.skin === 'rift' || !PROGRESS.unlocked.includes(prof.skin)){
+      PROGRESS.skin = prevSkin;
+    } else if (PROGRESS.unlocked.includes(prof.skin)){
+      // you were on rift and server has a real skin (bought elsewhere) — adopt it
+      PROGRESS.skin = prof.skin;
+    }
+  } else if (prof.skin && PROGRESS.unlocked.includes(prof.skin)){
+    PROGRESS.skin = prof.skin;
+  }
+  PROGRESS.totalKills = prof.totalKills || 0; PROGRESS.soloWaves = prof.soloWaves || 0; PROGRESS.dmWins = prof.dmWins || 0;
+  PROGRESS.challengeState = prof.challengeState || {};
+  // keep peak pinned — server's level() already respects peak, but mirror it locally for offline solo
+  const serverLvl = prof.level || levelFromXp(prof.xp);
+  if (!PROGRESS.peakLevel || serverLvl > PROGRESS.peakLevel) PROGRESS.peakLevel = serverLvl;
+  if (prof.peakLevel && prof.peakLevel > PROGRESS.peakLevel) PROGRESS.peakLevel = prof.peakLevel;
+  saveProgress();
+  updateProgressUI();
+  if (typeof updateChallengeUI === 'function') updateChallengeUI();
+  if (typeof applyLocalSkinAppearance === 'function') applyLocalSkinAppearance();
 }
 function passNameGate(){
   if (!nameGateLocked()) return true;
@@ -3646,25 +4128,27 @@ if (nameInput){
   // restore a saved custom callsign, but never ghost-fill the default — LAN requires typing one
   nameInput.value = (PROGRESS.name && PROGRESS.name !== 'RIFT-OPS') ? cleanPlayerName(PROGRESS.name) : '';
   nameInput.addEventListener('input', () => {
-    nameInput.classList.remove('needName');
     if (nameInput.value.trim()){ PROGRESS.name = cleanPlayerName(nameInput.value); saveProgress(); }
     refreshNameGate();
   });
-  nameInput.addEventListener('blur', savePlayerName);
+  nameInput.addEventListener('blur', () => { savePlayerName(); nameInput.classList.remove('needName'); });
 }
 const nameKey = $('nameKey');
 if (nameKey){
   nameKey.addEventListener('input', () => {
-    const k = callsignKey();
-    if (RESERVED_CALLSIGNS[k] && nameKey.value === RESERVED_CALLSIGNS[k]){
-      unlockedNames.add(k); persistNameKeys();
-      nameKey.value = ''; nameKey.blur();
-      refreshNameGate();
-      const el = $('callsign'); if (el) el.classList.remove('needName');
-    }
+    const k = reservedCallsign(nameInput ? nameInput.value : '') || reservedCallsign(callsignKey());
+    if (k && nameKey.value === RESERVED_CALLSIGNS[k]) unlockName(k, RESERVED_CALLSIGNS[k]);
   });
 }
 refreshNameGate();   // a restored saved callsign may itself be reserved — arm the gate at boot
+refreshProfile();    // and sync the wallet from the server's books (mints silently on first flight)
+// remember skin when you leave — persist on every change + before tab closes, and reapply on boot
+try { applyLocalSkinAppearance(); } catch(e){}
+try {
+  addEventListener('beforeunload', () => { try { saveProgress(); } catch(e){} });
+  addEventListener('pagehide', () => { try { saveProgress(); } catch(e){} });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') try { saveProgress(); } catch(e){} });
+} catch(e){}
 function makeNameSprite(text, color='#2cf2ff'){
   const c = document.createElement('canvas'); c.width = 256; c.height = 64;
   const g = c.getContext('2d');
@@ -3928,7 +4412,7 @@ function connectNet(){
   try { ws = new WebSocket(proto + location.host); } catch (e){ addKillFeed(null, 'MULTIPLAYER UNAVAILABLE'); return; }
   net.ws = ws;
   ws.binaryType = 'arraybuffer';   // enemy position relays ride 23-byte frames, not JSON
-  ws.onopen = () => { net.on = true; net.dmMode = 'ffa'; net.myTeam = 0; net.teamTotals = { red:0, blue:0 }; netSend({ t:'hello', name:netName(), skin:PROGRESS.skin }); addKillFeed(null, 'CONNECTED — VOTE MAP & MODE'); };
+  ws.onopen = () => { net.on = true; net.dmMode = 'ffa'; net.myTeam = 0; net.teamTotals = { red:0, blue:0 }; const nm = netName(); netSend({ t:'hello', name:nm, skin:PROGRESS.skin, key: syncKey }); addKillFeed(null, 'CONNECTED — VOTE MAP & MODE'); };
   ws.onerror = () => addKillFeed(null, 'LAN CONNECTION FAILED');
   ws.onclose = ev => {
     if (net.on) addKillFeed(null, ev && ev.code === 4003 ? 'REMOVED BY ANTI-CHEAT' : ev && ev.code === 4004 ? 'KICKED FOR INACTIVITY' : 'DISCONNECTED FROM SERVER');
@@ -3942,6 +4426,9 @@ function connectNet(){
     // Leaving you standing in-connection-off was the "ghost private match" bug. The reason banner
     // stays up long enough to read, then we reload.
     if (ev && (ev.code === 4003 || ev.code === 4004)) setTimeout(() => location.reload(), 2200);
+    // A 4008 means the server no longer knows our sync key (its books were wiped) —
+    // forget it locally and reload: the fresh boot mints a new one invisibly.
+    if (ev && ev.code === 4008){ saveSyncKey(''); setTimeout(() => location.reload(), 800); }
   };
   ws.onmessage = ev => {
     if (ev.data instanceof ArrayBuffer){
@@ -3964,29 +4451,65 @@ function connectNet(){
         net.limit = m.limit || 30; net.round = m.round || 1; net.scores = m.scores || []; net.currentMap = m.map || 'FORGE';
         net.dmMode = m.mode || 'ffa'; net.teamTotals = m.totals || net.teamTotals;
         net.myScore = -1;
+        // infection state from welcome
+        net.infectedIds = new Set(m.infect ? m.infect.infectedIds || [] : []);
+        net.infected = net.infectedIds.has(net.id);
+        net.infectionEndAt = m.infect ? m.infect.endsAt || 0 : 0;
+        if (m.infect && m.infect.infectedIds) {
+          for (const pid of m.infect.infectedIds){ const rp = net.players.get(pid); if (rp) { rp.infected = true; setRemoteSkin(rp,'toxic'); } }
+        }
         if (currentMapName !== net.currentMap) setMap(net.currentMap);
-        for (const p of m.players){ const rp = addRemotePlayer(p.id, p.name, p.skin || 'rift', p.team || 0); if (p.state) applyNetState(rp, p.state); }
+        for (const p of m.players){ const rp = addRemotePlayer(p.id, p.name, p.skin || 'rift', p.team || 0); if (p.state) applyNetState(rp, p.state); if (m.infect && m.infect.infectedIds && m.infect.infectedIds.includes(p.id)) { rp.infected = true; } }
+        if (typeof m.ladderSeed === 'number' && m.ladderSeed > 0) shuffleLadder(m.ladderSeed);   // mid-round join: fall in line with the deck the lobby is actually playing, not the OG order
+        // force own skin for infection
+        if (net.dmMode === 'infect'){
+          applyInfectSkin();
+        }
         syncLadderWeapon();
         respawnDMPlayer(true);
         updateScoreboardHUD();
         updateTeamHUD();
         if (!m.active){
-          if (m.phase === 'mode') showModeVote(m.pendingMap || m.map || 'MAP', m.voteCounts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0));
+          if (m.phase === 'mode'){ net.voteChoices = m.voteChoices || []; showModeVote(m.pendingMap || m.map || 'MAP', m.voteCounts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0)); }
           else if (m.voteChoices && m.voteChoices.length) showMapVote(m.winnersName || m.winnerName || 'STARTING MAP', m.voteChoices, m.voteCounts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0));
         }
         updateTopHUD();
+        updateAmmoHUD();
         break;
       case 'mode':
         net.dmMode = m.mode || 'ffa'; net.myTeam = m.team || 0;
         if (net.dmMode === 'team'){ showBanner(`ASSIGNED — ${TEAM_NAMES[net.myTeam]}`); addKillFeed(null, `YOU PLAY FOR <span style="color:${TEAM_COLORS[net.myTeam]}">${TEAM_NAMES[net.myTeam]}</span>`); }
         if (net.dmMode === 'knife'){ knifeMode = 1; updateWeaponVisibility(); addKillFeed(null, 'KNIFE FIGHT — <b>BLADES ONLY</b>'); }
+        if (net.dmMode === 'infect'){
+          net.infected = (m.team === 2);
+          // team already set by mode handler includes infected flag via m.team
+          applyInfectSkin();
+          if (net.infected) { addKillFeed(null, '<b style="color:#2fd04a">INFECTED</b> — HUNT SURVIVORS WITH YOUR BLADE'); knifeMode = 1; updateWeaponVisibility(); }
+          else addKillFeed(null, '<b style="color:#4aa0ff">SURVIVOR</b> — HOLD 1:30, USE ANY GUN TO DEFEND');
+          updateAmmoHUD(); updateHealthHUD();
+        }
         updateTeamHUD();
+        updateTopHUD();
         break;
       case 'team': { const rp = net.players.get(m.id); if (rp) setRemoteTeam(rp, m.team || 0); break; }
       case 'named':
         net.myName = m.name;
+        if (m.key) saveSyncKey(m.key);                                             // first flight — take your issued token, pocket it silently
+        if (m.profile){ net.profileLinked = true; adoptServerProfile(m.profile); }   // the server's books, in hand
         if (m.taken) addKillFeed(null, `CALLSIGN TAKEN — YOU ARE <b>${m.name}</b>`);
         else if (m.filtered) addKillFeed(null, `CALLSIGN REJECTED — WELCOME, <b>${m.name}</b>`);
+        break;
+      case 'badKey': {
+        saveSyncKey('');      // stale pocket token (server books were rebuilt) — reset invisibly
+        break;
+      }
+      case 'grant':
+        // server-witnessed payout: totals arrive authoritative, we just put on the show
+        if (m.profile) adoptServerProfile(m.profile);
+        if ((m.xp || m.cash)){ S.xpEarned += (m.xp || 0); S.cashEarned += (m.cash || 0); addKillFeed(null, `+${m.cash | 0} CR &nbsp;//&nbsp; +${m.xp | 0} XP &nbsp;<b>${m.reason || 'REWARD'}</b>`); }
+        if (m.leveledUp){ showBanner('LEVEL ' + m.leveledUp); SFX.roundStart(); }
+        for (const ch of (m.challenges || [])){ showBanner(String(ch.kind || '').toUpperCase() + ' COMPLETE'); addKillFeed(null, `+${ch.cash | 0} CR &nbsp;//&nbsp; +${ch.xp | 0} XP &nbsp;<b>${String(ch.title || '').toUpperCase()}</b>`); }
+        if (typeof updateChallengeUI === 'function') updateChallengeUI();
         break;
       case 'join': addRemotePlayer(m.id, m.name, m.skin || 'rift', m.team || 0); addKillFeed(null, `<b>${m.name}</b> JOINED THE MATCH${fmtTeamTag(m.team) ? ' — ' + fmtTeamTag(m.team) : ''}`); updateTopHUD(); break;
       case 'name': { const rp = net.players.get(m.id); if (rp){ rp.name = m.name; rp.group.remove(rp.tag); rp.tag = makeNameSprite(m.name, net.dmMode === 'team' && rp.team ? TEAM_COLORS[rp.team] : '#2cf2ff'); rp.tag.position.y = 2.45; rp.group.add(rp.tag); } break; }
@@ -4018,9 +4541,12 @@ function connectNet(){
           }
         }
         break; }
+      case 'nade': {
+        spawnRemoteGrenadeVisual(m.o, m.v);
+        break; }
       case 'hit': {
         net.lastHitBy = m.from;
-        if (m.burn) player.burnFxT = 3;   // you're alight — screen smoulders while the ticks keep coming
+        if (m.burn){ player.burnFxT = 3; applyBurn(player, 4, 10); }   // you're alight — screen smoulders while the ticks keep coming (FIXED: now actually burns)
         const atk = net.players.get(m.from);
         damagePlayer(m.dmg, atk ? atk.group.position : null);
         break; }
@@ -4029,8 +4555,8 @@ function connectNet(){
           const victim = net.players.get(m.victim);
           if (victim) remotePlayerKilled(victim, m.by);
         }
-        if (m.by === net.id){ S.kills++; S.score += 150; PROGRESS.totalKills = (PROGRESS.totalKills || 0) + 1; trackChallenge('kill', 1); grantProgress(m.knife ? (m.bs ? 130 : 95) : 65, m.knife ? (m.bs ? 75 : 55) : 35, m.bs ? 'BACKSTAB EXECUTION' : m.knife ? 'SHANKED A RIVAL' : 'PLAYER ELIMINATED'); SFX.kill(); showHitmarker(true); registerKill(); }
-        if (m.assist === net.id && m.by !== net.id){ grantProgress(30, 20, 'ASSIST +1 POINT'); playTone(520, 780, 0.1, 0.22, 'square'); }
+        if (m.by === net.id){ S.kills++; S.score += 150; PROGRESS.totalKills = (PROGRESS.totalKills || 0) + 1; if (!net.profileLinked){ trackChallenge('kill', 1); grantProgress(m.knife ? (m.bs ? 130 : 95) : 65, m.knife ? (m.bs ? 75 : 55) : 35, m.bs ? 'BACKSTAB EXECUTION' : m.knife ? 'SHANKED A RIVAL' : 'PLAYER ELIMINATED'); } SFX.kill(); showHitmarker(true); registerKill(); }
+        if (m.assist === net.id && m.by !== net.id){ if (!net.profileLinked) grantProgress(30, 20, 'ASSIST +1 POINT'); playTone(520, 780, 0.1, 0.22, 'square'); }
         net.scores = m.scores || net.scores;
         if (m.mode) net.dmMode = m.mode;
         if (m.totals){ net.teamTotals = m.totals; updateTeamHUD(); }
@@ -4055,7 +4581,7 @@ function connectNet(){
         net.roundOver = true; net.voteActive = true; net.scores = m.scores || net.scores;
         if (m.mode) net.dmMode = m.mode;
         if (m.totals){ net.teamTotals = m.totals; updateTeamHUD(); }
-        if (m.winnerId === net.id){ PROGRESS.dmWins = (PROGRESS.dmWins || 0) + 1; trackChallenge('dmWin', 1); grantProgress(500, 300, 'LAN MATCH WON'); }
+        if (m.winnerId === net.id){ if (!net.profileLinked){ PROGRESS.dmWins = (PROGRESS.dmWins || 0) + 1; trackChallenge('dmWin', 1); grantProgress(500, 300, 'LAN MATCH WON'); } }
         SFX.roundWin();
         showBanner((m.winnerName || 'PLAYER') + ' WINS');
         showMapVote(m.winnerName || 'ROUND COMPLETE', m.choices || [], m.counts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0));
@@ -4074,6 +4600,7 @@ function connectNet(){
         break;
       case 'modeVote':   // map settled — the second ballot picks the rules
         net.pendingMap = m.map || net.pendingMap;
+        net.voteChoices = m.choices || net.voteChoices;
         showModeVote(m.map || 'MAP', m.counts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0));
         addKillFeed(null, `<b>${m.map || 'MAP'}</b> TAKES THE MAP VOTE — NOW VOTE THE MODE`);
         break;
@@ -4081,7 +4608,8 @@ function connectNet(){
         net.dmMode = m.mode || 'ffa';
         showBanner(m.modeName || 'FREE FOR ALL');
         addKillFeed(null, `<b>${m.map || net.pendingMap}</b> // <b>${m.modeName}</b> — ROUND INCOMING`);
-        if (net.dmMode !== 'team'){ net.myTeam = 0; updateTeamHUD(); }
+        if (net.dmMode !== 'team'){ net.myTeam = 0; if (net.dmMode !== 'infect') { net.infected = false; } updateTeamHUD(); }
+        if (net.dmMode === 'infect') net.voteChoices = [];
         $('voteTimer').textContent = `LOCKED IN — ${m.map || net.pendingMap} // ${m.modeName || ''}`;
         break;
       case 'voteUpdate': {
@@ -4097,9 +4625,47 @@ function connectNet(){
         updateTeamHUD();
         net.myScore = -1; knifeMode = 0;
         if (typeof m.ladderSeed === 'number') shuffleLadder(m.ladderSeed);   // fresh deck, same deal for the whole lobby
-        hideMapVote(); setMap(net.currentMap); resetMatchStats(); syncLadderWeapon(); respawnDMPlayer(true);
-        SFX.roundStart(); showBanner('ROUND ' + net.round);
-        updateScoreboardHUD(); updateTopHUD();
+        hideMapVote(); setMap(net.currentMap); resetMatchStats();
+        // infection setup
+        if (net.dmMode === 'infect' && m.infect){
+          net.infectedIds = new Set(m.infect.infectedIds || []);
+          net.infected = net.infectedIds.has(net.id);
+          net.infectionEndAt = m.infect.endsAt || (Date.now()+90000);
+          // mark remote infected
+          for (const pid of net.infectedIds){ const rp = net.players.get(pid); if (rp) { rp.infected = true; rp.team = 2; setRemoteSkin(rp,'toxic'); } }
+          // survivors
+          for (const rp of net.players.values()) if (!net.infectedIds.has(rp.id)) { rp.infected = false; rp.team = 1; setRemoteSkin(rp,'rift'); }
+          applyInfectSkin();
+          if (net.infected){ knifeMode = 1; updateWeaponVisibility(); }
+          addKillFeed(null, net.infected ? '<b style="color:#2fd04a">YOU ARE INFECTED</b> — SHANK SURVIVORS TO SPREAD' : '<b style="color:#4aa0ff">SURVIVOR</b> — HOLD 1:30');
+        } else {
+          net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+        }
+        syncLadderWeapon(); respawnDMPlayer(true);
+        if (net.dmMode === 'infect' && net.infected) { knifeMode = 1; updateWeaponVisibility(); }
+        SFX.roundStart(); showBanner('ROUND ' + net.round + (net.dmMode==='infect' ? (net.infected?' — INFECTED':' — SURVIVOR') : ''));
+        updateScoreboardHUD(); updateTopHUD(); updateAmmoHUD(); updateHealthHUD();
+        break;
+      case 'infect': {
+        const id = m.id; const isMe = id === net.id;
+        if (isMe){
+          net.infected = true; net.infectedIds.add(id);
+          applyInfectSkin();
+          knifeMode = 1; updateWeaponVisibility();
+          player.maxHp = 80; if (player.hp > player.maxHp) player.hp = player.maxHp;
+          updateHealthHUD(); updateAmmoHUD();
+          showBanner('INFECTED — NOW HUNT');
+          SFX.kill();
+        }
+        const rp = net.players.get(id);
+        if (rp){ rp.infected = true; rp.team = 2; setRemoteSkin(rp, m.skin || 'toxic'); }
+        if (!isMe) addKillFeed(null, `<b style="color:#2fd04a">${rp?rp.name:'A PLAYER'}</b> TURNED — SPREADS THE SWARM`);
+        updateTopHUD();
+        break; }
+      case 'infectWin':
+        addKillFeed(null, m.winner === 'survivors' ? '<b style="color:#4aa0ff">SURVIVORS HOLD</b> — OUTLASTED 1:30' : '<b style="color:#2fd04a">INFECTED TAKE ALL</b>');
+        showBanner(m.winner === 'survivors' ? 'SURVIVORS HOLD' : 'INFECTED SWARM');
+        SFX.roundWin();
         break;
     }
   };
@@ -4174,6 +4740,8 @@ function respawnDMPlayer(silent=false){
   const sp = activeSpawnPoints[(Math.random() * activeSpawnPoints.length) | 0];
   player.pos.set(sp[0] * 0.8 + rand(-2, 2), 0, sp[1] * 0.8 + rand(-2, 2));
   player.vel.set(0, 0, 0);
+  // infection zombies have slightly less health
+  if (isInfect() && net.infected){ player.maxHp = 80; } else { player.maxHp = 100; }
   player.hp = player.maxHp;
   player.invuln = 1.5;
   player.invulnUntil = performance.now() + 1500;   // wall-clock: slow frames must not stretch spawn protection
@@ -4260,6 +4828,28 @@ function die(){
   $('deadStats').innerHTML = matchStatsHtml(`WAVES SURVIVED <b>${Math.max(0, S.wave - 1)}</b>`);
   $('paused').classList.add('hidden');
   $('dead').classList.remove('hidden');
+  sendSoloReport(false);
+}
+/* the solo report — the mission ends, the client files what it earned, the server cross-checks it
+   against physics (waves can't clear faster than possible) and its own payout tables, and the
+   books adjust: whatever the server ratifies becomes the truth of record. */
+async function sendSoloReport(victory){
+  if (S.sandbox || apiUp.ok === false) return;
+  const waves = victory ? SOLO_FINAL_WAVE : Math.max(0, S.wave - 1);
+  if (waves < 1) return;
+  const r = await apiPost('solo', { key: syncKey, waves, kills: S.kills, victory: !!victory, xp: S.xpEarned, cash: S.cashEarned, elapsedMs: performance.now() - S.startTime });
+  if (!r || !r.ok) return;
+  // local accrual kept the mission feeling instant — now reconcile to what the server ratified
+  const rexXp = Math.max(0, S.xpEarned - (r.granted.xp || 0));
+  const rexCash = Math.max(0, S.cashEarned - (r.granted.cash || 0));
+  if (rexXp || rexCash){
+    PROGRESS.xp = Math.max(0, PROGRESS.xp - rexXp);
+    PROGRESS.cash = Math.max(0, PROGRESS.cash - rexCash);
+    addKillFeed(null, `SERVER RATIFIED +${r.granted.cash} CR &nbsp;//&nbsp; +${r.granted.xp} XP <b>FIELD REPORT</b>`);
+  } else addKillFeed(null, `FIELD REPORT ACCEPTED — +${r.granted.cash} CR &nbsp;//&nbsp; +${r.granted.xp} XP`);
+  adoptServerProfile(r.profile);
+  if (r.leveledUp){ showBanner('LEVEL ' + r.leveledUp); SFX.roundStart(); }
+  for (const ch of (r.challenges || [])){ showBanner(String(ch.kind || '').toUpperCase() + ' COMPLETE'); addKillFeed(null, `+${ch.cash} CR &nbsp;//&nbsp; +${ch.xp} XP &nbsp;<b>${String(ch.title || '').toUpperCase()}</b>`); }
 }
 function soloVictory(){
   if (S.dead) return;
@@ -4274,6 +4864,7 @@ function soloVictory(){
   S.score += 2500;
   updateTopHUD();
   SFX.roundWin();
+  sendSoloReport(true);
   $('deadTitle').textContent = 'MISSION COMPLETE';
   $('deadSubtitle').textContent = 'Wave 15 cleared — extraction authorized';
   $('restartBtn').textContent = 'Main Menu';
@@ -4466,6 +5057,29 @@ function updateScoreboardHUD(){
   const panel = $('scoreboardPanel'), rows = $('scoreRows');
   if (!panel || !rows) return;
   panel.classList.toggle('hidden', mode !== 'dm' && !net.on);
+  if (net.dmMode === 'infect'){
+    const list = (net.scores || []);
+    // split survivors (not infected) vs infected using scores team? scores have team field from server; survivor team 1 blue, infected team 2 green
+    const rowSurv = p => `<div class="scoreRow ${p.id===net.id?'me':''}"><span style="color:#4aa0ff">${p.name || 'PLAYER'}</span><b>${p.score || 0}<small>${p.deaths || 0}D</small></b></div>`;
+    const rowInf = p => `<div class="scoreRow ${p.id===net.id?'me':''}"><span style="color:#2fd04a">${p.name || 'PLAYER'}</span><b>${p.score || 0}<small>${p.deaths || 0}D</small></b></div>`;
+    const surv = list.filter(p => p.team === 1).sort((a,b)=>(b.score||0)-(a.score||0));
+    const inf = list.filter(p => p.team === 2).sort((a,b)=>(b.score||0)-(a.score||0));
+    const survCount = surv.length + (net.infected?0:1);
+    const infCount = inf.length + (net.infected?1:0);
+    // if server didn't set team for lobby solo, fallback to all list
+    if (!surv.length && !inf.length){
+      rows.innerHTML = list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${p.name}</span><b>${p.score||0}</b></div>`).join('');
+      panel.querySelector('.sbTitle').textContent = `INFECTION // ${Math.max(0, Math.ceil((net.infectionEndAt-Date.now())/1000))}s LEFT`;
+      return;
+    }
+    panel.querySelector('.sbTitle').textContent = `INFECTION // ${survCount} SURVIVORS vs ${infCount} INFECTED`;
+    rows.innerHTML =
+      `<div class="scoreRow sbTeamHdr" style="color:#4aa0ff"><span>SURVIVORS</span><b>${surv.length + (net.infected?0:1)}</b></div>` +
+      (surv.map(rowSurv).join('') || '<div class="scoreRow"><span>—</span><b>0</b></div>') +
+      `<div class="scoreRow sbTeamHdr" style="color:#2fd04a"><span>INFECTED</span><b>${inf.length + (net.infected?1:0)}</b></div>` +
+      (inf.map(rowInf).join('') || '<div class="scoreRow"><span>—</span><b>0</b></div>');
+    return;
+  }
   panel.querySelector('.sbTitle').textContent = net.dmMode === 'team'
     ? `RED v BLUE // FIRST TEAM TO ${net.limit || 30}`
     : `LEADERBOARD // FIRST TO ${net.limit || 30}`;
@@ -4514,6 +5128,7 @@ const MODE_CARD = {
   FFA:   { title:'FREE FOR ALL', sub:'every runner for themselves — first to 30 kills takes it', cls:'vmFFA' },
   TEAM:  { title:'RED v BLUE',   sub:'teammates can\'t hurt you — first runner to 30 kills still wins', cls:'vmTEAM' },
   KNIFE: { title:'KNIFE FIGHT',  sub:'blades only — first to 15 stabs, and the 15th is GOLDEN. shanks never demote', cls:'vmKNIFE' },
+  INFECT:{ title:'INFECTION',    sub:'1:30 to survive — blue survivors vs green swarm, zombies only knife, late joins are infected', cls:'vmINFECT' },
 };
 function enterVoteMode(paused=true){
   net.voteActive = true;
@@ -4538,13 +5153,17 @@ function showMapVote(winner, choices, counts={}, endsLocal=0){
 }
 function showModeVote(mapName, counts={}, endsLocal=0){
   enterVoteMode();
-  net.votePhase = 'mode'; net.pendingMap = mapName || net.pendingMap; net.voteChoices = ['FFA','TEAM','KNIFE']; net.voteCounts = counts;
+  net.votePhase = 'mode'; net.pendingMap = mapName || net.pendingMap; 
+  // server drives choices — map uses voteChoices already set via roundOver/modeVote handlers
+  // if not set (direct), fallback to 3 of pool
+  if (!net.voteChoices || !net.voteChoices.length) net.voteChoices = ['FFA','TEAM','KNIFE'];
+  net.voteCounts = counts;
   if (endsLocal) net.voteEndsLocal = endsLocal;
   $('voteWinner').textContent = `${(mapName || 'MAP').toUpperCase()} LOCKED — VOTE THE MODE`;
   renderRoundStats();
   const box = $('voteChoices'); box.innerHTML = '';
-  ['FFA','TEAM','KNIFE'].forEach((m,i) => {
-    const c = MODE_CARD[m];
+  (net.voteChoices || []).forEach((m,i) => {
+    const c = MODE_CARD[m] || MODE_CARD['FFA'];
     const btn = document.createElement('button'); btn.className = 'voteBtn voteModeBtn ' + c.cls; btn.dataset.map = m;
     btn.innerHTML = `<b>${i+1}. ${c.title}</b><span>${c.sub}</span><span class="voteCount">${counts[m] || 0} VOTES</span>`;
     btn.onclick = () => castMapVote(m);
@@ -4576,6 +5195,9 @@ function castMapVote(choice){
   netSend({ t:'vote', map:choice });
 }
 function updateAmmoHUD(){
+  // infection zombies locked to knife
+  if (isInfect() && net.infected && !knifeMode){ knifeMode = 1; updateWeaponVisibility(); }
+  if (isInfect() && net.infected && !knifeLocked()){ /* force */ }
   const w = CW();
   const sg = $('slotGun'), sk = $('slotKnife');
   if (sg) sg.classList.toggle('active', !knifeMode);
@@ -4583,6 +5205,18 @@ function updateAmmoHUD(){
     sk.classList.toggle('active', !!knifeMode);
     sk.classList.toggle('gold', !!knifeGolden());
     sk.textContent = knifeGolden() ? '2 ★ SHANK' : '2 KNIFE';
+  }
+  if (isInfect() && net.infected){
+    // zombies: show infected HUD
+    const def = currentKnifeDef();
+    $('weaponName').innerHTML = `<span style="color:#2fd04a">INFECTED</span> ${def.name}`;
+    $('ammoMag').textContent = '—';
+    $('ammoMag').classList.remove('lowammo');
+    $('ammoReserve').textContent = ' ∞';
+    const av = $('arsenalVal'); if (av) av.textContent = net.infected ? `ZOMBIE — INFECT SURVIVORS` : `SURVIVOR — HOLD 1:30`;
+    $('nadeVal').textContent = '×' + player.grenades;
+    $('reloadHint').textContent = 'ZOMBIES ONLY KNIFE — FASTER + LESS HEALTH';
+    return;
   }
   if (knifeMode){
     const def = currentKnifeDef();
@@ -4618,6 +5252,19 @@ function updateHealthHUD(){
 function updateTopHUD(){
   const mapEl = $('mapName'); if (mapEl) mapEl.textContent = currentMapName;
   if (mode === 'dm'){
+    // infection timer
+    if (isInfect() && net.infectionEndAt){
+      const left = Math.max(0, Math.ceil((net.infectionEndAt - Date.now())/1000));
+      const mm = String(Math.floor(left/60)).padStart(2,'0'), ss = String(left%60).padStart(2,'0');
+      $('modeLbl').textContent = 'INFECTION';
+      $('waveVal').textContent = `${mm}:${ss}`;
+      const surv = [...net.players.values()].filter(p=>!p.infected).length + (net.infected?0:1);
+      const zom = [...net.players.values()].filter(p=>p.infected).length + (net.infected?1:0);
+      $('hostilesLbl').textContent = 'SURVIVORS';
+      $('hostilesVal').textContent = surv + ' ALIVE';
+      $('scoreVal').textContent = `${zom} ZOMBIES`;
+      return;
+    }
     $('modeLbl').textContent = 'ROUND';
     $('hostilesLbl').textContent = 'PLAYERS';
     $('waveVal').textContent = net.round || 1;
@@ -4706,7 +5353,8 @@ function updatePlayer(dt, now){
   const ads = adsHeld && CW().reloading <= 0;
   adsT = clamp(adsT + (ads ? dt*8 : -dt*8), 0, 1);
 
-  const speedMul = knifeMode ? currentKnifeDef().speedMul : 1;  // knife +5%, golden shank +15% move speed
+  const infSpeedMul = (isInfect() && net.infected) ? 1.14 : 1; // zombies slightly faster
+  const speedMul = (knifeMode ? currentKnifeDef().speedMul : 1) * infSpeedMul;  // knife +5%, golden shank +15% move speed, zombies +14%
   const speed = (ads ? 3.6 : player.crouched ? 3.1 : (sprinting ? 8.4 : 5.7)) * speedMul;
   const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
   let wx = 0, wz = 0;
@@ -4766,7 +5414,27 @@ function updatePlayer(dt, now){
   player.pos.x = clamp(player.pos.x, -ARENA+0.8, ARENA-0.8);
   player.pos.z = clamp(player.pos.z, -ARENA+0.8, ARENA-0.8);
 
+  const oldY = player.pos.y;
   player.pos.y += player.vel.y * dt;
+  // ceiling — hit your head (was noclipping)
+  if (player.vel.y > 0){
+    const oldHead = oldY + P_HEIGHT;
+    const newHead = player.pos.y + P_HEIGHT;
+    let hit = Infinity;
+    for (const s of solids){
+      if (player.pos.x > s.min.x - P_RADIUS*0.85 && player.pos.x < s.max.x + P_RADIUS*0.85 &&
+          player.pos.z > s.min.z - P_RADIUS*0.85 && player.pos.z < s.max.z + P_RADIUS*0.85){
+        // ceiling bottom is between old head and new head (moving up into it)
+        if (s.min.y > oldHead - 0.05 && s.min.y <= newHead + 0.02){
+          if (s.min.y < hit) hit = s.min.y;
+        }
+      }
+    }
+    if (hit !== Infinity){
+      player.pos.y = hit - P_HEIGHT - 0.02;
+      player.vel.y = Math.min(0, player.vel.y * -0.15);
+    }
+  }
   const g = groundHeight(player.pos, player.pos.y + 0.3);
   if (player.pos.y <= g){
     if (!player.grounded && player.vel.y < -4) SFX.land();
@@ -4991,26 +5659,37 @@ function loop(){
   const now = performance.now();
   gunRoot.visible = S.started && !S.dead && !(CW().scoped && adsT > 0.7);   // no floating viewmodel on the death cam
 
-  if (S.started && !S.paused && !S.dead){
-    updatePlayer(dt, now);
+  if (S.started && !S.paused){
+    if (!S.dead) updatePlayer(dt, now);
+    // projectiles, grenades, hazards and burns must keep flying even when you're spectating —
+    // a grenade you threw before dying still explodes, a rocket mid-air still detonates
     updateGrenades(dt, now);
-    updatePickups(dt, now);
-    stepPlayerShots(dt);   // launchers, napalm pools and burn ticks tick in EVERY mode (solo, sandbox and LAN rounds alike)
+    if (!S.dead) updatePickups(dt, now);
+    stepPlayerShots(dt);
     stepBurns(dt);
     if (mode === 'solo'){
-      updateEnemies(dt, now);
-      updateProjectiles(dt);
-      updateWaves(dt);
+      if (!S.dead){
+        updateEnemies(dt, now);
+        updateWaves(dt);
+      }
+      updateProjectiles(dt);   // enemy shots keep flying while you watch the kill-cam
     }
+    if (mode === 'dm' && S.dead) updateSpectate(dt);
   } else {
     // idle camera drift on menu
     if (!S.started){
       const t = now * 0.0001;
       camera.position.set(Math.sin(t)*26, 9, Math.cos(t)*26);
       camera.lookAt(0, 2, 0);
+    } else if (S.started && S.dead && mode === 'dm'){
+      // death cam while paused (AFK-kill path keeps S.paused true) — still spectate
+      updateSpectate(dt);
+      // keep ordnance alive even through the pause-death edge case
+      updateGrenades(dt, now);
+      stepPlayerShots(dt);
+      stepBurns(dt);
     }
   }
-  if (S.started && S.dead && mode === 'dm') updateSpectate(dt);
   updateNet(dt);
   updateTeamDots();
   updateWorldAtmosphere(dt, now);
@@ -5046,8 +5725,9 @@ Object.seal(net); Object.seal(player); Object.seal(S); Object.seal(SETTINGS);   
 // the debug handle ships only in NR_DEBUG builds — the release artifact drops this whole branch
 if (window.__ALLOW_DBG__)
 window.__dbg = { player, S, camera, enemies, net, keys, spawnEnemy, fireWeapon, grenadesLive, explodeAt, throwGrenade, WEAPONS, RARITIES, waveComposition, tryReload, rotateWeaponForKill, setMap, spawnPlayerPieces, dmDeath, respawnDMPlayer, PROGRESS, SKINS, grantProgress, updateProgressUI, skinDef, trackChallenge, destructibles, weatherSystems, worldAnim, eventLights, damageDestructible, destroyDestructible, cleanupPlayerAvatar, savePlayerName, addRemotePlayer, tryKnifeSwing, knifeStrike, isBackstab, KNIFE_DEFS, knifeModels,
-  MAP_NAMES, SETTINGS, DEFAULT_BINDS, BIND_LABELS, bindCode, bindDown, assignBind, friendlyKeyName, renderBindList, GUN_LADDER, FINAL_TIER_SCORE, equipLadderTier, syncLadderWeapon, equipGunSlot, equipKnifeSlot, tryKnifeSwing, knifeStrike, updateWeaponVisibility, knifeModels, solids, castWorld, hasLOS, resolvePenetration, updateEnemies, updatePlayer, isTeammate, setRemoteTeam, TEAM_COLORS, TEAM_NAMES, updateTeamHUD,
+  MAP_NAMES, SETTINGS, DEFAULT_BINDS, BIND_LABELS, bindCode, bindDown, assignBind, friendlyKeyName, renderBindList, GUN_LADDER, FINAL_TIER_SCORE, equipLadderTier, syncLadderWeapon, equipGunSlot, equipKnifeSlot, tryKnifeSwing, knifeStrike, updateWeaponVisibility, knifeModels, solids, castWorld, hasLOS, resolvePenetration, updateEnemies, updatePlayer, isTeammate, setRemoteTeam, TEAM_COLORS, TEAM_NAMES, updateTeamHUD, refreshProfile,
   get knifeSwingCt(){ return knifeSwingId; },
+  get _syncKey(){ return syncKey; },
   get inputLocked(){ return locked; },
   get knifeMode(){ return knifeMode; },
   get beatDigest(){ return BEAT.digestRuntime(BEAT_FNS) >>> 0; },

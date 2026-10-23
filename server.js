@@ -98,12 +98,16 @@ const players = new Map();   // id -> { ws, name, state, score, deaths, vote, mo
 
 const ROUND_LIMIT = 30;
 const KNIFE_LIMIT = 15;                                // KNIFE FIGHT: first to 15 stabs — golden shank from 14, no demotions
-function limitNow(){ return gameMode === 'knife' ? KNIFE_LIMIT : ROUND_LIMIT; }
+const INFECT_DURATION = 90000;                         // 1:30 survivors must hold
+function limitNow(){ return gameMode === 'knife' ? KNIFE_LIMIT : (gameMode === 'infect' ? 0 : ROUND_LIMIT); }
 const MAPS = ['FORGE', 'NEXUS', 'DUSK YARD', 'COLD STORAGE', 'RIFT DOCKS'];
-const MODE_CHOICES = ['FFA', 'TEAM', 'KNIFE'];
-const MODE_NAMES = { FFA:'FREE FOR ALL', TEAM:'RED v BLUE', KNIFE:'KNIFE FIGHT' };
+const MODE_POOL = ['FFA', 'TEAM', 'KNIFE', 'INFECT'];
+const MODE_NAMES = { FFA:'FREE FOR ALL', TEAM:'RED v BLUE', KNIFE:'KNIFE FIGHT', INFECT:'INFECTION' };
 let gameMode = 'ffa';           // decided by the lobby's mode vote before every round
-const TEAM_NAMES = ['', 'RED TEAM', 'BLUE TEAM'];
+const TEAM_NAMES = ['', 'RED TEAM', 'BLUE TEAM', '', 'SURVIVORS', 'INFECTED'];
+let infectionEndAt = 0;
+let infectionTimer = null;
+let modeVoteChoices = [];       // 3 random modes per ballot, rotates like maps
 let currentMap = MAPS[0];
 let roundNo = 0;
 let roundActive = false;
@@ -145,10 +149,21 @@ function teamTotals(){
 }
 function voteCounts(){
   const counts = {};
-  if (votePhase === 'mode'){ for (const m of MODE_CHOICES) counts[m] = 0; for (const p of players.values()) if (counts[p.modeVote] !== undefined) counts[p.modeVote]++; return counts; }
+  if (votePhase === 'mode'){ for (const m of modeVoteChoices) counts[m] = 0; for (const p of players.values()) if (counts[p.modeVote] !== undefined) counts[p.modeVote]++; return counts; }
   for (const m of voteChoices) counts[m] = 0;
   for (const p of players.values()) if (counts[p.vote] !== undefined) counts[p.vote]++;
   return counts;
+}
+function pickModeChoices(exclude){
+  const pool = MODE_POOL.filter(m => m !== exclude);
+  while (pool.length < 3) pool.push(...MODE_POOL);
+  const choices = [];
+  while (choices.length < Math.min(3, MODE_POOL.length)){
+    const idx = Math.floor(Math.random() * pool.length);
+    const m = pool.splice(idx, 1)[0];
+    if (!choices.includes(m)) choices.push(m);
+  }
+  return choices;
 }
 function pickChoices(exclude){
   const pool = MAPS.filter(m => m !== exclude);
@@ -174,12 +189,12 @@ function chooseVoteWinner(){
   const counts = voteCounts();
   if (votePhase === 'mode'){
     let bestCount = -1; const tied = [];
-    for (const mch of MODE_CHOICES){
+    for (const mch of modeVoteChoices){
       const c = counts[mch] || 0;
       if (c > bestCount){ bestCount = c; tied.length = 0; tied.push(mch); }
       else if (c === bestCount) tied.push(mch);
     }
-    if (bestCount === 0) return 'FFA';                            // nobody cared: baseline mode, by design
+    if (bestCount === 0) return modeVoteChoices[0] || 'FFA';                            // nobody cared: baseline mode, by design
     let win = tied[0], tBest = Infinity;
     for (const mch of tied){ const t = earliestVoteAt('modeVote', mch); if (t < tBest){ tBest = t; win = mch; } }
     return win;
@@ -208,6 +223,7 @@ function openVote({ initial=false, winnerId=0, winnerName='ROUND COMPLETE', winT
   pendingMap = null;
   voteCtx = { initial, winnerId, winnerName, winTeam };
   voteChoices = pickChoices(initial ? null : currentMap);   // always 3 of the 5 maps, cycling
+  modeVoteChoices = [];
   for (const p of players.values()){ p.vote = null; p.modeVote = null; }
   voteEndsAt = Date.now() + 10000;
   scheduleVoteEnd();
@@ -219,22 +235,30 @@ function closeVotePhase(){
   if (votePhase === 'map'){                       // map settled → same lobby now picks the mode
     pendingMap = chooseVoteWinner();
     votePhase = 'mode';
+    // 3 random modes, rotating like maps
+    modeVoteChoices = pickModeChoices(gameMode ? gameMode.toUpperCase() : null);
     voteEndsAt = Date.now() + 6000;
     scheduleVoteEnd();
-    console.log(new Date().toISOString().slice(11,19), `[vote] map decided: ${pendingMap}; mode phase open`);
-    broadcast({ t:'modeVote', map:pendingMap, choices:MODE_CHOICES, counts:voteCounts(), voteEndsAt, now:Date.now() });
+    console.log(new Date().toISOString().slice(11,19), `[vote] map decided: ${pendingMap}; mode phase open choices=${modeVoteChoices.join(',')}`);
+    broadcast({ t:'modeVote', map:pendingMap, choices:modeVoteChoices, counts:voteCounts(), voteEndsAt, now:Date.now() });
     return;
   }
   if (votePhase !== 'mode') return;
   // mode decided → lock it in, (re)balance squads if it's teams, then kick off the round
   const votedMode = chooseVoteWinner();
-  gameMode = votedMode === 'TEAM' ? 'team' : (votedMode === 'KNIFE' ? 'knife' : 'ffa');
+  if (votedMode === 'TEAM') gameMode = 'team';
+  else if (votedMode === 'KNIFE') gameMode = 'knife';
+  else if (votedMode === 'INFECT') gameMode = 'infect';
+  else gameMode = 'ffa';
   votePhase = null; voteChoices = []; voteEndsAt = 0;
   if (gameMode === 'team'){
     const ids = [...players.keys()];
     for (let i = ids.length - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; [ids[i], ids[j]] = [ids[j], ids[i]]; }
     ids.forEach((pid, i) => { players.get(pid).team = (i % 2) + 1; });   // shuffled 1,2,1,2… = balanced RED/BLUE
-  } else for (const p of players.values()) p.team = 0;
+  } else if (gameMode === 'infect'){
+    // infect teams cleared, will be assigned in startRound (1 survivor, 1 infected start)
+    for (const p of players.values()){ p.team = 0; p.infected = false; }
+  } else for (const p of players.values()){ p.team = 0; p.infected = false; }
   broadcast({ t:'modeDecided', mode:gameMode, modeName:(MODE_NAMES[gameMode.toUpperCase()] || MODE_NAMES.FFA), map:pendingMap || currentMap });
   for (const [pid, p] of players){ send(p.ws, { t:'mode', mode:gameMode, team:p.team || 0, teamName:TEAM_NAMES[p.team] || '' }); broadcast({ t:'team', id:pid, team:p.team || 0 }, pid); }
   console.log(new Date().toISOString().slice(11,19), `[vote] mode decided: ${gameMode}; launching round`);
@@ -252,6 +276,8 @@ function resetEmptyLobby(){
   pendingMap = null;
   roundNo = 0;
   gameMode = 'ffa';
+  infectionEndAt = 0;
+  if (infectionTimer){ clearTimeout(infectionTimer); infectionTimer = null; }
   currentMap = MAPS[(Math.random() * MAPS.length) | 0];
 }
 function startRound(map){
@@ -266,24 +292,52 @@ function startRound(map){
   for (const p of players.values()){
     p.score = 0; p.deaths = 0; p.vote = null; p.modeVote = null; p.state = null; p.invulnUntil = Date.now() + 1500;
     p.lastHitFrom = 0; p.lastHitKnife = false; p.lastHitAt = 0; p.assists = 0; p.dmgLog = new Map();
+    p.infected = false; p.team = 0;
     p.lastActiveAt = Date.now();   // fresh round, fresh 15s to actually play it
   }
+  if (gameMode === 'infect'){
+    // pick patient zero randomly among connected players
+    const ids = [...players.keys()];
+    const first = ids[Math.floor(Math.random()*ids.length)];
+    for (const [pid, pl] of players){
+      if (pid === first){ pl.infected = true; pl.team = 2; pl.skin = 'toxic'; } // green zombies
+      else { pl.infected = false; pl.team = 1; pl.skin = 'rift'; } // blue survivors
+    }
+    infectionEndAt = Date.now() + INFECT_DURATION;
+    if (infectionTimer) clearTimeout(infectionTimer);
+    infectionTimer = setTimeout(() => {
+      if (!roundActive || gameMode !== 'infect') return;
+      const survivors = [...players.values()].filter(q=>!q.infected);
+      if (survivors.length > 0){
+        console.log(`[infect] survivors held 90s — survivors win`);
+        broadcast({ t:'infectWin', winner:'survivors' });
+        openVote({ initial:false, winnerId: survivors[0]?.id || 0, winnerName:'SURVIVORS HOLD', winTeam:1 });
+      }
+    }, INFECT_DURATION + 200);
+  } else {
+    infectionEndAt = 0;
+    if (infectionTimer){ clearTimeout(infectionTimer); infectionTimer = null; }
+  }
   const ladderSeed = (Math.random() * 0x7fffffff) | 0;   // one deck-shuffle per round, dealt to everyone equally
-  broadcast({ t:'roundStart', map:currentMap, round:roundNo, limit:limitNow(), scores:scoreList(), mode:gameMode, totals:teamTotals(), ladderSeed });
+  // include infection state in roundStart for clients
+  const infectInfo = gameMode === 'infect' ? { infectedIds: [...players].filter(([_,pl])=>pl.infected).map(([pid])=>pid), endsAt: infectionEndAt } : null;
+  broadcast({ t:'roundStart', map:currentMap, round:roundNo, limit:limitNow(), scores:scoreList(), mode:gameMode, totals:teamTotals(), ladderSeed, infect: infectInfo });
   console.log(new Date().toISOString().slice(11,19), `[round] ${roundNo} started on ${currentMap} (${gameMode})`);
 }
 function finishRound(winnerId){
   if (!roundActive) return;
+  if (infectionTimer){ clearTimeout(infectionTimer); infectionTimer = null; }
   // Same win rule in both modes: ONE runner hits 30 kills. Team play only means no friendly fire.
   const winner = players.get(winnerId);
-  openVote({ initial:false, winnerId, winnerName:winner ? winner.name : 'ARENA', winTeam:(winner && (gameMode === 'team')) ? winner.team : 0 });
+  openVote({ initial:false, winnerId, winnerName:winner ? winner.name : 'ARENA', winTeam:(winner && (gameMode === 'team' || gameMode === 'infect')) ? winner.team : 0 });
   console.log(new Date().toISOString().slice(11,19), `[round] ${winner ? winner.name : winnerId} reached ${limitNow()} and won round ${roundNo}; voting open`);
 }
 function welcomeState(id){
   const me = players.get(id);
+  const infectWelcome = (gameMode === 'infect' && roundActive) ? { infectedIds: [...players].filter(([_,pl])=>pl.infected).map(([pid])=>pid), endsAt: infectionEndAt } : null;
   return {
     t:'welcome', id, salt: me ? me.salt : 0, map:currentMap, round:roundNo, limit:limitNow(), active:roundActive, mode:(gameMode || 'ffa'), totals:teamTotals(),
-    scores:scoreList(), voteChoices: votePhase === 'mode' ? MODE_CHOICES : voteChoices, voteCounts:voteCounts(), voteEndsAt,
+    scores:scoreList(), voteChoices: votePhase === 'mode' ? modeVoteChoices : voteChoices, voteCounts:voteCounts(), voteEndsAt, infect: infectWelcome,
     phase: votePhase, pendingMap, winnersName:(!roundActive && votePhase ? voteCtx.winnerName : ''), now:Date.now(),
     players:[...players].filter(([pid]) => pid !== id).map(([pid, q]) => ({ id:pid, name:q.name, skin:q.skin || 'rift', state:q.stateArr || q.state, score:q.score || 0, deaths:q.deaths || 0, team:q.team || 0 }))
   };
@@ -332,7 +386,15 @@ wss.on('connection', (ws, req) => {
           p.team = red <= blue ? 1 : 2;
           console.log(new Date().toISOString().slice(11,19), `[team] ${p.name} → ${TEAM_NAMES[p.team]} (${red}v${blue})`);
         }
-        if (gameMode !== 'team') p.team = 0;
+        // infection late join: you spawn as infected (green)
+        if (gameMode === 'infect' && roundActive){
+          p.infected = true; p.team = 2; p.skin = 'toxic';
+          console.log(`[infect] late join ${p.name} -> infected`);
+          broadcast({ t:'infect', id, team:2, skin:'toxic' });
+        } else if (gameMode === 'infect' && !roundActive){
+          p.infected = false; p.team = 0;
+        }
+        if (gameMode !== 'team' && gameMode !== 'infect') p.team = 0;
         send(p.ws, { t:'mode', mode:(gameMode || 'ffa'), team:p.team || 0, teamName:TEAM_NAMES[p.team] || MODE_NAMES.FFA });
         broadcast({ t:'join', id, name:p.name, skin:p.skin, score:p.score, deaths:p.deaths, team:p.team }, id);
         broadcast({ t:'team', id, team:p.team }, id);
@@ -364,6 +426,7 @@ wss.on('connection', (ws, req) => {
         if (!roundActive) break;
         const tgt = tgt0;
         if (tgt && gameMode === 'team' && p.team && tgt.team === p.team) break;   // team mode: no friendly fire (or friendly shanks)
+        if (tgt && gameMode === 'infect' && p.infected === tgt.infected) break;   // infection: no friendly fire within same side
         if (tgt && (tgt.invulnUntil || 0) <= Date.now()){
           // track the most recent hit so a kill can be attributed as a shank (demotion rules)
           tgt.lastHitFrom = id;
@@ -389,6 +452,44 @@ wss.on('connection', (ws, req) => {
         if (killer && killerId !== id){
           killer.killEvents.push(nowM);
           if (acOver(pg(killer, AC.KILL_MAX), killer.killEvents, nowM, AC.KILL_WIN)){ acKick(killer, `kill spam: ${killer.killEvents.length} kills in ${AC.KILL_WIN}ms`); break; }
+        }
+        // INFECTION: infected knife kills convert survivors
+        if (roundActive && gameMode === 'infect'){
+          p.deaths = (p.deaths || 0) + 1;
+          const killerInf = killer && killer.infected;
+          const victimInf = p.infected;
+          const isKnifeKill = !!p.lastHitKnife;
+          if (killer && killerInf && !victimInf && isKnifeKill){
+            // convert survivor to infected (knife only)
+            p.infected = true; p.team = 2; p.skin = 'toxic';
+            killer.score = (killer.score || 0) + 1;
+            const infKnife = true; const infBs = !!p.lastHitBackstab;
+            broadcast({ t:'infect', id, team:2, skin:'toxic', by:killerId });
+            broadcast({ t:'kill', victim:id, by:killerId, assist:0, knife:infKnife, bs:infBs, demoted:false, names:{ v:p.name, k:killer ? killer.name : 'ARENA', a:null }, kteam:killer?killer.team:0, vteam:p.team, ateam:0, scores:scoreList(), limit:limitNow(), mode:gameMode, totals:teamTotals() });
+            broadcast({ t:'score', scores:scoreList(), limit:limitNow(), round:roundNo, map:currentMap, active:roundActive, mode:gameMode, totals:teamTotals() });
+            // check all infected win
+            const survivors = [...players.values()].filter(q=>!q.infected);
+            if (survivors.length === 0){
+              console.log(`[infect] all survivors converted — infected win`);
+              broadcast({ t:'infectWin', winner:'infected' });
+              if (infectionTimer){ clearTimeout(infectionTimer); infectionTimer = null; }
+              openVote({ initial:false, winnerId:killerId, winnerName:'INFECTED SWARM', winTeam:2 });
+            }
+            break;
+          } else if (killer && !killerInf && victimInf){
+            // survivor killed zombie — point but no convert, zombie stays infected
+            killer.score = (killer.score || 0) + 1;
+          } else if (killer && killerId !== id){
+            // other combos: survivor vs survivor or zombie vs zombie shouldn't happen due to friendly fire block, but still award
+            killer.score = (killer.score || 0) + 1;
+          }
+          // for non-convert infect kills, compute knife/backstab from stored lastHit
+          const infKnife2 = !!p.lastHitKnife; const infBs2 = !!p.lastHitBackstab;
+          p.lastHitKnife = false; p.lastHitBackstab = false; p.lastHitFrom = 0;
+          p.dmgLog = new Map();
+          broadcast({ t:'kill', victim:id, by:killerId, assist:0, knife:infKnife2, bs:infBs2, demoted:false, names:{ v:p.name, k:killer ? killer.name : 'ARENA', a:null }, kteam: killer ? killer.team : 0, vteam: p.team, ateam:0, scores:scoreList(), limit:limitNow(), mode:(gameMode || 'ffa'), totals:teamTotals() });
+          broadcastScore();
+          break;
         }
         let knifeKill = false, backstab = false, demoted = false, assistId = 0;
         if (roundActive){
@@ -453,7 +554,7 @@ wss.on('connection', (ws, req) => {
         const choice = String(m.map || '');
         if (roundActive) break;
         if (votePhase === 'mode'){
-          if (MODE_CHOICES.includes(choice)){ p.modeVote = choice; p.modeVoteAt = Date.now(); broadcast({ t:'voteUpdate', phase:'mode', choices:MODE_CHOICES, counts:voteCounts(), voter:id, map:choice, voteEndsAt, now:Date.now() }); }
+          if (modeVoteChoices.includes(choice)){ p.modeVote = choice; p.modeVoteAt = Date.now(); broadcast({ t:'voteUpdate', phase:'mode', choices:modeVoteChoices, counts:voteCounts(), voter:id, map:choice, voteEndsAt, now:Date.now() }); }
         } else if (votePhase === 'map' && voteChoices.includes(choice)){
           p.vote = choice; p.voteAt = Date.now();
           broadcast({ t:'voteUpdate', phase:'map', choices:voteChoices, counts:voteCounts(), voter:id, map:choice, voteEndsAt, now:Date.now() });
