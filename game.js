@@ -5218,8 +5218,8 @@ const MODE_CARD = {
   TEAM:  { title:'RED v BLUE',   sub:'teammates can\'t hurt you — first runner to 30 kills still wins', cls:'vmTEAM' },
   KNIFE: { title:'KNIFE FIGHT',  sub:'blades only — first to 15 stabs, and the 15th is GOLDEN. shanks never demote', cls:'vmKNIFE' },
   INFECT:{ title:'INFECTION',    sub:'1:30 to survive — blue survivors vs green swarm, zombies only knife, late joins are infected', cls:'vmINFECT' },
-  AUTO:  { title:'AUTOMATICS',   sub:'automatic guns only — first to 30 kills, random ladder, no golden knife', cls:'vmFFA' },
-  SHOTGUN:{ title:'SHOTGUNS',    sub:'shotguns only — first to 20 kills, random ladder, no golden knife', cls:'vmTEAM' },
+  AUTO:  { title:'AUTOMATICS',   sub:'automatic guns only — first to 30 kills, random ladder, no golden knife', cls:'vmAUTO' },
+  SHOTGUN:{ title:'SHOTGUNS',    sub:'shotguns only — first to 20 kills, random ladder, no golden knife', cls:'vmSHOTGUN' },
 };
 function enterVoteMode(paused=true){
   net.voteActive = true;
