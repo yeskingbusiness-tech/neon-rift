@@ -19,9 +19,9 @@ const ROOT = __dirname;
 const ENVN = (k, d) => { const v = Number(process.env[k]); return Number.isFinite(v) && v > 0 ? v : d; };
 const AC = {
   MSG_WIN:  1000, MSG_MAX:  ENVN('AC_MSG_MAX', 240),   // even slide-cancelling esports gods stay under 240 msgs/s
-  HIT_WIN:  1000, HIT_MAX:  ENVN('AC_HIT_MAX', 24),    // fastest legit autos ~ 15 reports/s
-  KILL_WIN: 2500, KILL_MAX: ENVN('AC_KILL_MAX', 7),    // a spray + a splash can chain 4-5 legit; 7+ is a script
-  TPORT:                ENVN('AC_TPORT', 15),          // metres between consecutive state packets
+  HIT_WIN:  1000, HIT_MAX:  ENVN('AC_HIT_MAX', 28),    // fastest legit autos ~ 15 reports/s — bumped for infection knife spam
+  KILL_WIN: 2500, KILL_MAX: ENVN('AC_KILL_MAX', 9),    // a spray + a splash can chain 4-5 legit; infection burst can hit 8
+  TPORT:                ENVN('AC_TPORT', 22),          // metres between consecutive state packets — up from 15 for lag/lift
   MAX_IP_CONNS: 8,                                     // connection-flood bouncer (not a ban — instant kick only)
 };
 const ipConns = new Map();      // ip -> live connections on this box
@@ -29,12 +29,12 @@ const ipConns = new Map();      // ip -> live connections on this box
 // layer 2+: speed audit, integrity heartbeat,
 //           recidivist probation, and a coherence auditor that runs even if rate rings are dodged
 Object.assign(AC, {
-  SPEED_WIN: 3000, SPEED_MAX: ENVN('AC_SPEED', 75),          // metres travelled in the window (≈25 m/s sustained — legit ~9-12 with slides)
-  BEAT_MS: 13000,                                            // gameplay reporter without a heartbeat this long → socket bot
+  SPEED_WIN: 3000, SPEED_MAX: ENVN('AC_SPEED', 110),         // metres travelled in the window — raised for 1.28× zombie sprint + slide bursts
+  BEAT_MS: 20000,                                            // gameplay reporter without a heartbeat this long → socket bot (was 13s)
   AUDIT_MS: ENVN('AC_AUDIT_MS', 5000),                       // coherence auditor cadence (test rigs may shrink)
   PROB_MS: ENVN('AC_PROB_MS', 300000),                       // a kick earns 5 minutes of probation — halved thresholds
   HAND_MS: ENVN('AC_HAND_MS', 4100),                         // heartbeat challenge rotation
-  AFK_MS: process.env.AC_AFK_MS === '0' ? 0 : ENVN('AC_AFK_MS', 15000),   // in-round inactivity eviction (explicit 0 = off; test rigs shrink/disable)
+  AFK_MS: process.env.AC_AFK_MS === '0' ? 0 : ENVN('AC_AFK_MS', 90000),   // in-round inactivity eviction — was 15s, now 90s to cover full Infection hold; 0=off
 });
 const BEAT = require('./shared/beat.js');
 const probationList = new Map();      // ip -> probation end timestamp (set by every kick)
