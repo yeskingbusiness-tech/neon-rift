@@ -2460,7 +2460,7 @@ const FINAL_TIER_SCORE = 29;
 const AUTO_LIMIT = 30;
 const SHOTGUN_LIMIT = 20;
 // auto/shotgun filtered ladders — only those weapon types appear in those modes
-const AUTO_LADDER = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].auto);
+const AUTO_LADDER = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].auto && WEAPONS[i].rpm >= 400 && WEAPONS[i].name !== 'HELLFIRE MK-7');
 const SHOTGUN_BASE = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].slot==='SHOTGUN');
 // shotgun pool is only 13 unique — expand to 20 so the ladder covers first-to-20 cleanly
 const SHOTGUN_LADDER = Array.from({length:SHOTGUN_LIMIT}, (_,k)=>SHOTGUN_BASE[k % SHOTGUN_BASE.length]);
