@@ -334,6 +334,31 @@ function startRound(map){
   broadcast({ t:'roundStart', map:currentMap, round:roundNo, limit:limitNow(), scores:scoreList(), mode:gameMode, totals:teamTotals(), ladderSeed, infect: infectInfo });
   console.log(new Date().toISOString().slice(11,19), `[round] ${roundNo} started on ${currentMap} (${gameMode})`);
 }
+function checkInfectWin(){
+  if (gameMode !== 'infect' || !roundActive) return;
+  const survivors = [...players.values()].filter(q=>!q.infected);
+  const infected = [...players.values()].filter(q=>q.infected);
+  if (survivors.length === 0 && infected.length > 0){
+    // no survivors left — zombies win immediately (covers leaves/disconnects mid-round)
+    console.log(`[infect] no survivors remain — infected win`);
+    if (infectionTimer){ clearTimeout(infectionTimer); infectionTimer = null; }
+    infectionEndAt = 0;
+    broadcast({ t:'infectWin', winner:'infected' });
+    openVote({ initial:false, winnerId: infected[0]?.id || 0, winnerName:'INFECTED SWARM', winTeam:2 });
+    return true;
+  }
+  if (infected.length === 0 && survivors.length > 0){
+    // edge case: last zombie left/disconnected — promote a survivor to keep round alive
+    const pick = survivors[Math.floor(Math.random()*survivors.length)];
+    if (pick){
+      if (!pick.origSkin) pick.origSkin = pick.skin;
+      pick.infected = true; pick.team = 2; pick.skin = 'toxic';
+      broadcast({ t:'infect', id: pick.id, team:2, skin:'toxic' });
+      console.log(`[infect] no infected remain — promoted ${pick.name} to infected`);
+    }
+  }
+  return false;
+}
 function finishRound(winnerId){
   if (!roundActive) return;
   if (infectionTimer){ clearTimeout(infectionTimer); infectionTimer = null; }
@@ -479,13 +504,16 @@ wss.on('connection', (ws, req) => {
             broadcast({ t:'infect', id, team:2, skin:'toxic', by:killerId });
             broadcast({ t:'kill', victim:id, by:killerId, assist:0, knife:infKnife, bs:infBs, demoted:false, names:{ v:p.name, k:killer ? killer.name : 'ARENA', a:null }, kteam:killer?killer.team:0, vteam:p.team, ateam:0, scores:scoreList(), limit:limitNow(), mode:gameMode, totals:teamTotals() });
             broadcast({ t:'score', scores:scoreList(), limit:limitNow(), round:roundNo, map:currentMap, active:roundActive, mode:gameMode, totals:teamTotals() });
-            // check all infected win
-            const survivors = [...players.values()].filter(q=>!q.infected);
-            if (survivors.length === 0){
-              console.log(`[infect] all survivors converted — infected win`);
-              broadcast({ t:'infectWin', winner:'infected' });
-              if (infectionTimer){ clearTimeout(infectionTimer); infectionTimer = null; }
-              openVote({ initial:false, winnerId:killerId, winnerName:'INFECTED SWARM', winTeam:2 });
+            // check all infected win (also covers 0 survivors via leaves)
+            if (checkInfectWin()){ /* already handled */ } else {
+              // legacy log for conversion win (kept for clarity if check didn't trigger)
+              const survivors2 = [...players.values()].filter(q=>!q.infected);
+              if (survivors2.length === 0){
+                console.log(`[infect] all survivors converted — infected win`);
+                broadcast({ t:'infectWin', winner:'infected' });
+                if (infectionTimer){ clearTimeout(infectionTimer); infectionTimer = null; }
+                openVote({ initial:false, winnerId:killerId, winnerName:'INFECTED SWARM', winTeam:2 });
+              }
             }
             break;
           } else if (killer && !killerInf && victimInf){
@@ -579,12 +607,17 @@ wss.on('connection', (ws, req) => {
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
   ws.on('close', () => {
+    const wasInfect = p.infected;
     players.delete(id);
     if (ipConns.get(p.ip)) ipConns.set(p.ip, Math.max(0, (ipConns.get(p.ip) || 1) - 1));
     broadcast({ t:'leave', id });
     broadcastScore();
     if (players.size === 0) resetEmptyLobby();
-    console.log(`[-] player ${id} left (${players.size} online)`);
+    else if (roundActive && gameMode === 'infect'){
+      // if a survivor left and none remain, zombies win; if last zombie left, promote a survivor
+      checkInfectWin();
+    }
+    console.log(`[-] player ${id} left (${players.size} online)` + (wasInfect ? ' [was infected]' : ''));
   });
 });
 
@@ -636,7 +669,9 @@ setInterval(() => {
     if (roundActive && (p.score || 0) > 0 && p.lastState && now - p.lastState[3] > 12000){ acKick(p, 'ghost scoring: kills while position stream is dead (coherence auditor)'); continue; }
     // inactivity eviction — mid-round only: no movement, no aim, no trigger for AC.AFK_MS (0 = off).
     // Vote phases are exempt: watching a ballot isn't forsaking the match.
-    if (AC.AFK_MS > 0 && roundActive && now - (p.lastActiveAt || 0) > AC.AFK_MS) idleKick(p);
+    if (AC.AFK_MS > 0 && roundActive && now - (p.lastActiveAt || 0) > AC.AFK_MS) { idleKick(p); continue; }
+    // infection safeguard: if survivors vanish due to kicks/idle, end round immediately
+    if (roundActive && gameMode === 'infect') checkInfectWin();
   }
 }, AC.AUDIT_MS);
 
