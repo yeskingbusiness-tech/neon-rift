@@ -4475,9 +4475,11 @@ function connectNet(){
         if (currentMapName !== net.currentMap) setMap(net.currentMap);
         for (const p of m.players){ const rp = addRemotePlayer(p.id, p.name, p.skin || 'rift', p.team || 0); if (p.state) applyNetState(rp, p.state); if (m.infect && m.infect.infectedIds && m.infect.infectedIds.includes(p.id)) { rp.infected = true; } }
         if (typeof m.ladderSeed === 'number' && m.ladderSeed > 0) shuffleLadder(m.ladderSeed);   // mid-round join: fall in line with the deck the lobby is actually playing, not the OG order
-        // force own skin for infection
+        // force own skin for infection, revert otherwise
         if (net.dmMode === 'infect'){
           applyInfectSkin();
+        } else {
+          try { applyLocalSkinAppearance(); } catch(e){}
         }
         syncLadderWeapon();
         respawnDMPlayer(true);
@@ -4501,6 +4503,16 @@ function connectNet(){
           if (net.infected) { addKillFeed(null, '<b style="color:#2fd04a">INFECTED</b> — HUNT SURVIVORS WITH YOUR BLADE'); knifeMode = 1; updateWeaponVisibility(); }
           else addKillFeed(null, '<b style="color:#4aa0ff">SURVIVOR</b> — HOLD 1:30, USE ANY GUN TO DEFEND');
           updateAmmoHUD(); updateHealthHUD();
+        } else {
+          // leaving infection — revert forced colors to equipped skin
+          if (net.infected || net.infectionEndAt || net.infectedIds.size){
+            net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+            // restore local player appearance to what you had equipped before infection
+            try { applyLocalSkinAppearance(); } catch(e){}
+            // zombies were faster / had less HP — restore defaults
+            player.maxHp = 100; if (player.hp > 100) player.hp = 100; updateHealthHUD(); updateAmmoHUD();
+            if (knifeLocked() && !isKnifeFight() && !isInfect()){ /* keep blade if golden etc */ }
+          }
         }
         updateTeamHUD();
         updateTopHUD();
@@ -4624,6 +4636,14 @@ function connectNet(){
         addKillFeed(null, `<b>${m.map || net.pendingMap}</b> // <b>${m.modeName}</b> — ROUND INCOMING`);
         if (net.dmMode !== 'team'){ net.myTeam = 0; if (net.dmMode !== 'infect') { net.infected = false; } updateTeamHUD(); }
         if (net.dmMode === 'infect') net.voteChoices = [];
+        else {
+          // leaving infection voting preview — revert preview colors back to equipped
+          if (net.infected || net.infectionEndAt){
+            net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+            try { applyLocalSkinAppearance(); } catch(e){}
+            player.maxHp = 100; updateHealthHUD(); updateAmmoHUD();
+          }
+        }
         $('voteTimer').textContent = `LOCKED IN — ${m.map || net.pendingMap} // ${m.modeName || ''}`;
         break;
       case 'voteUpdate': {
@@ -4653,7 +4673,14 @@ function connectNet(){
           if (net.infected){ knifeMode = 1; updateWeaponVisibility(); }
           addKillFeed(null, net.infected ? '<b style="color:#2fd04a">YOU ARE INFECTED</b> — SHANK SURVIVORS TO SPREAD' : '<b style="color:#4aa0ff">SURVIVOR</b> — HOLD 1:30');
         } else {
+          // leaving infection — revert to equipped skin/stats if we were forced
+          const wasInfect = net.infected || (net.infectionEndAt && net.infectionEndAt > 0) || net.infectedIds.size > 0;
           net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+          if (wasInfect){
+            try { applyLocalSkinAppearance(); } catch(e){}
+            // restore any remote forced skins — server will also broadcast t:'skin' restores
+            for (const rp of net.players.values()){ if (rp.infected){ rp.infected = false; rp.team = 0; } }
+          }
         }
         syncLadderWeapon(); respawnDMPlayer(true);
         if (net.dmMode === 'infect' && net.infected) { knifeMode = 1; updateWeaponVisibility(); }

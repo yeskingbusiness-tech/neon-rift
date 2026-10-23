@@ -292,15 +292,21 @@ function startRound(map){
   for (const p of players.values()){
     p.score = 0; p.deaths = 0; p.vote = null; p.modeVote = null; p.state = null; p.invulnUntil = Date.now() + 1500;
     p.lastHitFrom = 0; p.lastHitKnife = false; p.lastHitAt = 0; p.assists = 0; p.dmgLog = new Map();
+    // restore original skin if we forced it during infection
+    if (p.origSkin){ p.skin = p.origSkin; delete p.origSkin; }
     p.infected = false; p.team = 0;
     p.lastActiveAt = Date.now();   // fresh round, fresh 15s to actually play it
   }
+  if (gameMode !== 'infect'){
+    for (const [pid, pl] of players){ broadcast({ t:'skin', id:pid, skin:pl.skin }); }
+  }
   if (gameMode === 'infect'){
-    // pick patient zero randomly among connected players
+    // pick EXACTLY ONE patient zero — only 1 zombie at start
     const ids = [...players.keys()];
     const first = ids[Math.floor(Math.random()*ids.length)];
     for (const [pid, pl] of players){
-      if (pid === first){ pl.infected = true; pl.team = 2; pl.skin = 'toxic'; } // green zombies
+      if (!pl.origSkin) pl.origSkin = pl.skin; // save equipped skin to restore after infection
+      if (pid === first){ pl.infected = true; pl.team = 2; pl.skin = 'toxic'; } // green zombie
       else { pl.infected = false; pl.team = 1; pl.skin = 'rift'; } // blue survivors
     }
     infectionEndAt = Date.now() + INFECT_DURATION;
@@ -386,10 +392,11 @@ wss.on('connection', (ws, req) => {
           p.team = red <= blue ? 1 : 2;
           console.log(new Date().toISOString().slice(11,19), `[team] ${p.name} → ${TEAM_NAMES[p.team]} (${red}v${blue})`);
         }
-        // infection late join: you spawn as infected (green)
+        // infection late join: you spawn as infected (green) — save original for revert after match
         if (gameMode === 'infect' && roundActive){
+          if (!p.origSkin) p.origSkin = p.skin;
           p.infected = true; p.team = 2; p.skin = 'toxic';
-          console.log(`[infect] late join ${p.name} -> infected`);
+          console.log(`[infect] late join ${p.name} -> infected (orig ${p.origSkin})`);
           broadcast({ t:'infect', id, team:2, skin:'toxic' });
         } else if (gameMode === 'infect' && !roundActive){
           p.infected = false; p.team = 0;
@@ -460,7 +467,8 @@ wss.on('connection', (ws, req) => {
           const victimInf = p.infected;
           const isKnifeKill = !!p.lastHitKnife;
           if (killer && killerInf && !victimInf && isKnifeKill){
-            // convert survivor to infected (knife only)
+            // convert survivor to infected (knife only) — preserve original skin
+            if (!p.origSkin) p.origSkin = p.skin;
             p.infected = true; p.team = 2; p.skin = 'toxic';
             killer.score = (killer.score || 0) + 1;
             const infKnife = true; const infBs = !!p.lastHitBackstab;
