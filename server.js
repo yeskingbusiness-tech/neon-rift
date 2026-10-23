@@ -564,6 +564,8 @@ wss.on('connection', (ws, req) => {
     }
   });
 
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
   ws.on('close', () => {
     players.delete(id);
     if (ipConns.get(p.ip)) ipConns.set(p.ip, Math.max(0, (ipConns.get(p.ip) || 1) - 1));
@@ -625,5 +627,14 @@ setInterval(() => {
     if (AC.AFK_MS > 0 && roundActive && now - (p.lastActiveAt || 0) > AC.AFK_MS) idleKick(p);
   }
 }, AC.AUDIT_MS);
+
+setInterval(() => {
+  for (const p of players.values()){
+    if (!p.ws || p.ws.readyState !== 1) continue;
+    if (p.ws.isAlive === false){ try { p.ws.terminate(); } catch {} continue; }
+    p.ws.isAlive = false;
+    try { p.ws.ping(); } catch {}
+  }
+}, 25000);
 
 server.listen(PORT, '0.0.0.0', () => console.log('NEON RIFT: BLACKOUT server running on http://0.0.0.0:' + PORT));
