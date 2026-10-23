@@ -3896,7 +3896,10 @@ function spawnPickupAt(x, z, kind){
 }
 function rebuildPickups(){
   clearPickups();
-  for (const [x,z,kind] of activePickupLayout) spawnPickupAt(x,z,kind);
+  for (const [x,z,kind] of activePickupLayout){
+    if (isInfect() && kind === 'health') continue; // no heals in Infection
+    spawnPickupAt(x,z,kind);
+  }
 }
 rebuildPickups();
 function updatePickups(dt, now){
@@ -3911,6 +3914,7 @@ function updatePickups(dt, now){
     const d = Math.hypot(pk.mesh.position.x - player.pos.x, pk.mesh.position.z - player.pos.z);
     if (d < 1.2 && Math.abs(pk.mesh.position.y - (player.pos.y + 0.9)) < 1.6){
       if (pk.kind === 'health'){
+        if (isInfect()) continue; // healing disabled in Infection for survivors
         if (player.hp >= player.maxHp) continue;
         player.hp = Math.min(player.maxHp, player.hp + 40);
         if (mode === 'dm') netSend({ t:'heal' });   // patching up wipes everyone off your assist ledger
@@ -5390,7 +5394,7 @@ function updatePlayer(dt, now){
   const ads = adsHeld && CW().reloading <= 0;
   adsT = clamp(adsT + (ads ? dt*8 : -dt*8), 0, 1);
 
-  const infSpeedMul = (isInfect() && net.infected) ? 1.14 : 1; // zombies slightly faster
+  const infSpeedMul = (isInfect() && net.infected) ? 1.28 : 1; // zombies a tad bit faster — was 1.14 now 1.28
   const speedMul = (knifeMode ? currentKnifeDef().speedMul : 1) * infSpeedMul;  // knife +5%, golden shank +15% move speed, zombies +14%
   const speed = (ads ? 3.6 : player.crouched ? 3.1 : (sprinting ? 8.4 : 5.7)) * speedMul;
   const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
@@ -5490,8 +5494,8 @@ function updatePlayer(dt, now){
     player.bobT = lerp(player.bobT, Math.round(player.bobT / Math.PI) * Math.PI, dt*8);
   }
 
-  // health regen
-  if (now - player.lastDamage > 4500 && player.hp < player.maxHp && player.hp > 0){
+  // health regen — disabled in Infection (no regen for survivors)
+  if (!isInfect() && now - player.lastDamage > 4500 && player.hp < player.maxHp && player.hp > 0){
     player.hp = Math.min(player.maxHp, player.hp + 16 * dt);
     updateHealthHUD();
   }
