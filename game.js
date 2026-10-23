@@ -519,16 +519,16 @@ function addForgeDressing(){
   addRotatingRing(0,0,5.25,4.4,0xff9a3c,0.95); addRotatingRing(0,0,5.55,3.15,0x2cf2ff,-1.25);
   addBeacon(0,0,0xff9a3c,3.4);
   for (const [x,z] of [[-30,6],[30,-6],[-6,-30],[6,30]]) addPipe(x,z,8,Math.abs(x)>Math.abs(z)?'z':'x');
-  for (const [x,z] of [[-12,22],[13,-23],[24,14],[-23,-13]]) addDestructibleProp(x,z,'barrel');
-  for (const [x,z] of [[-18,16],[18,-16],[26,-22],[-27,21]]) addDestructibleProp(x,z,'crate');
+  // breakables removed — maps are solid only (no destructible props)
+  // breakables removed — maps are solid only (no destructible props)
   addWorldSign('FORGE 09', -40.9, 3.2, -16, Math.PI/2, '#ff9a3c', 'THERMAL REACTOR LIVE');
-  addWorldSign('NEMESIS', 16, 3.1, -40.9, 0, '#ff3b57', 'BOSS BREACH EVERY 5 WAVES');
+  addWorldSign('NEMESIS', 16, 3.1, -40.9, 0, '#ff3b57', 'ENDLESS — BOSS EVERY 5 WAVES');
   addWeather('embers', 260);
 }
 function addNexusDressing(){
   addRotatingRing(0,0,5.1,5.2,0x2cf2ff,1.25); addRotatingRing(0,0,5.65,2.6,0xd040ff,-1.6);
   for (const [x,z] of [[0,0],[30,0],[-30,0],[0,30],[0,-30]]) addBeacon(x,z,0x2cf2ff,2.1);
-  for (const [x,z] of [[12,28],[-12,-28],[28,-12],[-28,12]]) addDestructibleProp(x,z,'data');
+  // breakables removed — maps are solid only (no destructible props)
   addWorldSign('NEXUS CORE', -40.9, 3.3, 14, Math.PI/2, '#2cf2ff', 'SIMULATION LANES ONLINE');
   addWorldSign('RIFT INDEX', 14, 3.3, 40.9, Math.PI, '#d040ff', 'CONTRACT DATA STREAM');
   addWeather('data', 330);
@@ -539,8 +539,8 @@ function addDuskDressing(){
     addSolid(x,0,1.0,54,5.6,MAT.dark,{glow:MAT.orangeGlow});
     addPipe(x,0,50,'z',0x303846);
   }
-  for (const [x,z] of [[-12,28],[12,-28],[-34,0],[34,0]]) addDestructibleProp(x,z,'barrel');
-  for (const [x,z] of [[-12,-28],[12,28],[28,0],[-28,0]]) addDestructibleProp(x,z,'crate');
+  // breakables removed — maps are solid only (no destructible props)
+  // breakables removed — maps are solid only (no destructible props)
   addWorldSign('DUSK YARD', -40.9, 3.4, 10, Math.PI/2, '#ff9a3c', 'CONTAINER BLOCKADE');
   addWorldSign('EVAC DENIED', 10, 3.4, 40.9, Math.PI, '#ff3b57', 'BLACKOUT RAIN FRONT');
   const l1 = new THREE.SpotLight(0x88bbff, 3.2, 70, 0.28, 0.45, 1.2); l1.position.set(-34,9,-34); l1.target.position.set(0,0,0); worldGroup.add(l1); worldGroup.add(l1.target);
@@ -686,8 +686,8 @@ function buildDuskYardLayout(){
 function addColdStorageDressing(){
   addRotatingRing(0,0,5.6,3.6,0x66eaff,1.1); addRotatingRing(0,0,5.95,2.2,0x2cf2ff,-1.4);
   addBeacon(0,14,0x66eaff,2.6); addBeacon(0,-14,0x66eaff,2.6);
-  for (const [x,z] of [[-24,-9],[24,9],[-24,9],[24,-9]]) addDestructibleProp(x,z,'crate');
-  for (const [x,z] of [[-8,-30],[8,30],[30,-8],[-30,8]]) addDestructibleProp(x,z,'barrel');
+  // breakables removed — maps are solid only (no destructible props)
+  // breakables removed — maps are solid only (no destructible props)
   addWorldSign('COLD STORAGE', -40.9, 3.3, -12, Math.PI/2, '#66eaff', 'FREEZER AISLES 12-B');
   addWorldSign('KEEP FROZEN', 12, 3.3, 40.9, Math.PI, '#2cf2ff', 'THERMAL LOCK ENGAGED');
   for (const [x,z] of [[-36,0],[36,0]]) addPipe(x,z,9,'z');
@@ -1097,7 +1097,7 @@ const _botRay = new THREE.Vector3(), _botDir = new THREE.Vector3();
 
 /* ================= GAME STATE ================= */
 let mode = 'solo';   // 'solo' (waves) or 'dm' (LAN deathmatch)
-const SOLO_FINAL_WAVE = 15;
+const SOLO_FINAL_WAVE = Infinity; // endless — removed 15-wave cap per request
 const S = {
   started:false, paused:true, dead:false, victory:false, sandbox:false,
   wave:0, score:0, kills:0, deaths:0, shotsFired:0, shotsHit:0, headshots:0,
@@ -1217,7 +1217,7 @@ function showDeploySequence(kind='solo'){
   if (title) title.textContent = kind === 'dm' ? 'LAN BLACKOUT' : 'SOLO DEPLOY';
   if (sub) sub.textContent = kind === 'dm'
     ? `Round ${net.round || 1} // map ${currentMapName} // shared gun ladder // kill 30 is golden-shank only`
-    : `Wave mission // map ${currentMapName} // Nemesis signatures at waves 5, 10, and 15`;
+    : `Endless waves // map ${currentMapName} // Boss rotation every 5 waves (NEMESIS / TITAN / SPECTRE / WARLORD / COLOSSUS)`;
   ov.classList.remove('hidden','fadeOut','show');
   void ov.offsetWidth;
   ov.classList.add('show');
@@ -3284,14 +3284,24 @@ function showDamageDir(fromPos){
 
 /* ================= ENEMIES ================= */
 const ENEMY_TYPES = {
+  // ——— CORE HORDE (light / mid) ———
   scout:   { hp:45,  speed:5.2, scale:0.82, color:0xc93a4e, eye:0xff2a3e, dmg:8,  fireCd:[1.1,1.9], projSpeed:26, range:26, score:100, name:'SCOUT', faction:'RIFT MARAUDERS' },
   soldier: { hp:95,  speed:3.4, scale:1.0,  color:0x8a3242, eye:0xff4020, dmg:10, fireCd:[1.4,2.2], projSpeed:24, range:30, score:150, name:'SOLDIER', faction:'RIFT MARAUDERS', burst:3 },
+  drone:   { hp:55,  speed:5.8, scale:0.68, color:0x2b5d77, eye:0x66eaff, dmg:7,  fireCd:[0.9,1.5], projSpeed:30, range:28, score:140, name:'DRONE', faction:'ECLIPSE DRONES', burst:2 },
+  // ——— NEW REGULAR VARIANTS ———
+  hound:   { hp:60,  speed:7.4, scale:0.78, color:0x8a4a1e, eye:0xffd34a, dmg:12, fireCd:[0,0],     projSpeed:0,  range:2.4, score:170, name:'HOUND', faction:'RIFT HOUNDS', melee:true },
+  phantom: { hp:85,  speed:5.0, scale:0.92, color:0x2a3d6b, eye:0x7ad8ff, dmg:9,  fireCd:[1.0,1.7], projSpeed:28, range:30, score:210, name:'PHANTOM', faction:'VOID PHANTOM', burst:2 },
+  juggernaut:{ hp:320, speed:2.6, scale:1.45, color:0x4a2a12, eye:0xffaa33, dmg:18, fireCd:[2.0,3.0], projSpeed:20, range:32, score:380, name:'JUGGERNAUT', faction:'IRON CORE', burst:2 },
   stalker: { hp:70,  speed:6.6, scale:0.9,  color:0x5a2a66, eye:0xd040ff, dmg:22, fireCd:[0,0],     projSpeed:0,  range:2.1,score:200, name:'STALKER', faction:'VOID BROOD', melee:true },
   brute:   { hp:280, speed:2.3, scale:1.5,  color:0x6e2230, eye:0xff8020, dmg:20, fireCd:[2.2,3.2], projSpeed:18, range:34, score:400, name:'BRUTE', faction:'BLACK IRON' },
-  drone:   { hp:55,  speed:5.8, scale:0.68, color:0x2b5d77, eye:0x66eaff, dmg:7,  fireCd:[0.9,1.5], projSpeed:30, range:28, score:140, name:'DRONE', faction:'ECLIPSE DRONES', burst:2 },
   sentinel:{ hp:145, speed:2.9, scale:1.12, color:0x45526e, eye:0x2cf2ff, dmg:14, fireCd:[1.7,2.6], projSpeed:25, range:35, score:260, name:'SENTINEL', faction:'CORP SENTINELS', burst:4 },
   reaver:  { hp:120, speed:4.4, scale:1.05, color:0x7a2d5a, eye:0xff3bcb, dmg:16, fireCd:[1.2,2.0], projSpeed:22, range:24, score:240, name:'REAVER', faction:'NEON CULT' },
+  // ——— BOSS ROTATION (every 5 waves, endless) ———
   nemesis: { hp:1650,speed:2.0, scale:2.05, color:0x231a2d, eye:0xff9a3c, dmg:28, fireCd:[1.6,2.4], projSpeed:22, range:38, score:1800,name:'NEMESIS', faction:'BLACKOUT LORDS', boss:true, burst:5 },
+  titan:   { hp:2200,speed:1.6, scale:2.35, color:0x3a1a22, eye:0xff4020, dmg:34, fireCd:[1.9,2.8], projSpeed:19, range:36, score:2400,name:'TITAN', faction:'ASHEN TITANS', boss:true, burst:6 },
+  spectre: { hp:1850,speed:2.7, scale:2.05, color:0x13202a, eye:0x7fffd4, dmg:24, fireCd:[1.3,2.1], projSpeed:26, range:42, score:2200,name:'SPECTRE', faction:'VOID SPECTRES', boss:true, burst:5 },
+  warlord: { hp:1950,speed:2.1, scale:2.15, color:0x1a2a4a, eye:0x4ae0ff, dmg:26, fireCd:[1.5,2.3], projSpeed:24, range:40, score:2300,name:'WARLORD', faction:'RIFT WARLORDS', boss:true, burst:5 },
+  colossus:{ hp:3200,speed:1.25,scale:2.8,  color:0x4a2a0a, eye:0xffb000, dmg:38, fireCd:[2.4,3.4], projSpeed:18, range:44, score:3500,name:'COLOSSUS', faction:'ASHEN COLOSSUS', boss:true, burst:7 },
 };
 const enemies = [];
 const enemyMats = {};
@@ -4835,7 +4845,7 @@ function die(){
    books adjust: whatever the server ratifies becomes the truth of record. */
 async function sendSoloReport(victory){
   if (S.sandbox || apiUp.ok === false) return;
-  const waves = victory ? SOLO_FINAL_WAVE : Math.max(0, S.wave - 1);
+  const waves = Math.max(0, S.wave - (victory ? 0 : 1));
   if (waves < 1) return;
   const r = await apiPost('solo', { key: syncKey, waves, kills: S.kills, victory: !!victory, xp: S.xpEarned, cash: S.cashEarned, elapsedMs: performance.now() - S.startTime });
   if (!r || !r.ok) return;
@@ -4859,48 +4869,70 @@ function soloVictory(){
   mouseL = mouseR = false;
   canvas.style.cursor = 'crosshair';
   try { document.exitPointerLock(); } catch(e){}
-  PROGRESS.soloWaves = Math.max(PROGRESS.soloWaves || 0, SOLO_FINAL_WAVE);
+  PROGRESS.soloWaves = Math.max(PROGRESS.soloWaves || 0, S.wave);
   grantProgress(750, 500, 'MISSION COMPLETE');
   S.score += 2500;
   updateTopHUD();
   SFX.roundWin();
   sendSoloReport(true);
   $('deadTitle').textContent = 'MISSION COMPLETE';
-  $('deadSubtitle').textContent = 'Wave 15 cleared — extraction authorized';
+  $('deadSubtitle').textContent = `Wave ${S.wave} cleared — endless hold broken`;
   $('restartBtn').textContent = 'Main Menu';
-  $('deadStats').innerHTML = matchStatsHtml(`SOLO WAVES CLEARED <b>${SOLO_FINAL_WAVE}</b>`);
+  $('deadStats').innerHTML = matchStatsHtml(`WAVES SURVIVED <b>${S.wave}</b> — ENDLESS`);
   $('paused').classList.add('hidden');
   $('dead').classList.remove('hidden');
 }
 
 function waveComposition(n){
+  // ENDLESS + LOWERED exponential: gentle linear growth, soft cap scaling
+  // No more 15-wave limit — scales forever with diminishing increases
   const list = [];
-  const scouts = 2 + n;
-  const soldiers = Math.floor(n * 0.75);
-  const stalkers = n >= 2 ? 1 + Math.floor(n/3) : 0;
-  const brutes = n >= 4 ? Math.floor((n-2)/3) : 0;
-  const drones = n >= 3 ? Math.floor(n/2) : 0;
-  const sentinels = n >= 6 ? Math.floor((n-4)/3) : 0;
-  const reavers = n >= 7 ? Math.floor((n-5)/3) : 0;
+  // gentle linear coefficients (much lower than before: 2+n -> 1+0.6n etc)
+  const scouts = 1 + Math.floor(n * 0.6);
+  const soldiers = Math.floor(n * 0.45);
+  const drones = n >= 2 ? Math.floor(n * 0.35) : 0;
+  const hounds = n >= 3 ? Math.floor((n-1) * 0.30) : 0;
+  const stalkers = n >= 4 ? 1 + Math.floor((n-3) * 0.22) : 0;
+  const phantoms = n >= 5 ? Math.floor((n-4) * 0.20) : 0;
+  const brutes = n >= 6 ? Math.floor((n-5) * 0.18) : 0;
+  const sentinels = n >= 8 ? Math.floor((n-7) * 0.16) : 0;
+  const reavers = n >= 7 ? Math.floor((n-6) * 0.18) : 0;
+  const juggernauts = n >= 10 ? Math.floor((n-9) * 0.12) : 0;
   for (let i=0;i<scouts;i++) list.push('scout');
   for (let i=0;i<soldiers;i++) list.push('soldier');
-  for (let i=0;i<stalkers;i++) list.push('stalker');
-  for (let i=0;i<brutes;i++) list.push('brute');
   for (let i=0;i<drones;i++) list.push('drone');
+  for (let i=0;i<hounds;i++) list.push('hound');
+  for (let i=0;i<stalkers;i++) list.push('stalker');
+  for (let i=0;i<phantoms;i++) list.push('phantom');
+  for (let i=0;i<brutes;i++) list.push('brute');
   for (let i=0;i<sentinels;i++) list.push('sentinel');
   for (let i=0;i<reavers;i++) list.push('reaver');
+  for (let i=0;i<juggernauts;i++) list.push('juggernaut');
+  // shuffle
   for (let i=list.length-1;i>0;i--){ const j = (Math.random()*(i+1))|0; [list[i],list[j]] = [list[j],list[i]]; }
-  const capped = list.slice(0, n % 5 === 0 ? 22 : 26);
-  if (n > 0 && n % 5 === 0) capped.push('nemesis');
+  // soft cap: 8 + n capped to 32, not hard 26, grows slowly
+  const softCap = Math.min(32, 10 + Math.floor(n * 0.9));
+  const isBossWave = n % 5 === 0;
+  const cap = isBossWave ? Math.min(softCap, 20 + Math.floor(n*0.5)) : softCap;
+  const capped = list.slice(0, cap);
+  // MULTIPLE BOSSES rotation: nemesis/titan/spectre/warlord/colossus
+  if (isBossWave && n > 0){
+    const bossPool = ['nemesis','titan','spectre','warlord','colossus'];
+    const bossIdx = (Math.floor(n/5)-1) % bossPool.length;
+    const boss = bossPool[bossIdx];
+    capped.push(boss);
+    // every 25 waves add a second boss for spice
+    if (n % 25 === 0){
+      const second = bossPool[(bossIdx+1) % bossPool.length];
+      capped.push(second);
+    }
+  }
   return capped;
 }
 function updateWaves(dt){
   if (S.sandbox) return;            // a sandbox has no waves — only what you spawn in
-  // Solo is a 15-wave mission. LAN Deathmatch is the only mode that uses the first-to-30-kills rule.
-  if (mode === 'solo' && S.wave >= SOLO_FINAL_WAVE && S.toSpawn.length === 0 && enemies.length === 0){
-    soloVictory();
-    return;
-  }
+  // Solo is now ENDLESS — no final wave, no victory screen, just infinite scaling
+
   if (S.toSpawn.length === 0 && enemies.length === 0){
     if (S.intermission <= 0){
       S.intermission = S.wave === 0 ? 0.1 : 6;
@@ -4917,7 +4949,12 @@ function updateWaves(dt){
       S.wave++;
       S.toSpawn = waveComposition(S.wave);
       S.spawnTimer = 0;
-      showBanner(S.wave % 5 === 0 ? 'BOSS WAVE ' + S.wave + ' — NEMESIS INBOUND' : 'WAVE ' + S.wave);
+      // boss name rotates for variety
+      if (S.wave % 5 === 0){
+        const bossPool = ['NEMESIS','TITAN','SPECTRE','WARLORD','COLOSSUS'];
+        const bossName = bossPool[(Math.floor(S.wave/5)-1) % bossPool.length];
+        showBanner('BOSS WAVE ' + S.wave + ' — ' + bossName + ' INBOUND');
+      } else showBanner('WAVE ' + S.wave);
       SFX.wave();
       updateTopHUD();
     }
