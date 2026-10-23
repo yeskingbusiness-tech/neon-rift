@@ -1630,7 +1630,7 @@ const WEAPON_BLUEPRINTS = [
   ['MIRAGE PDW',         'SMG',     true,  17,1000, 44, 264, .021, .0095, .008, .036, 1,  'rifle',    88, false],
   ['PROTOCOL ZERO',      'EXOTIC',  false,155,  48,  4,  24, .035, .0005, .060, .220, 1,  'sniper',  275, true ],
   // --- specials: kind hits at 15th slot, splash def at 16th ---
-  ['HELLFIRE MK-7',      'HEAVY',   true,   8, 920, 120, 320, .022, .0160, .006, .020, 1,  'flame',   18, false, 'flame'],
+  ['HELLFIRE MK-7',      'HEAVY',   true,   8, 920, 120, 320, .022, .0160, .006, .020, 1,  'flame',   14, false, 'flame'],
   ['LOBBER GL',          'LAUNCHER',false, 55,  80,  4,  24, .030, .0100, .050, .180, 1,  'launch', 200, false, 'gl', { r:4.5, dmg:45 }],
   ['ATLAS ROCKET',       'LAUNCHER',false, 85,  45,  1,  12, .010, .0020, .080, .240, 1,  'launch', 240, false, 'rocket', { r:5.5, dmg:60 }],
   ['HAVOC MGL',          'LAUNCHER',false, 40,  60,  6,  30, .045, .0180, .050, .160, 3,  'launch', 200, false, 'gl', { r:3.4, dmg:35 }],
@@ -2257,7 +2257,7 @@ function showWeaponRoll(w, tierLabel='RANDOMIZED'){
   const el = $('weaponRoll');
   const rc = '#' + currentRarity.color.toString(16).padStart(6,'0');
   if (el){
-    el.innerHTML = `<span>${tierLabel} // <b style="color:${rc}">${currentRarity.name}</b></span><b>${w.name}</b><small>${w.slot} // TIER ${mode === 'dm' ? Math.min((net.myScore||0)+1, 30) : weaponIndex+1} // DMG ×${currentRarity.dmg.toFixed(2)}</small>`;
+    el.innerHTML = `<span>${tierLabel} // <b style="color:${rc}">${currentRarity.name}</b></span><b>${w.name}</b><small>${w.slot} // TIER ${mode === 'dm' ? Math.min((net.myScore||0)+1, net.limit || 30) : weaponIndex+1} // DMG ×${currentRarity.dmg.toFixed(2)}</small>`;
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
   }
   addKillFeed(null, `ARSENAL ${tierLabel === 'RANDOMIZED' ? 'ROTATED' : 'ADVANCED'} &nbsp;⟶&nbsp; <b style="color:${rc}">${currentRarity.name}</b> ${w.name}`);
@@ -2290,8 +2290,13 @@ let knifeMode = 0;                 // 0 = gun, 1 = knife
 let knifeSwingT = 0, knifeSwingCd = 0, knifeSwingId = 0;
 function isKnifeFight(){ return mode === 'dm' && net.dmMode === 'knife'; }   // the ballot's third option: KNIFE FIGHT
 function isInfect(){ return mode === 'dm' && net.dmMode === 'infect'; }
-function finalTierScore(){ return isKnifeFight() ? 14 : FINAL_TIER_SCORE; }  // knife fight goes golden one stab early
-function knifeGolden(){ return mode === 'dm' && !isInfect() && (net.myScore || 0) >= finalTierScore(); }
+function isAutoMode(){ return mode === 'dm' && net.dmMode === 'auto'; }
+function isShotgunMode(){ return mode === 'dm' && net.dmMode === 'shotgun'; }
+function isNoGoldenMode(){ return isAutoMode() || isShotgunMode(); }
+function currentModeLimit(){ if (isKnifeFight()) return 15; if (isShotgunMode()) return 20; if (isInfect()) return 0; return 30; }
+function currentLadderRound(){ if (isAutoMode()) return AUTO_ROUND; if (isShotgunMode()) return SHOTGUN_ROUND; return LADDER_ROUND; }
+function finalTierScore(){ return isKnifeFight() ? 14 : isNoGoldenMode() ? Infinity : FINAL_TIER_SCORE; }  // knife fight goes golden one stab early; auto/shotgun never golden
+function knifeGolden(){ return mode === 'dm' && !isInfect() && !isNoGoldenMode() && (net.myScore || 0) >= finalTierScore(); }
 function knifeLocked(){ return isKnifeFight() || knifeGolden() || (isInfect() && net.infected); }       // final tier or knife fight: blades only — zombies locked to knife
 function currentKnifeDef(){ return KNIFE_DEFS[knifeGolden() ? 1 : 0]; }
 
@@ -2452,20 +2457,35 @@ function knifeStrike(){
    tier (29+) locks you to the golden knife — the 30th kill is knife-only. */
 const GUN_LADDER = Array.from({ length: WEAPONS.length }, (_, i) => i);
 const FINAL_TIER_SCORE = 29;
+const AUTO_LIMIT = 30;
+const SHOTGUN_LIMIT = 20;
+// auto/shotgun filtered ladders — only those weapon types appear in those modes
+const AUTO_LADDER = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].auto);
+const SHOTGUN_BASE = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].slot==='SHOTGUN');
+// shotgun pool is only 13 unique — expand to 20 so the ladder covers first-to-20 cleanly
+const SHOTGUN_LADDER = Array.from({length:SHOTGUN_LIMIT}, (_,k)=>SHOTGUN_BASE[k % SHOTGUN_BASE.length]);
 /* the ladder's 29 stops stay the ladder — but the deck is re-dealt every LAN round from the
    server's seed, so tier 7 means something different each match, for everyone equally.
    Now the full 100-gun armory is the deck: each round you get 29 random guns from the whole pool. */
 let LADDER_ROUND = GUN_LADDER.slice();
+let AUTO_ROUND = AUTO_LADDER.slice();
+let SHOTGUN_ROUND = SHOTGUN_LADDER.slice();
 function shuffleLadder(seed){
   const rnd = mulberry32(((seed >>> 0) || 1) >>> 0);   // seeded PRNG lives up at the world-gen helpers
   LADDER_ROUND = GUN_LADDER.slice();
   for (let i = LADDER_ROUND.length - 1; i > 0; i--){ const j = (rnd() * (i + 1)) | 0; [LADDER_ROUND[i], LADDER_ROUND[j]] = [LADDER_ROUND[j], LADDER_ROUND[i]]; }
+  AUTO_ROUND = AUTO_LADDER.slice();
+  for (let i = AUTO_ROUND.length - 1; i > 0; i--){ const j = (rnd() * (i + 1)) | 0; [AUTO_ROUND[i], AUTO_ROUND[j]] = [AUTO_ROUND[j], AUTO_ROUND[i]]; }
+  SHOTGUN_ROUND = SHOTGUN_LADDER.slice();
+  for (let i = SHOTGUN_ROUND.length - 1; i > 0; i--){ const j = (rnd() * (i + 1)) | 0; [SHOTGUN_ROUND[i], SHOTGUN_ROUND[j]] = [SHOTGUN_ROUND[j], SHOTGUN_ROUND[i]]; }
 }
 function ladderRarity(sc){
   return sc >= 27 ? RARITIES[4] : sc >= 21 ? RARITIES[3] : sc >= 14 ? RARITIES[2] : sc >= 6 ? RARITIES[1] : RARITIES[0];
 }
 function equipLadderTier(sc, { quiet=false } = {}){
-  sc = clamp(sc|0, 0, FINAL_TIER_SCORE + 1);
+  const lim = currentModeLimit();
+  const maxSc = isShotgunMode() ? SHOTGUN_LIMIT : (isAutoMode() ? AUTO_LIMIT : FINAL_TIER_SCORE + 1);
+  sc = clamp(sc|0, 0, maxSc);
   if (isKnifeFight()){          // ballot said blades — you never touch the ladder at all
     knifeMode = 1; mouseR = false; adsT = 0;
     switchT = Math.max(switchT, 0.22);
@@ -2473,7 +2493,7 @@ function equipLadderTier(sc, { quiet=false } = {}){
     if (!quiet && knifeGolden()){ showBanner('GOLDEN SHANK'); addKillFeed(null, 'ONE MORE STAB — <b style="color:#ffd040">GOLDEN SHANK</b> // +15% SPEED'); SFX.reloadBolt(); }
     return;
   }
-  if (sc >= FINAL_TIER_SCORE){
+  if (!isNoGoldenMode() && sc >= FINAL_TIER_SCORE){
     knifeMode = 1; mouseR = false; adsT = 0;
     switchT = Math.max(switchT, 0.22);
     updateWeaponVisibility(); updateAmmoHUD();
@@ -2486,7 +2506,8 @@ function equipLadderTier(sc, { quiet=false } = {}){
   }
   knifeMode = 0;
   currentRarity = ladderRarity(sc);
-  switchWeapon(LADDER_ROUND[clamp(sc, 0, LADDER_ROUND.length-1)], { force:true, roll:true });
+  const ladder = currentLadderRound();
+  switchWeapon(ladder[clamp(sc, 0, ladder.length-1)], { force:true, roll:true });
   const w = CW();
   w.ammo = w.mag; w.res = w.reserve; w.cool = 0; w.reloading = 0;
   updateWeaponVisibility(); updateAmmoHUD();
@@ -5197,6 +5218,8 @@ const MODE_CARD = {
   TEAM:  { title:'RED v BLUE',   sub:'teammates can\'t hurt you — first runner to 30 kills still wins', cls:'vmTEAM' },
   KNIFE: { title:'KNIFE FIGHT',  sub:'blades only — first to 15 stabs, and the 15th is GOLDEN. shanks never demote', cls:'vmKNIFE' },
   INFECT:{ title:'INFECTION',    sub:'1:30 to survive — blue survivors vs green swarm, zombies only knife, late joins are infected', cls:'vmINFECT' },
+  AUTO:  { title:'AUTOMATICS',   sub:'automatic guns only — first to 30 kills, random ladder, no golden knife', cls:'vmFFA' },
+  SHOTGUN:{ title:'SHOTGUNS',    sub:'shotguns only — first to 20 kills, random ladder, no golden knife', cls:'vmTEAM' },
 };
 function enterVoteMode(paused=true){
   net.voteActive = true;
@@ -5224,7 +5247,7 @@ function showModeVote(mapName, counts={}, endsLocal=0){
   net.votePhase = 'mode'; net.pendingMap = mapName || net.pendingMap; 
   // server drives choices — map uses voteChoices already set via roundOver/modeVote handlers
   // if not set (direct), fallback to 3 of pool
-  if (!net.voteChoices || !net.voteChoices.length) net.voteChoices = ['FFA','TEAM','KNIFE'];
+  if (!net.voteChoices || !net.voteChoices.length) net.voteChoices = ['FFA','TEAM','KNIFE','AUTO','SHOTGUN'];
   net.voteCounts = counts;
   if (endsLocal) net.voteEndsLocal = endsLocal;
   $('voteWinner').textContent = `${(mapName || 'MAP').toUpperCase()} LOCKED — VOTE THE MODE`;
@@ -5293,7 +5316,7 @@ function updateAmmoHUD(){
     $('ammoMag').classList.remove('lowammo');
     $('ammoReserve').textContent = ' ∞';
     const av = $('arsenalVal'); if (av) av.textContent = mode === 'dm'
-      ? (isKnifeFight() ? `STABS ${net.myScore || 0} / ${net.limit || 15}` : `TIER ${Math.min((net.myScore || 0) + 1, 30)} / 30`)
+      ? (isKnifeFight() ? `STABS ${net.myScore || 0} / ${net.limit || 15}` : `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 30)} / ${net.limit || 30}`)
       : `${weaponIndex+1} / ${WEAPONS.length}`;
     $('nadeVal').textContent = '×' + player.grenades;
     $('reloadHint').textContent = knifeGolden() ? 'FINAL TIER — SHANK TO WIN' : '';
@@ -5306,7 +5329,7 @@ function updateAmmoHUD(){
   $('ammoReserve').textContent = ' / ' + w.res;
   const av = $('arsenalVal');
   if (av) av.textContent = mode === 'dm'
-    ? (isKnifeFight() ? `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 15)} / ${net.limit || 15}` : `TIER ${Math.min((net.myScore || 0) + 1, 30)} / 30`)
+    ? (isKnifeFight() ? `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 15)} / ${net.limit || 15}` : `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 30)} / ${net.limit || 30}`)
     : `${weaponIndex+1} / ${WEAPONS.length}`;
   $('nadeVal').textContent = '×' + player.grenades;
   $('reloadHint').textContent = w.reloading > 0 ? `RELOADING ${Math.round(reloadProgress(w)*100)}%` : (w.ammo === 0 ? 'PRESS R TO RELOAD' : '');
@@ -5793,7 +5816,7 @@ Object.seal(net); Object.seal(player); Object.seal(S); Object.seal(SETTINGS);   
 // the debug handle ships only in NR_DEBUG builds — the release artifact drops this whole branch
 if (window.__ALLOW_DBG__)
 window.__dbg = { player, S, camera, enemies, net, keys, spawnEnemy, fireWeapon, grenadesLive, explodeAt, throwGrenade, WEAPONS, RARITIES, waveComposition, tryReload, rotateWeaponForKill, setMap, spawnPlayerPieces, dmDeath, respawnDMPlayer, PROGRESS, SKINS, grantProgress, updateProgressUI, skinDef, trackChallenge, destructibles, weatherSystems, worldAnim, eventLights, damageDestructible, destroyDestructible, cleanupPlayerAvatar, savePlayerName, addRemotePlayer, tryKnifeSwing, knifeStrike, isBackstab, KNIFE_DEFS, knifeModels,
-  MAP_NAMES, SETTINGS, DEFAULT_BINDS, BIND_LABELS, bindCode, bindDown, assignBind, friendlyKeyName, renderBindList, GUN_LADDER, FINAL_TIER_SCORE, equipLadderTier, syncLadderWeapon, equipGunSlot, equipKnifeSlot, tryKnifeSwing, knifeStrike, updateWeaponVisibility, knifeModels, solids, castWorld, hasLOS, resolvePenetration, updateEnemies, updatePlayer, isTeammate, setRemoteTeam, TEAM_COLORS, TEAM_NAMES, updateTeamHUD, refreshProfile,
+  MAP_NAMES, SETTINGS, DEFAULT_BINDS, BIND_LABELS, bindCode, bindDown, assignBind, friendlyKeyName, renderBindList, GUN_LADDER, AUTO_LADDER, SHOTGUN_LADDER, FINAL_TIER_SCORE, AUTO_LIMIT, SHOTGUN_LIMIT, equipLadderTier, syncLadderWeapon, equipGunSlot, equipKnifeSlot, tryKnifeSwing, knifeStrike, updateWeaponVisibility, knifeModels, solids, castWorld, hasLOS, resolvePenetration, updateEnemies, updatePlayer, isTeammate, setRemoteTeam, TEAM_COLORS, TEAM_NAMES, updateTeamHUD, refreshProfile,
   get knifeSwingCt(){ return knifeSwingId; },
   get _syncKey(){ return syncKey; },
   get inputLocked(){ return locked; },

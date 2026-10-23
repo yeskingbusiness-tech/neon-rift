@@ -98,11 +98,13 @@ const players = new Map();   // id -> { ws, name, state, score, deaths, vote, mo
 
 const ROUND_LIMIT = 30;
 const KNIFE_LIMIT = 15;                                // KNIFE FIGHT: first to 15 stabs — golden shank from 14, no demotions
+const AUTO_LIMIT = 30;                                 // AUTOMATICS: auto-only FFA first to 30
+const SHOTGUN_LIMIT = 20;                              // SHOTGUNS: shotguns-only first to 20
 const INFECT_DURATION = 90000;                         // 1:30 survivors must hold
-function limitNow(){ return gameMode === 'knife' ? KNIFE_LIMIT : (gameMode === 'infect' ? 0 : ROUND_LIMIT); }
+function limitNow(){ if (gameMode === 'knife') return KNIFE_LIMIT; if (gameMode === 'shotgun') return SHOTGUN_LIMIT; if (gameMode === 'auto') return AUTO_LIMIT; if (gameMode === 'infect') return 0; return ROUND_LIMIT; }
 const MAPS = ['FORGE', 'NEXUS', 'DUSK YARD', 'COLD STORAGE', 'RIFT DOCKS'];
-const MODE_POOL = ['FFA', 'TEAM', 'KNIFE', 'INFECT'];
-const MODE_NAMES = { FFA:'FREE FOR ALL', TEAM:'RED v BLUE', KNIFE:'KNIFE FIGHT', INFECT:'INFECTION' };
+const MODE_POOL = ['FFA', 'TEAM', 'KNIFE', 'INFECT', 'AUTO', 'SHOTGUN'];
+const MODE_NAMES = { FFA:'FREE FOR ALL', TEAM:'RED v BLUE', KNIFE:'KNIFE FIGHT', INFECT:'INFECTION', AUTO:'AUTOMATICS', SHOTGUN:'SHOTGUNS' };
 let gameMode = 'ffa';           // decided by the lobby's mode vote before every round
 const TEAM_NAMES = ['', 'RED TEAM', 'BLUE TEAM', '', 'SURVIVORS', 'INFECTED'];
 let infectionEndAt = 0;
@@ -249,6 +251,8 @@ function closeVotePhase(){
   if (votedMode === 'TEAM') gameMode = 'team';
   else if (votedMode === 'KNIFE') gameMode = 'knife';
   else if (votedMode === 'INFECT') gameMode = 'infect';
+  else if (votedMode === 'AUTO') gameMode = 'auto';
+  else if (votedMode === 'SHOTGUN') gameMode = 'shotgun';
   else gameMode = 'ffa';
   votePhase = null; voteChoices = []; voteEndsAt = 0;
   if (gameMode === 'team'){
