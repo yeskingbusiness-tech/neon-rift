@@ -1123,7 +1123,7 @@ const player = {
   grounded: true, lastDamage: -99,
   bobT: 0, stepT: 0, shake: 0,
   fovKick: 0,
-  grenades: 3, slideT: 0, slideCd: 0, crouch: 0, invuln:0, invulnUntil:0,
+  grenades: 3, slideT: 0, slideCd: 0, crouch: 0,
   crouched: false, coyoteT: 0, jumpBufferT: 0, airJumpsUsed: 0, burnFxT: 0, burnUntil: 0, burnNext: 0, burnDps: 0, _firedHeld: false,   // predeclared — object is sealed at load
 };
 const slideDir = new THREE.Vector3();
@@ -5027,8 +5027,6 @@ function connectNet(){
           applyInfectSkin();
           knifeMode = 1; updateWeaponVisibility();
           player.maxHp = 80; if (player.hp > player.maxHp) player.hp = player.maxHp;
-          // fix late-join infected sometimes staying invincible: clear stale spawn protection
-          player.invuln = 0; player.invulnUntil = performance.now() - 1;
           updateHealthHUD(); updateAmmoHUD();
           showBanner('INFECTED — NOW HUNT');
           SFX.kill();
@@ -5156,8 +5154,6 @@ function respawnDMPlayer(silent=false){
   // infection zombies have slightly less health; juggernaut HP 200+50*players; one-shot has 1HP (instant kill)
   if (isOneShot()){ player.maxHp = 1; } else if (isInfect() && net.infected){ player.maxHp = 80; } else if (isJugg() && net.isJuggernaut){ player.maxHp = currentJuggHp(); } else { player.maxHp = 100; }
   player.hp = player.maxHp;
-  player.invuln = 1.5;
-  player.invulnUntil = performance.now() + 1500;   // wall-clock: slow frames must not stretch spawn protection
   netSend({ t:'spawn' });
   S.dead = false;
   if (mode === 'dm' && !net.voteActive){ S.paused = false; fallbackMode = true; locked = true; canvas.style.cursor = 'none'; }
@@ -5235,7 +5231,6 @@ function damagePlayer(dmg, fromPos){
   // the world (and everyone aiming at you) never stops. No vanishing into the pause menu.
   if (S.paused && mode !== 'dm') return;
   if (S.sandbox) return;            // sandbox hosts can get chewed on, never hurt
-  if (mode === 'dm' && performance.now() < (player.invulnUntil || 0)) return;
   player.hp -= dmg;
   player.lastDamage = performance.now();
   player.shake = Math.min(player.shake + 0.06, 0.14);
@@ -5974,7 +5969,6 @@ const clock = new THREE.Clock();
 let crosshairGap = 10;
 
 function updatePlayer(dt, now){
-  player.invuln = Math.max(0, (player.invuln || 0) - dt);
   // input direction
   let ix = 0, iz = 0;
   if (bindDown('fwd')) iz -= 1;

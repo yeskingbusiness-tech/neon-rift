@@ -94,7 +94,7 @@ const server = http.createServer((req, res) => {
 /* ---- multiplayer relay + round system ---- */
 const wss = new WebSocket.Server({ server });
 let nextId = 1;
-const players = new Map();   // id -> { ws, name, state, score, deaths, vote, modeVote, team, invulnUntil }
+const players = new Map();   // id -> { ws, name, state, score, deaths, vote, modeVote, team }
 
 const ROUND_LIMIT = 30;
 const KNIFE_LIMIT = 15;                                // KNIFE FIGHT: first to 15 stabs — golden shank from 14, no demotions
@@ -315,7 +315,7 @@ function startRound(map){
   voteEndsAt = 0;
   votePhase = null;
   for (const p of players.values()){
-    p.score = 0; p.deaths = 0; p.vote = null; p.modeVote = null; p.state = null; p.invulnUntil = Date.now() + 1500;
+    p.score = 0; p.deaths = 0; p.vote = null; p.modeVote = null; p.state = null;
     p.lastHitFrom = 0; p.lastHitKnife = false; p.lastHitAt = 0; p.assists = 0; p.dmgLog = new Map();
     // restore original skin if we forced it during infection/jugg
     if (p.origSkin){ p.skin = p.origSkin; delete p.origSkin; }
@@ -474,7 +474,7 @@ function checkJuggWinTransfer(oldJuggId, killerId){
   if (!killer.origSkin) killer.origSkin = killer.skin;
   juggernautHp = juggHpFor(players.size);
   killer.juggHp = juggernautHp;
-  killer.isJugg = true; killer.team = 2; killer.skin = 'juggernaut'; killer.invulnUntil = Date.now()+1200;
+  killer.isJugg = true; killer.team = 2; killer.skin = 'juggernaut';
   juggernautId = killerId;
   broadcast({ t:'jugg', id:killerId, isJugg:true, juggId:killerId, juggHp:juggernautHp });
   broadcast({ t:'skin', id:killerId, skin:killer.skin });
@@ -513,7 +513,7 @@ wss.on('connection', (ws, req) => {
   ipConns.set(ip, (ipConns.get(ip) || 0) + 1);
 
   const id = nextId++;
-  const p = { ws, ip, name:'RIFT-' + id, skin:'rift', state:null, stateArr:null, score:0, deaths:0, vote:null, team:0, isJugg:false, invulnUntil:Date.now()+1500, lastHitFrom:0, lastHitKnife:false, lastHitHs:false, lastHitWeapon:0, lastHitAt:0, assists:0, dmgLog:new Map(),
+  const p = { ws, ip, name:'RIFT-' + id, skin:'rift', state:null, stateArr:null, score:0, deaths:0, vote:null, team:0, isJugg:false, lastHitFrom:0, lastHitKnife:false, lastHitHs:false, lastHitWeapon:0, lastHitAt:0, assists:0, dmgLog:new Map(),
     msgEvents:[], hitEvents:[], knifeHitEvents:[], killEvents:[], spawnEvents:[], shotEvents:[], speedTrail:[], lastState:null, lastSpawnAt:0, spawnGrace:false,
     salt:(Math.random() * 0xFFFFFFFF) >>> 0, dig:0, lastBeatAt:0, gameTraffic:0, lastActiveAt:Date.now(), probation:(probationList.get(ip) || 0) > Date.now() };
   players.set(id, p);
@@ -552,7 +552,7 @@ wss.on('connection', (ws, req) => {
           if (!p.origSkin) p.origSkin = p.skin;
           p.infected = true; p.team = 2; p.skin = 'toxic';
           // fix: late join zombie was sometimes invincible due to spawn invuln still active
-          p.invulnUntil = Date.now(); p.spawnGrace = false;
+          p.spawnGrace = false;
           console.log(`[infect] late join ${p.name} -> infected (orig ${p.origSkin})`);
           broadcast({ t:'infect', id, team:2, skin:'toxic' });
         } else if (gameMode === 'infect' && !roundActive){
@@ -602,7 +602,7 @@ wss.on('connection', (ws, req) => {
         if (tgt && gameMode === 'infect' && p.infected === tgt.infected) break;   // infection: no friendly fire within same side
         if (tgt && gameMode === 'juggernaut' && p.isJugg === tgt.isJugg) break; // juggernaut: hunters vs juggernaut only
         if (tgt && gameMode === 'oneshot' && m.knife) break; // one-shot: no knife allowed
-        if (tgt && (tgt.invulnUntil || 0) <= Date.now()){
+        if (tgt){
           // lag compensation: server-side rewind — check distance at lastState vs now (tolerant, not strict kick)
           // we have shooter's last reported position (p.lastState) and target's lastState; if hit claims a far target
           // but our stored states show they were miles apart, it's likely a lagged shot — we still accept but log
@@ -772,7 +772,6 @@ wss.on('connection', (ws, req) => {
         // a welcome-spawn and a round-start respawn can legitimately land a second apart.
         p.spawnEvents.push(nowM);
         if (acOver(pg(p, 3), p.spawnEvents, nowM, 2000)){ acKick(p, `spawn spam (${p.spawnEvents.length} reports in 2s)`); break; }
-        p.invulnUntil = Date.now() + 1500;
         p.lastSpawnAt = Date.now();
         p.spawnGrace = true;
         break;
