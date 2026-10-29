@@ -357,6 +357,12 @@ body.mut-dark { filter:contrast(1.1) brightness(.85); }
   .voteModeBtn.vmJUGG { border-color:rgba(255,59,87,.65); }
   .voteModeBtn.vmJUGG::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, rgba(100,0,0,.9), rgba(255,59,87,.95), rgba(100,0,0,.9)); }
   .voteModeBtn.vmJUGG b { color:#ff3b57; text-shadow:0 0 14px rgba(255,59,87,.7); }
+  .voteModeBtn.vmTARGET { border-color:rgba(255,80,60,.70); }
+  .voteModeBtn.vmTARGET::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, rgba(80,0,0,.9), rgba(255,80,60,.95), rgba(80,0,0,.9)); }
+  .voteModeBtn.vmTARGET b { color:#ff5040; text-shadow:0 0 14px rgba(255,80,60,.7); }
+  .voteModeBtn.vmMUSKET { border-color:rgba(180,140,80,.70); }
+  .voteModeBtn.vmMUSKET::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, rgba(60,40,10,.9), rgba(210,170,90,.95), rgba(60,40,10,.9)); }
+  .voteModeBtn.vmMUSKET b { color:#d2aa5a; text-shadow:0 0 14px rgba(210,170,90,.7); }
   .voteModeBtn:hover b, .voteModeBtn.selected b { text-shadow:0 0 16px rgba(255,255,255,.35); }
 
   /* sandbox picker */
@@ -652,7 +658,7 @@ body.mut-dark { filter:contrast(1.1) brightness(.85); }
 
       <button class="btn modeBtn" id="startBtn"><span>Solo</span><small>endless — escalating horde</small></button>
       <button class="btn modeBtn" id="sandboxBtn"><span>Sandbox</span><small>any gun · any map · spawn anything</small></button>
-      <button class="btn red modeBtn" id="mpBtn"><span>LAN MATCH</span><small>FFA · TEAM · KNIFE · INFECTION · AUTOMATICS · SHOTGUNS · SNIPERS · ONE SHOT · JUGGERNAUT</small></button>
+      <button class="btn red modeBtn" id="mpBtn"><span>LAN MATCH</span><small>FFA · TEAM · KNIFE · INFECTION · AUTOMATICS · SHOTGUNS · SNIPERS · ONE SHOT · JUGGERNAUT · TARGET · MUSKET ONLY</small></button>
       <button class="btn menuSecondary" id="skinsBtn">Character Skins</button>
       <button class="btn menuSecondary" id="settingsBtn">Settings</button>
 

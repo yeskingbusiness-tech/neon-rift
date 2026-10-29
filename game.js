@@ -2318,10 +2318,12 @@ function isShotgunMode(){ return mode === 'dm' && net.dmMode === 'shotgun'; }
 function isSniperMode(){ return mode === 'dm' && net.dmMode === 'sniper'; }
 function isOneShot(){ return mode === 'dm' && net.dmMode === 'oneshot'; }
 function isJugg(){ return mode === 'dm' && net.dmMode === 'juggernaut'; }
+function isTarget(){ return mode === 'dm' && net.dmMode === 'target'; }
+function isMusketMode(){ return mode === 'dm' && net.dmMode === 'musket'; }
 function isJuggSelf(){ return isJugg() && net.isJuggernaut; }
-function isNoGoldenMode(){ return isAutoMode() || isShotgunMode() || isSniperMode() || isOneShot() || isJugg(); }
-function currentModeLimit(){ if (isKnifeFight()) return 15; if (isShotgunMode()) return 20; if (isSniperMode()) return SNIPER_LIMIT; if (isAutoMode()) return AUTO_LIMIT; if (isOneShot()) return ONESHOT_LIMIT; if (isJugg()) return JUGG_LIMIT; if (isInfect()) return 0; return 30; }
-function currentLadderRound(){ if (isAutoMode()) return AUTO_ROUND; if (isShotgunMode()) return SHOTGUN_ROUND; if (isSniperMode()) return SNIPER_ROUND; if (isOneShot()) return PISTOL_ROUND; return LADDER_ROUND; }
+function isNoGoldenMode(){ return isAutoMode() || isShotgunMode() || isSniperMode() || isOneShot() || isJugg() || isTarget() || isMusketMode(); }
+function currentModeLimit(){ if (isKnifeFight()) return 15; if (isShotgunMode()) return 20; if (isSniperMode()) return SNIPER_LIMIT; if (isAutoMode()) return AUTO_LIMIT; if (isOneShot()) return ONESHOT_LIMIT; if (isJugg()) return JUGG_LIMIT; if (isTarget()) return TARGET_LIMIT; if (isMusketMode()) return MUSKET_LIMIT; if (isInfect()) return 0; return 30; }
+function currentLadderRound(){ if (isAutoMode()) return AUTO_ROUND; if (isShotgunMode()) return SHOTGUN_ROUND; if (isSniperMode()) return SNIPER_ROUND; if (isOneShot()) return PISTOL_ROUND; if (isMusketMode()) return MUSKET_ROUND; return LADDER_ROUND; }
 function finalTierScore(){ return isKnifeFight() ? 14 : isNoGoldenMode() ? Infinity : FINAL_TIER_SCORE; }  // knife fight goes golden one stab early; auto/shotgun/oneshot/jugg never golden
 function knifeGolden(){ return mode === 'dm' && !isInfect() && !isJugg() && !isNoGoldenMode() && (net.myScore || 0) >= finalTierScore(); }
 function knifeLocked(){ return isKnifeFight() || knifeGolden() || (isInfect() && net.infected) || (isJugg() && false) || isOneShot(); }       // final tier or knife fight: blades only — zombies locked to knife — one-shot disables knife entirely
@@ -2492,12 +2494,16 @@ const SHOTGUN_LIMIT = 20;
 const SNIPER_LIMIT = 15;
 const ONESHOT_LIMIT = 20;
 const JUGG_LIMIT = 60;
+const TARGET_LIMIT = 10;
+const MUSKET_LIMIT = 10;
 // auto/shotgun/sniper filtered ladders — only those weapon types appear in those modes
 const AUTO_LADDER = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].auto && WEAPONS[i].rpm >= 400 && WEAPONS[i].name !== 'HELLFIRE MK-7');
 const SHOTGUN_BASE = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].slot==='SHOTGUN');
 const PISTOL_BASE = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].slot==='PISTOL');
 const SNIPER_BASE = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].slot==='SNIPER');
+const MUSKET_BASE = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].name.includes('MUSKET'));
 const PISTOL_LADDER = Array.from({length:ONESHOT_LIMIT}, (_,k)=>PISTOL_BASE[k % PISTOL_BASE.length]);
+const MUSKET_LADDER = Array.from({length:MUSKET_LIMIT}, (_,k)=>MUSKET_BASE[k % MUSKET_BASE.length]);
 const JUGG_MG_INDEX = WEAPONS.findIndex(w=>w.name==='VORTEX MINIGUN');
 const MUSKET_INDEX = WEAPONS.findIndex(w=>w.name==='LEADLINE MUSKET');
 const SNOWBALL_INDEX = WEAPONS.findIndex(w=>w.name==='SNOWBALL SLINGER');
@@ -2537,6 +2543,7 @@ let AUTO_ROUND = AUTO_LADDER.slice();
 let SHOTGUN_ROUND = SHOTGUN_LADDER.slice();
 let SNIPER_ROUND = SNIPER_LADDER.slice();
 let PISTOL_ROUND = PISTOL_LADDER.slice();
+let MUSKET_ROUND = MUSKET_LADDER.slice();
 function shuffleLadder(seed){
   const rnd = mulberry32(((seed >>> 0) || 1) >>> 0);   // seeded PRNG lives up at the world-gen helpers
   LADDER_ROUND = GUN_LADDER.slice();
@@ -2578,6 +2585,17 @@ function shuffleLadder(seed){
       for(let k=i+1;k<SNIPER_ROUND.length;k++) if(SNIPER_ROUND[k]!==SNIPER_ROUND[i]){ swap=k; break; }
       if(swap!==-1) [SNIPER_ROUND[i],SNIPER_ROUND[swap]]=[SNIPER_ROUND[swap],SNIPER_ROUND[i]];
       else { const alt = SNIPER_BASE.find(x=>x!==SNIPER_ROUND[i]); if(alt!==undefined) SNIPER_ROUND[i]=alt; }
+    }
+  }
+  // muskets: shuffled ladder for MUSKET — dedup repeats
+  MUSKET_ROUND = MUSKET_LADDER.slice();
+  for (let i = MUSKET_ROUND.length - 1; i > 0; i--){ const j = (rnd() * (i + 1)) | 0; [MUSKET_ROUND[i], MUSKET_ROUND[j]] = [MUSKET_ROUND[j], MUSKET_ROUND[i]]; }
+  for (let i=1;i<MUSKET_ROUND.length;i++){
+    if (MUSKET_ROUND[i]===MUSKET_ROUND[i-1]){
+      let swap=-1;
+      for(let k=i+1;k<MUSKET_ROUND.length;k++) if(MUSKET_ROUND[k]!==MUSKET_ROUND[i]){ swap=k; break; }
+      if(swap!==-1) [MUSKET_ROUND[i],MUSKET_ROUND[swap]]=[MUSKET_ROUND[swap],MUSKET_ROUND[i]];
+      else { const alt = MUSKET_BASE.find(x=>x!==MUSKET_ROUND[i]); if(alt!==undefined) MUSKET_ROUND[i]=alt; }
     }
   }
   // final weapons: force last tier to iconic closers
@@ -2638,6 +2656,8 @@ function equipLadderTier(sc, { quiet=false } = {}){
   else if (isAutoMode()) maxSc = AUTO_LIMIT;
   else if (isOneShot()) maxSc = ONESHOT_LIMIT;
   else if (isJugg()) maxSc = JUGG_LIMIT;
+  else if (isTarget()) maxSc = TARGET_LIMIT;
+  else if (isMusketMode()) maxSc = MUSKET_LIMIT;
   sc = clamp(sc|0, 0, maxSc);
   if (isKnifeFight()){          // ballot said blades — you never touch the ladder at all
     knifeMode = 1; mouseR = false; adsT = 0;
@@ -4134,7 +4154,7 @@ const net = { on:false, ws:null, id:0, players:new Map(), sendT:0, lastHitBy:0, 
   dmMode:'ffa', myTeam:0, teamTotals:{ red:0, blue:0 }, __voteSecs:-1,
   beatSalt:0, myName:'', deathPos:null, profileLinked:false,
   infected:false, infectionEndAt:0, infectedIds:new Set(),
-  isJuggernaut:false, juggernautId:0, juggHp:500 };   // predeclared — the object is sealed at load (no late Property additions allowed)
+  isJuggernaut:false, juggernautId:0, juggHp:500, targetId:0, targetName:'' };   // predeclared — the object is sealed at load (no late Property additions allowed)
 const TEAM_COLORS = ['', '#ff5040', '#4aa0ff'];
 const TEAM_NAMES = ['', 'RED TEAM', 'BLUE TEAM'];
 const INFECT_COLORS = ['', '#4aa0ff', '#2fd04a'];
@@ -4866,6 +4886,10 @@ function connectNet(){
         if (m.juggTransfer){
           showBanner('JUGGERNAUT FALLEN — ' + (m.names.k||'HUNTER') + ' IS JUGGERNAUT');
           addKillFeed(null, `<b style="color:#ff3b57">JUGGERNAUT DOWN</b> <b>${fmtColoredName(m.names.k,m.kteam)}</b> ELIMINATED <b>${fmtColoredName(m.names.v,m.vteam)}</b> — NOW JUGGERNAUT`);
+        } else if (m.targetKill){
+          const icon = killIcon(m);
+          addKillFeed(null, `${icon} <b style="color:#ff3b57">TARGET ELIMINATED</b> <b>${fmtColoredName(m.names.k,m.kteam)}</b> ⟶ ${fmtColoredName(m.names.v,m.vteam)}`);
+          if (m.by === net.id) { showBanner('TARGET ELIMINATED +1'); SFX.kill(); }
         } else {
           const icon = killIcon(m);
           if (m.knife) addKillFeed(null, `${icon} <b>${fmtColoredName(m.names.k, m.kteam)}</b>${assistBit} <span style="color:#ffd040">⚔ ${m.bs ? 'BACKSTABBED' : 'SHANKED'}</span> ${fmtColoredName(m.names.v, m.vteam)}${m.demoted ? ' — DEMOTED ONE TIER' : ''}`);
@@ -4906,6 +4930,15 @@ function connectNet(){
           $('minimapWrap')?.classList.add('reveal');
           setTimeout(()=>{ net.revealId=null; $('minimapWrap')?.classList.remove('reveal'); }, 22000);
         }
+        break;
+      case 'target':
+        net.targetId = m.targetId || 0;
+        net.targetName = m.targetName || '';
+        if (net.targetName){
+          showBanner('NEW TARGET — ' + net.targetName);
+          addKillFeed(null, `<b style="color:#ff3b57">TARGET</b> — HUNT <b>${net.targetName}</b> · FIRST TO 10`);
+        }
+        updateTopHUD(); updateScoreboardHUD(); updateAmmoHUD();
         break;
       case 'score':
         net.scores = m.scores || [];
@@ -5001,15 +5034,32 @@ function connectNet(){
         } else if (net.dmMode === 'oneshot'){
           net.isJuggernaut = false; net.juggernautId = 0;
           net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+          net.targetId=0; net.targetName='';
           for (const rp of net.players.values()){ rp.isJugg=false; rp.infected=false; rp.team=0; }
           try { applyLocalSkinAppearance(); } catch(e){}
           addKillFeed(null, '<b style="color:#ffd040">ONE SHOT</b> — PISTOLS ONLY · 1 BULLET · ∞ RESERVE');
+        } else if (net.dmMode === 'target'){
+          net.isJuggernaut = false; net.juggernautId = 0;
+          net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+          net.targetId=0; net.targetName='';
+          for (const rp of net.players.values()){ rp.isJugg=false; rp.infected=false; rp.team=0; }
+          try { applyLocalSkinAppearance(); } catch(e){}
+          addKillFeed(null, '<b style="color:#ff3b57">TARGET</b> — HUNT YOUR MARK · FIRST TO 10');
+        } else if (net.dmMode === 'musket'){
+          net.isJuggernaut = false; net.juggernautId = 0;
+          net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+          net.targetId=0; net.targetName='';
+          for (const rp of net.players.values()){ rp.isJugg=false; rp.infected=false; rp.team=0; }
+          try { applyLocalSkinAppearance(); } catch(e){}
+          addKillFeed(null, '<b style="color:#d2aa5a">MUSKET ONLY</b> — MUSKETS ONLY · FIRST TO 10');
         } else {
           const wasInfect = net.infected || (net.infectionEndAt && net.infectionEndAt > 0) || net.infectedIds.size > 0;
           const wasJugg = net.isJuggernaut || net.juggernautId;
+          const wasTarget = net.targetId || net.targetName;
           net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
           net.isJuggernaut = false; net.juggernautId = 0;
-          if (wasInfect || wasJugg){
+          net.targetId=0; net.targetName='';
+          if (wasInfect || wasJugg || wasTarget){
             try { applyLocalSkinAppearance(); } catch(e){}
             for (const rp of net.players.values()){ if (rp.infected || rp.isJugg){ rp.infected=false; rp.isJugg=false; rp.team=0; setRemoteSkin(rp,'rift'); } }
             player.maxHp = 100; if (player.hp>100) player.hp=100; updateHealthHUD();
@@ -5018,7 +5068,7 @@ function connectNet(){
         syncLadderWeapon(); respawnDMPlayer(true);
         if (net.dmMode === 'infect' && net.infected) { knifeMode = 1; updateWeaponVisibility(); }
         if (net.dmMode === 'juggernaut' && net.isJuggernaut){ syncLadderWeapon(); updateAmmoHUD(); }
-        SFX.roundStart(); showBanner('ROUND ' + net.round + (net.dmMode==='infect' ? (net.infected?' — INFECTED':' — SURVIVOR') : net.dmMode==='juggernaut' ? (net.isJuggernaut?' — JUGGERNAUT':' — HUNTER') : net.dmMode==='oneshot' ? ' — ONE SHOT' : ''));
+        SFX.roundStart(); showBanner('ROUND ' + net.round + (net.dmMode==='infect' ? (net.infected?' — INFECTED':' — SURVIVOR') : net.dmMode==='juggernaut' ? (net.isJuggernaut?' — JUGGERNAUT':' — HUNTER') : net.dmMode==='oneshot' ? ' — ONE SHOT' : net.dmMode==='target' ? ' — TARGET' : net.dmMode==='musket' ? ' — MUSKET ONLY' : ''));
         updateScoreboardHUD(); updateTopHUD(); updateAmmoHUD(); updateHealthHUD();
         break;
       case 'infect': {
@@ -5562,6 +5612,18 @@ function updateScoreboardHUD(){
     rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${p.name||'PLAYER'}</span><b>${p.score||0}/${net.limit||20}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/20<small>0D</small></b></div>';
     return;
   }
+  if (net.dmMode === 'target'){
+    panel.querySelector('.sbTitle').textContent = `TARGET // FIRST TO ${net.limit||10} — HUNT ${net.targetName||'TARGET'}`;
+    const list = (net.scores||[]).slice(0,8);
+    rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${p.name||'PLAYER'}</span><b>${p.score||0}/${net.limit||10}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/10<small>0D</small></b></div>';
+    return;
+  }
+  if (net.dmMode === 'musket'){
+    panel.querySelector('.sbTitle').textContent = `MUSKET ONLY // FIRST TO ${net.limit||10}`;
+    const list = (net.scores||[]).slice(0,8);
+    rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${p.name||'PLAYER'}</span><b>${p.score||0}/${net.limit||10}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/10<small>0D</small></b></div>';
+    return;
+  }
   if (net.dmMode === 'infect'){
     const list = (net.scores || []);
     // split survivors (not infected) vs infected using scores team? scores have team field from server; survivor team 1 blue, infected team 2 green
@@ -5639,6 +5701,8 @@ const MODE_CARD = {
   SNIPER:{ title:'SNIPERS ONLY', sub:'snipers only — first to 15 kills, random ladder, final is ATLAS ROCKET, no golden knife', cls:'vmSNIPER' },
   ONESHOT:{ title:'ONE SHOT',    sub:'pistols only — 1 bullet mag · infinite ammo · 1 HP instakill · no knife/grenades · first to 20', cls:'vmONESHOT' },
   JUGG:  { title:'JUGGERNAUT',   sub:'200+50HP/player minigun juggernaut vs hunters — kill him to become him, +1s per kill, score = time, first to 60', cls:'vmJUGG' },
+  TARGET:{ title:'TARGET',       sub:'hunt your assigned target — kill them to score and get a new target · first to 10', cls:'vmTARGET' },
+  MUSKET:{ title:'MUSKET ONLY',  sub:'muskets only — LEADLINE & PULSE musket ladder · first to 10', cls:'vmMUSKET' },
 };
 function enterVoteMode(paused=true){
   net.voteActive = true;
@@ -5769,7 +5833,7 @@ function updateAmmoHUD(){
   $('ammoReserve').textContent = resText;
   const av = $('arsenalVal');
   if (av) av.textContent = mode === 'dm'
-    ? (isKnifeFight() ? `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 15)} / ${net.limit || 15}` : isOneShot() ? `ONE SHOT ${Math.min((net.myScore || 0) + 1, net.limit || 20)} / ${net.limit || 20}` : isJugg() ? `${net.isJuggernaut?'JUGGERNAUT':'HUNTER'} ${net.myScore || 0} / ${net.limit || 60}s` : `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 30)} / ${net.limit || 30}`)
+    ? (isKnifeFight() ? `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 15)} / ${net.limit || 15}` : isOneShot() ? `ONE SHOT ${Math.min((net.myScore || 0) + 1, net.limit || 20)} / ${net.limit || 20}` : isJugg() ? `${net.isJuggernaut?'JUGGERNAUT':'HUNTER'} ${net.myScore || 0} / ${net.limit || 60}s` : isTarget() ? `TARGET — ${net.targetName ? 'HUNT '+net.targetName : 'ASSIGNED'} ${net.myScore||0}/${net.limit||10}` : isMusketMode() ? `MUSKET ${Math.min((net.myScore||0)+1, net.limit||10)} / ${net.limit||10}` : `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 30)} / ${net.limit || 30}`)
     : `${weaponIndex+1} / ${WEAPONS.length}`;
   $('nadeVal').textContent = isOneShot() ? '— DISABLED' : '×' + player.grenades;
   if (isOneShot() && !w.reloading && w.ammo===0) $('reloadHint').textContent = 'ONE SHOT — PRESS R TO RELOAD (1 BULLET)';
@@ -5853,6 +5917,28 @@ function updateTopHUD(){
       const leader = (net.scores||[])[0];
       $('scoreVal').textContent = me ? me.score : S.kills;
       $('killsVal').textContent = leader ? `${leader.score}/${net.limit||20}` : `0/${net.limit||20}`;
+      return;
+    }
+    if (isTarget()){
+      $('modeLbl').textContent = 'TARGET';
+      $('hostilesLbl').textContent = net.targetName ? `HUNT ${net.targetName}` : 'HUNT TARGET';
+      $('waveVal').textContent = net.round || 1;
+      $('hostilesVal').textContent = net.targetName || 'WAITING';
+      const me = (net.scores||[]).find(p=>p.id===net.id);
+      const leader = (net.scores||[])[0];
+      $('scoreVal').textContent = me ? me.score : S.kills;
+      $('killsVal').textContent = leader ? `${leader.score}/${net.limit||10}` : `0/${net.limit||10}`;
+      return;
+    }
+    if (isMusketMode()){
+      $('modeLbl').textContent = 'MUSKET ONLY';
+      $('hostilesLbl').textContent = 'MUSKETS ONLY';
+      $('waveVal').textContent = net.round || 1;
+      $('hostilesVal').textContent = net.players.size + 1;
+      const me = (net.scores||[]).find(p=>p.id===net.id);
+      const leader = (net.scores||[])[0];
+      $('scoreVal').textContent = me ? me.score : S.kills;
+      $('killsVal').textContent = leader ? `${leader.score}/${net.limit||10}` : `0/${net.limit||10}`;
       return;
     }
     // infection timer
@@ -5940,14 +6026,20 @@ function drawMinimap(){
     if (!rp.group.visible) continue;
     const [x,z] = toMap(rp.group.position.x, rp.group.position.z);
     const isRevealed = revealId && rp.id===revealId;
+    const isMyTarget = isTarget() && net.targetId === rp.id;
     if(isRevealed){
       mm.fillStyle = 'rgba(255,60,60,.35)';
       mm.beginPath(); mm.arc(x, z, 8 + Math.sin(Date.now()*0.008)*3, 0, 7); mm.fill();
       mm.strokeStyle='#ff3b57'; mm.lineWidth=1.2; mm.stroke();
     }
-    mm.fillStyle = isTeammate(rp) ? TEAM_COLORS[net.myTeam] : '#ff3b57';
+    if(isMyTarget){
+      mm.fillStyle = 'rgba(255,80,60,.45)';
+      mm.beginPath(); mm.arc(x, z, 7 + Math.sin(Date.now()*0.009)*2, 0, 7); mm.fill();
+      mm.strokeStyle='#ff5040'; mm.lineWidth=1.4; mm.stroke();
+    }
+    mm.fillStyle = isTeammate(rp) ? TEAM_COLORS[net.myTeam] : isMyTarget ? '#ff5040' : '#ff3b57';
     if(isRevealed) mm.fillStyle='#ffff40';
-    mm.beginPath(); mm.arc(x, z, isRevealed?4:2.6, 0, 7); mm.fill();
+    mm.beginPath(); mm.arc(x, z, isRevealed?4:isMyTarget?3.8:2.6, 0, 7); mm.fill();
   }
   // if we are sole survivor revealed, pulse self too
   if(revealId===net.id){

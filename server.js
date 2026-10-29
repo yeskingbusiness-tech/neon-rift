@@ -103,11 +103,13 @@ const SHOTGUN_LIMIT = 20;                              // SHOTGUNS: shotguns-onl
 const SNIPER_LIMIT = 15;                               // SNIPERS: snipers-only first to 15 — final is ATLAS ROCKET
 const ONESHOT_LIMIT = 20;                              // ONE SHOT: pistols only, 1-bullet mag, infinite reserve, first to 20
 const JUGG_LIMIT = 60;                                 // JUGGERNAUT: score = seconds as Juggernaut, first to 60
+const TARGET_LIMIT = 10;                               // TARGET: hunt your assigned target — first to 10 assigned kills
+const MUSKET_LIMIT = 10;                               // MUSKET: muskets only — first to 10
 const INFECT_DURATION = 90000;                         // 1:30 survivors must hold
-function limitNow(){ if (gameMode === 'knife') return KNIFE_LIMIT; if (gameMode === 'shotgun') return SHOTGUN_LIMIT; if (gameMode === 'sniper') return SNIPER_LIMIT; if (gameMode === 'auto') return AUTO_LIMIT; if (gameMode === 'oneshot') return ONESHOT_LIMIT; if (gameMode === 'juggernaut') return JUGG_LIMIT; if (gameMode === 'infect') return 0; return ROUND_LIMIT; }
+function limitNow(){ if (gameMode === 'knife') return KNIFE_LIMIT; if (gameMode === 'shotgun') return SHOTGUN_LIMIT; if (gameMode === 'sniper') return SNIPER_LIMIT; if (gameMode === 'auto') return AUTO_LIMIT; if (gameMode === 'oneshot') return ONESHOT_LIMIT; if (gameMode === 'juggernaut') return JUGG_LIMIT; if (gameMode === 'target') return TARGET_LIMIT; if (gameMode === 'musket') return MUSKET_LIMIT; if (gameMode === 'infect') return 0; return ROUND_LIMIT; }
 const MAPS = ['FORGE', 'NEXUS', 'DUSK YARD', 'COLD STORAGE', 'RIFT DOCKS'];
-const MODE_POOL = ['FFA', 'TEAM', 'KNIFE', 'INFECT', 'AUTO', 'SHOTGUN', 'SNIPER', 'ONESHOT', 'JUGG'];
-const MODE_NAMES = { FFA:'FREE FOR ALL', TEAM:'RED v BLUE', KNIFE:'KNIFE FIGHT', INFECT:'INFECTION', AUTO:'AUTOMATICS', SHOTGUN:'SHOTGUNS', SNIPER:'SNIPERS ONLY', ONESHOT:'ONE SHOT', JUGG:'JUGGERNAUT' };
+const MODE_POOL = ['FFA', 'TEAM', 'KNIFE', 'INFECT', 'AUTO', 'SHOTGUN', 'SNIPER', 'ONESHOT', 'JUGG', 'TARGET', 'MUSKET'];
+const MODE_NAMES = { FFA:'FREE FOR ALL', TEAM:'RED v BLUE', KNIFE:'KNIFE FIGHT', INFECT:'INFECTION', AUTO:'AUTOMATICS', SHOTGUN:'SHOTGUNS', SNIPER:'SNIPERS ONLY', ONESHOT:'ONE SHOT', JUGG:'JUGGERNAUT', TARGET:'TARGET', MUSKET:'MUSKET ONLY' };
 let gameMode = 'ffa';           // decided by the lobby's mode vote before every round
 const TEAM_NAMES = ['', 'RED TEAM', 'BLUE TEAM', '', 'SURVIVORS', 'INFECTED', 'HUNTERS', 'JUGGERNAUT'];
 let infectionEndAt = 0;
@@ -121,6 +123,24 @@ function juggHpFor(n){
   // base 200 +50 per player (5 players => 450 HP)
   const hp = 200 + n * 50;
   return Math.max(200, Math.min(hp, 1000));
+}
+function pickRandomTarget(forId){
+  const ids = [...players.keys()].filter(pid => pid !== forId);
+  if (!ids.length) return 0;
+  return ids[Math.floor(Math.random() * ids.length)];
+}
+function assignTargetFor(pid){
+  const p = players.get(pid);
+  if (!p) return;
+  const tgtId = pickRandomTarget(pid);
+  if (!tgtId) { p.targetId = 0; p.targetName = ''; return; }
+  p.targetId = tgtId;
+  const tgt = players.get(tgtId);
+  p.targetName = tgt ? tgt.name : 'UNKNOWN';
+  try { send(p.ws, { t:'target', targetId: tgtId, targetName: p.targetName }); } catch {}
+}
+function reassignTargetsOf(leavingId){
+  for (const [pid, pl] of players) if (pl.targetId === leavingId) assignTargetFor(pid);
 }
 let modeVoteChoices = [];       // 3 random modes per ballot, rotates like maps
 let currentMap = MAPS[0];
@@ -270,6 +290,8 @@ function closeVotePhase(){
   else if (votedMode === 'SNIPER') gameMode = 'sniper';
   else if (votedMode === 'ONESHOT') gameMode = 'oneshot';
   else if (votedMode === 'JUGG') gameMode = 'juggernaut';
+  else if (votedMode === 'TARGET') gameMode = 'target';
+  else if (votedMode === 'MUSKET') gameMode = 'musket';
   else gameMode = 'ffa';
   votePhase = null; voteChoices = []; voteEndsAt = 0;
   if (gameMode === 'team'){
@@ -319,7 +341,7 @@ function startRound(map){
     p.lastHitFrom = 0; p.lastHitKnife = false; p.lastHitAt = 0; p.assists = 0; p.dmgLog = new Map();
     // restore original skin if we forced it during infection/jugg
     if (p.origSkin){ p.skin = p.origSkin; delete p.origSkin; }
-    p.isJugg = false;
+    p.isJugg = false; p.targetId = 0; p.targetName = '';
     if (gameMode === 'team'){
       // FIX: preserve shuffled teams assigned in closeVotePhase — don't wipe to 0
       // ensure everyone has a team even if balance shifted (players joined/left during vote)
@@ -410,6 +432,11 @@ function startRound(map){
   } else {
     if (juggScoreTimer){ clearInterval(juggScoreTimer); juggScoreTimer = null; }
     juggernautId = 0;
+  }
+  // TARGET: assign a random target for each hunter
+  if (gameMode === 'target'){
+    for (const [pid] of players) assignTargetFor(pid);
+    console.log(`[target] assigned targets for ${players.size} players`);
   }
   const ladderSeed = (Math.random() * 0x7fffffff) | 0;   // one deck-shuffle per round, dealt to everyone equally
   // include infection/jugg state in roundStart for clients
@@ -567,7 +594,11 @@ wss.on('connection', (ws, req) => {
         } else if (gameMode === 'juggernaut' && !roundActive){
           p.isJugg = false; p.team = 0;
         }
-        if (gameMode !== 'team' && gameMode !== 'infect' && gameMode !== 'juggernaut') p.team = 0;
+        // target late join: assign a target
+        if (gameMode === 'target' && roundActive){
+          assignTargetFor(id);
+        }
+        if (gameMode !== 'team' && gameMode !== 'infect' && gameMode !== 'juggernaut' && gameMode !== 'target' && gameMode !== 'musket') p.team = 0;
         send(p.ws, { t:'mode', mode:(gameMode || 'ffa'), team:p.team || 0, teamName:TEAM_NAMES[p.team] || MODE_NAMES.FFA });
         broadcast({ t:'join', id, name:p.name, skin:p.skin, score:p.score, deaths:p.deaths, team:p.team }, id);
         broadcast({ t:'team', id, team:p.team }, id);
@@ -717,12 +748,44 @@ wss.on('connection', (ws, req) => {
           broadcastScore();
           break;
         }
+        // TARGET: only kills on your assigned target count
+        if (roundActive && gameMode === 'target'){
+          p.deaths = (p.deaths || 0) + 1;
+          let targetKill = false;
+          if (killer && killerId !== id && killer.targetId === id){
+            killer.score = (killer.score || 0) + 1;
+            targetKill = true;
+            assignTargetFor(killerId);
+          }
+          const tKnife = !!p.lastHitKnife; const tBs = !!p.lastHitBackstab;
+          p.lastHitKnife = false; p.lastHitBackstab = false; p.lastHitFrom = 0; p.dmgLog = new Map();
+          broadcast({ t:'kill', victim:id, by:killerId, assist:0, knife:tKnife, bs:tBs, hs:!!p.lastHitHs, w:(p.lastHitWeapon|0), demoted:false, names:{ v:p.name, k:killer ? killer.name : 'ARENA', a:null }, kteam:killer?killer.team:0, vteam:p.team, ateam:0, scores:scoreList(), limit:limitNow(), mode:gameMode, totals:teamTotals(), targetKill });
+          broadcastScore();
+          if (targetKill && killer && killer.score >= TARGET_LIMIT) finishRound(killerId);
+          break;
+        }
+        // MUSKET: muskets only, first to 10 — no demotions
+        if (roundActive && gameMode === 'musket'){
+          p.deaths = (p.deaths || 0) + 1;
+          let knifeKillM=false, backstabM=false;
+          if (killer && killerId !== id){
+            knifeKillM = !!(p.lastHitFrom === killerId && p.lastHitKnife && (Date.now() - (p.lastHitAt||0)) < 2500);
+            backstabM = knifeKillM && !!p.lastHitBackstab;
+            killer.score = (killer.score || 0) + 1;
+          }
+          p.lastHitKnife=false; p.lastHitBackstab=false; p.lastHitFrom=0; p.dmgLog=new Map();
+          const musketHs = !!p.lastHitHs;
+          broadcast({ t:'kill', victim:id, by:killerId, assist:0, knife:knifeKillM, bs:backstabM, hs:musketHs, w:(p.lastHitWeapon|0), demoted:false, names:{ v:p.name, k:killer?killer.name:'ARENA', a:null }, kteam:killer?killer.team:0, vteam:p.team, ateam:0, scores:scoreList(), limit:limitNow(), mode:gameMode, totals:teamTotals() });
+          broadcastScore();
+          if (killer && killer.score >= MUSKET_LIMIT) finishRound(killerId);
+          break;
+        }
         let knifeKill = false, backstab = false, demoted = false, assistId = 0;
         if (roundActive){
           p.deaths = (p.deaths || 0) + 1;
           knifeKill = !!(killer && killerId !== id && p.lastHitFrom === killerId && p.lastHitKnife && (Date.now() - (p.lastHitAt || 0)) < 2500);
           backstab = knifeKill && !!p.lastHitBackstab;
-          if (knifeKill && p.score > 0 && gameMode !== 'knife'){ p.score -= 1; demoted = true; }   // shanked: lose a point, drop a gun tier (never below 0). KNIFE FIGHT: points are sacred, no demotions
+          if (knifeKill && p.score > 0 && gameMode !== 'knife' && gameMode !== 'target' && gameMode !== 'musket'){ p.score -= 1; demoted = true; }   // shanked: lose a point, drop a gun tier (never below 0). KNIFE FIGHT: points are sacred, no demotions
           if (killer && killerId !== id) killer.score = (killer.score || 0) + 1;
           // ASSIST — TEAM MODE ONLY, and ONLY inside the killer's own squad: the most recent same-team
           // damager who didn't finish the kill still gets a point. Claim lapses 5s after your last hit
@@ -811,6 +874,8 @@ wss.on('connection', (ws, req) => {
       } else {
         checkJuggNoJuggEnd();
       }
+    } else if (roundActive && gameMode === 'target'){
+      reassignTargetsOf(id);
     }
     console.log(`[-] player ${id} left (${players.size} online)` + (wasInfect ? ' [was infected]' : ''));
   });
