@@ -3,6 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#05070c">
+<meta name="description" content="NEON RIFT: BLACKOUT — Fast arena FPS. Solo endless waves or LAN deathmatch.">
+<meta property="og:title" content="NEON RIFT: BLACKOUT">
+<meta property="og:description" content="Fast arena combat. Random weapons. Solo waves or LAN deathmatch — FFA, Infection, Automatics, Shotguns.">
+<meta property="og:image" content="/favicon-512.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="/favicon-512.png">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/favicon.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/favicon-180.png">
 <title>NEON RIFT: BLACKOUT — Arena FPS</title>
 <style>
   :root { --cyan:#2cf2ff; --orange:#ff9a3c; --red:#ff3b57; --gap:10px; }
@@ -41,6 +53,17 @@
   .quickStats div { border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.035); padding:14px 12px; text-align:center; }
   .quickStats b { display:block; color:#fff; font-size:30px; font-family:Consolas,monospace; text-shadow:0 0 12px rgba(44,242,255,.55); }
   .quickStats span { display:block; color:#8fa3bd; font-size:10px; letter-spacing:3px; text-transform:uppercase; margin-top:4px; }
+  .updateLog { margin-top:22px; border:1px solid rgba(44,242,255,.18); background:linear-gradient(180deg, rgba(44,242,255,.06), rgba(0,0,0,.18)); padding:14px 16px 12px; backdrop-filter:blur(3px); box-shadow:inset 0 0 20px rgba(44,242,255,.04); }
+  .updateLogHead { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+  .updateLogTitle { font-size:10px; letter-spacing:4px; color:var(--cyan); display:flex; align-items:center; gap:8px; text-transform:uppercase; }
+  .updateLogTitle:before { content:""; width:7px; height:7px; border-radius:50%; background:var(--cyan); box-shadow:0 0 10px var(--cyan); flex:0 0 auto; }
+  .updateLogVer { font:9px Consolas,monospace; letter-spacing:2px; color:rgba(44,242,255,.7); border:1px solid rgba(44,242,255,.22); background:rgba(44,242,255,.08); padding:3px 7px; }
+  .updateLog ul { list-style:none; padding:0; margin:0; display:grid; gap:7px; }
+  .updateLog li { position:relative; padding-left:16px; color:#c4d4e8; font-size:11px; letter-spacing:.8px; line-height:1.6; text-transform:uppercase; }
+  .updateLog li:before { content:"▸"; position:absolute; left:0; top:0; color:var(--cyan); font-size:10px; line-height:1.6; text-shadow:0 0 8px rgba(44,242,255,.6); }
+  .updateLog li b { color:#fff; font-weight:800; }
+  .updateLog li em { color:var(--orange); font-style:normal; }
+  .updateLog li small { color:#8fa3bd; font-size:10px; letter-spacing:1px; }
   .playPanel { padding:28px; clip-path:polygon(22px 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%, 0 22px);
     overflow-y:auto; overflow-x:hidden; max-height:calc(100vh - 108px); scrollbar-width:thin; scrollbar-color:rgba(44,242,255,.38) transparent; }
   .playPanel::-webkit-scrollbar { width:6px; }
@@ -227,6 +250,20 @@
   #streak { position:absolute; top:31%; left:50%; transform:translateX(-50%); font-size:26px; font-weight:900; letter-spacing:9px;
     color:var(--orange); text-shadow:0 0 18px rgba(255,154,60,.9); opacity:0; white-space:nowrap; text-transform:uppercase; }
   #streak.show { animation:streakAnim 1.8s ease forwards; }
+  /* death recap + build info + mutator */
+  #deathRecap { position:absolute; bottom:28%; left:50%; transform:translateX(-50%); text-align:center; opacity:0; pointer-events:none; background:rgba(8,14,24,.88); border:1px solid rgba(255,59,87,.45); padding:14px 28px; min-width:360px; box-shadow:0 0 22px rgba(255,59,87,.35); }
+  #deathRecap.show { opacity:1; animation:deathIn .3s ease; }
+  @keyframes deathIn { from{ transform:translateX(-50%) scale(.9); opacity:0; } to{ transform:translateX(-50%) scale(1); opacity:1; } }
+  #deathRecap b { color:#ff3b57; }
+  #deathRecap small { display:block; color:#8fa3bd; font-size:10px; letter-spacing:2px; margin-top:6px; }
+  #buildInfo { position:absolute; bottom:8px; right:12px; font:9px Consolas,monospace; letter-spacing:2px; color:rgba(255,255,255,.55); background:rgba(0,0,0,.35); padding:4px 8px; border:1px solid rgba(44,242,255,.18); }
+  #buildInfo.ok { color:#2cf2ff; border-color:rgba(44,242,255,.35); }
+  #buildInfo.stale { color:#ff9a3c; border-color:rgba(255,154,60,.35); animation:pulse .9s infinite; }
+  .mutatorBanner { position:absolute; top:26%; left:50%; transform:translateX(-50%); font-size:18px; letter-spacing:6px; color:#ffd040; text-shadow:0 0 14px rgba(255,208,64,.7); background:rgba(0,0,0,.45); padding:8px 18px; border:1px solid rgba(255,208,64,.35); }
+  body.mut-dark #staticVignette { background:radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,.78) 100%) !important; }
+body.mut-dark { filter:contrast(1.1) brightness(.85); }
+#killfeed .kf .kfIcon { font-size:12px; margin-right:6px; filter:drop-shadow(0 0 4px rgba(255,255,255,.4)); }
+  #minimapWrap.reveal { box-shadow:0 0 18px rgba(255,50,50,.6); border:1px solid rgba(255,50,50,.5) !important; }
   @keyframes streakAnim { 0%{opacity:0; transform:translateX(-50%) scale(1.6);} 12%{opacity:1; transform:translateX(-50%) scale(1);} 75%{opacity:1;} 100%{opacity:0;} }
 
   /* random weapon rotation toast */
@@ -303,6 +340,23 @@
   .voteModeBtn.vmTEAM b { background:linear-gradient(90deg, #ff7d6e 0 50%, #79bcff 50% 100%); -webkit-background-clip:text; background-clip:text; color:transparent; }
   .voteModeBtn.vmKNIFE::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, transparent, rgba(255,208,64,.85), transparent); }
   .voteModeBtn.vmKNIFE b { color:#ffe680; text-shadow:0 0 12px rgba(255,208,64,.55); }
+  .voteModeBtn.vmINFECT::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, rgba(47,208,74,.2), rgba(47,208,74,.85), rgba(47,208,74,.2)); }
+  .voteModeBtn.vmINFECT b { color:#2fd04a; text-shadow:0 0 12px rgba(47,208,74,.5); }
+  .voteModeBtn.vmAUTO { border-color:rgba(255,154,60,.55); }
+  .voteModeBtn.vmAUTO::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, transparent, rgba(255,154,60,.85), transparent); }
+  .voteModeBtn.vmAUTO b { color:#ffb86e; text-shadow:0 0 12px rgba(255,154,60,.55); }
+  .voteModeBtn.vmSHOTGUN { border-color:rgba(186,104,255,.55); }
+  .voteModeBtn.vmSHOTGUN::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, transparent, rgba(186,104,255,.85), transparent); }
+  .voteModeBtn.vmSHOTGUN b { color:#c99bff; text-shadow:0 0 12px rgba(186,104,255,.55); }
+  .voteModeBtn.vmSNIPER { border-color:rgba(150,160,175,.75); background:rgba(150,160,175,.07); }
+  .voteModeBtn.vmSNIPER::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, transparent, rgba(150,160,175,.9), transparent); }
+  .voteModeBtn.vmSNIPER b { color:#9aa3b5; text-shadow:0 0 12px rgba(180,190,210,.55); }
+  .voteModeBtn.vmONESHOT { border-color:rgba(255,255,255,.85); background:rgba(255,255,255,.04); }
+  .voteModeBtn.vmONESHOT::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, transparent, rgba(255,255,255,.95), transparent); }
+  .voteModeBtn.vmONESHOT b { color:#ffffff; text-shadow:0 0 14px rgba(255,255,255,.65); }
+  .voteModeBtn.vmJUGG { border-color:rgba(255,59,87,.65); }
+  .voteModeBtn.vmJUGG::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, rgba(100,0,0,.9), rgba(255,59,87,.95), rgba(100,0,0,.9)); }
+  .voteModeBtn.vmJUGG b { color:#ff3b57; text-shadow:0 0 14px rgba(255,59,87,.7); }
   .voteModeBtn:hover b, .voteModeBtn.selected b { text-shadow:0 0 16px rgba(255,255,255,.35); }
 
   /* sandbox picker */
@@ -504,6 +558,8 @@
   </div>
 
   <div id="objective"></div>
+  <div id="buildInfo">v2.0 — 27 OCT — BUILD __BUILD__</div>
+  <div id="deathRecap" class="hidden"><div id="deathText"></div><small id="deathSub"></small></div>
 </div>
 
 <div id="deployOverlay" class="hidden">
@@ -548,8 +604,23 @@
       <p class="menuCopy">Fast arena combat. Random weapons. Solo waves or LAN deathmatch.</p>
       <div class="quickStats compactStats">
         <div><b id="menuGunCount">57</b><span>Guns</span></div>
-        <div><b>15</b><span>Waves</span></div>
+        <div><b>∞</b><span>Endless</span></div>
         <div><b>30</b><span>LAN</span></div>
+      </div>
+      <div class="updateLog">
+        <div class="updateLogHead">
+          <div class="updateLogTitle">UPDATE LOG</div>
+          <div class="updateLogVer">v2.0 — 27 OCT 2026</div>
+        </div>
+        <ul>
+          <li><b>SNIPERS ONLY</b> — NEW · gray vote · snipers only · first to 15 · final ATLAS ROCKET</li>
+          <li><b>JUGGERNAUT</b> — 500HP VORTEX infinite ammo · hunters random every kill</li>
+          <li><b>ONE SHOT</b> — white vote · 1-bullet mag · 1 HP instakill · first to 20</li>
+          <li><b>AUTOMATICS</b> — first to 20 · final LEADLINE MUSKET</li>
+          <li><b>SHOTGUNS</b> — first to 20 · final SNOWBALL SLINGER</li>
+          <li><b>DEATH RECAP</b> — 2s killcam · “killed by X with Y”</li>
+          <li><b>TEAM FIX</b> — Red vs Blue keeps correct teams after vote</li>
+        </ul>
       </div>
     </section>
 
@@ -579,9 +650,9 @@
         <div class="threatStrip"><span>Boss Waves</span><span>Rarities</span><span>Contracts</span><span>LAN</span></div>
       </div>
 
-      <button class="btn modeBtn" id="startBtn"><span>Solo</span><small>15 waves</small></button>
+      <button class="btn modeBtn" id="startBtn"><span>Solo</span><small>endless — escalating horde</small></button>
       <button class="btn modeBtn" id="sandboxBtn"><span>Sandbox</span><small>any gun · any map · spawn anything</small></button>
-      <button class="btn red modeBtn" id="mpBtn"><span>LAN MATCH</span><small>FFA · RED v BLUE · KNIFE FIGHT</small></button>
+      <button class="btn red modeBtn" id="mpBtn"><span>LAN MATCH</span><small>FFA · TEAM · KNIFE · INFECTION · AUTOMATICS · SHOTGUNS · SNIPERS · ONE SHOT · JUGGERNAUT</small></button>
       <button class="btn menuSecondary" id="skinsBtn">Character Skins</button>
       <button class="btn menuSecondary" id="settingsBtn">Settings</button>
 
@@ -701,6 +772,7 @@ document.addEventListener('DOMContentLoaded', function(){
   });
 });
 </script>
+<script>window.GAME_BUILD="__BUILD__"; window.GAME_VERSION="v2.0 — 27 OCT 2026";</script>
 <script src="./shared/beat.js?v=__BUILD__"></script>
 <script type="module" src="./game.js?v=__BUILD__"></script>
 </body>

@@ -80,6 +80,7 @@ const SKINS = [
   { id:'solar',    name:'Solar Warden',   desc:'Radiant sun-gold flaring into burning orange', color:0xffd23c, trim:0xc2451a, eye:0xfff2a0, cost:1500, level:12 },
   { id:'void',     name:'Void Specter',   desc:'Violet phase frame',                     color:0x5a3aae, trim:0x2f1d66, eye:0xd040ff, cost:2100,  level:15 },
   { id:'hornet',   name:'Circuit Hornet', desc:'Hazard yellow shock trooper',            color:0xf2b32a, trim:0x8a5a12, eye:0xffffff, cost:2900,  level:18 },
+  { id:'juggernaut', name:'Juggernaut',   desc:'Heavy plated terror — 200+50HP/player slow juggernaut', color:0x8a1a1a, trim:0x3a0f0f, eye:0xff3b57, cost:999999, level:99 },
   { id:'toxic',    name:'Toxic Phantom',  desc:'Green biohazard glow suit',              color:0x2f9a52, trim:0x1a5530, eye:0x8fe08a, cost:4000,  level:21 },
   { id:'siren',    name:'Plasma Siren',   desc:'Magenta nightclub combat shell',         color:0xa82580, trim:0x601448, eye:0xff5ad0, cost:5500,  level:24 },
   { id:'arctic',   name:'Arctic Neon',    desc:'White/blue high contrast shell',         color:0x9ec2e0, trim:0x4a6480, eye:0x66eaff, cost:7500,  level:27 },
@@ -89,10 +90,11 @@ const SKINS = [
   { id:'aurum',    name:'Aurum Prime',    desc:'Liquid-gold champion with a metal shine',color:0xb59a20, trim:0x5e4e0d, eye:0xffea66, cost:25000, level:40 },
   { id:'monarch',  name:'Void Monarch',   desc:'A pure-black void crowned in blazing neon white', color:0xf8ffff, trim:0x000000, eye:0xffffff, cost:50000, level:50 },
 ];
+/* XP curve (inlined — matches original file before extraction) */
 function xpForLevel(level){ return level <= 1 ? 0 : Math.floor(120 * Math.pow(level-1, 1.65) + 80 * (level-1)); }
 function levelFromXp(xp){ let lvl = 1; while (lvl < 99 && xp >= xpForLevel(lvl+1)) lvl++; return lvl; }
 function skinDef(id){ return SKINS.find(s => s.id === id) || SKINS[0]; }
-function defaultProgress(){ return { xp:0, cash:0, skin:'rift', unlocked:['rift'], totalKills:0, soloWaves:0, dmWins:0, name:'RIFT-OPS', challengeState:{} }; }
+function defaultProgress(){ return { xp:0, cash:0, skin:'rift', unlocked:['rift'], totalKills:0, soloWaves:0, dmWins:0, name:'RIFT-OPS', challengeState:{}, peakLevel:1 }; }
 function loadProgress(){
   try {
     const p = { ...defaultProgress(), ...(JSON.parse(localStorage.getItem('neonRiftProgress') || '{}')) };
@@ -102,16 +104,26 @@ function loadProgress(){
     p.name = String(p.name || 'RIFT-OPS').toUpperCase().replace(/[<>]/g,'').slice(0,14);
     if (!p.unlocked.includes('rift')) p.unlocked.push('rift');
     if (!SKINS.some(s => s.id === p.skin) || !p.unlocked.includes(p.skin)) p.skin = 'rift';
+    // SAFEGUARD: level never goes backwards (old veterans capped at 45, future curve tweaks)
+    if (!p.peakLevel || typeof p.peakLevel !== 'number') p.peakLevel = levelFromXp(p.xp) || 1;
     return p;
   } catch(e){ return defaultProgress(); }
 }
 const PROGRESS = loadProgress();
 function saveProgress(){ localStorage.setItem('neonRiftProgress', JSON.stringify(PROGRESS)); }
-function progressLevel(){ return levelFromXp(PROGRESS.xp); }
+function progressLevel(){
+  const cur = levelFromXp(PROGRESS.xp);
+  if (PROGRESS.peakLevel && PROGRESS.peakLevel > cur) return PROGRESS.peakLevel;
+  return cur;
+}
 function grantProgress(xp=0, cash=0, reason=''){
+  // SOLO BOOST: 100x rewards while in solo (not sandbox) — wave clears, mission complete, enemy kills, challenges
   const before = progressLevel();
   PROGRESS.xp = Math.max(0, Math.floor(PROGRESS.xp + xp));
   PROGRESS.cash = Math.max(0, Math.floor(PROGRESS.cash + cash));
+  // pin peak — only ever goes up; existing stuck-at-45 players will climb again
+  const curLvl = levelFromXp(PROGRESS.xp);
+  if (!PROGRESS.peakLevel || curLvl > PROGRESS.peakLevel) PROGRESS.peakLevel = curLvl;
   if (typeof S !== 'undefined' && S.started){ S.xpEarned += xp; S.cashEarned += cash; }
   saveProgress();
   updateProgressUI();
@@ -119,13 +131,14 @@ function grantProgress(xp=0, cash=0, reason=''){
   if (after > before){ showBanner('LEVEL ' + after); SFX.roundStart(); }
   if ((xp || cash) && reason) addKillFeed(null, `+${cash} CR &nbsp;//&nbsp; +${xp} XP &nbsp;<b>${reason}</b>`);
 }
-function dateKey(){ const d = new Date(); return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`; }
-function weekKey(){ const d = new Date(); const oneJan = new Date(d.getFullYear(),0,1); return `${d.getFullYear()}-W${Math.ceil((((d-oneJan)/86400000)+oneJan.getDay()+1)/7)}`; }
+function dateKey(){ return new Date().toISOString().slice(0,10); }
+function weekKey(){ const d=new Date(); const s=new Date(d.getFullYear(),0,1); const days=Math.floor((d-s)/86400000); const w=Math.ceil((days+d.getDay()+1)/7); return d.getFullYear()+'-W'+String(w).padStart(2,'0'); }
 function activeChallenges(){
+  const dk=dateKey(), wk=weekKey();
   return [
-    { id:'daily-kills-'+dateKey(), kind:'daily', type:'kill', title:'Daily Hunt', desc:'Get 30 eliminations', target:30, xp:500, cash:350 },
-    { id:'daily-waves-'+dateKey(), kind:'daily', type:'wave', title:'Wavebreaker', desc:'Clear 5 solo waves', target:5, xp:450, cash:300 },
-    { id:'weekly-wins-'+weekKey(), kind:'weekly', type:'dmWin', title:'Blackout Champion', desc:'Win 2 LAN rounds', target:2, xp:1500, cash:900 },
+    { id:'daily_kill_'+dk, kind:'daily', type:'kill', target:25, xp:200, cash:150, title:'Daily Hunt', desc:'25 eliminations' },
+    { id:'daily_wave_'+dk, kind:'daily', type:'wave', target:3, xp:150, cash:100, title:'Daily Survival', desc:'Clear 3 waves' },
+    { id:'weekly_win_'+wk, kind:'weekly', type:'dmWin', target:3, xp:600, cash:400, title:'Weekly Domination', desc:'3 LAN wins' },
   ];
 }
 function challengeEntry(ch){
@@ -161,6 +174,8 @@ function mulberry32(seed){ return function(){ let t = seed += 0x6D2B79F5;
   t = Math.imul(t ^ t>>>15, t|1); t ^= t + Math.imul(t ^ t>>>7, t|61);
   return ((t ^ t>>>14) >>> 0) / 4294967296; }; }
 const mrand = mulberry32(1337);
+function hashSeed(s){ let h = 2166136261 >>> 0; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0 || 1337; }
+function seededRng(seedStr){ return mulberry32(hashSeed(seedStr)); }
 
 /* ================= RENDERER / SCENE ================= */
 const canvas = $('game');
@@ -391,7 +406,7 @@ function addSolid(cx, cz, w, d, h, mat, { y0=0, glow=null, visual=true } = {}){
 }
 
 let currentMapName = 'FORGE';
-const MAP_NAMES = ['FORGE','NEXUS','DUSK YARD','COLD STORAGE','RIFT DOCKS'];
+const MAP_NAMES = ['FORGE','NEXUS','DUSK YARD','COLD STORAGE','RIFT DOCKS','ASHEN CITADEL'];
 let activeSpawnPoints = [[40,0],[-40,0],[0,40],[0,-40],[34,34],[-34,34],[34,-34],[-34,-34]];
 let activePickupLayout = [[-20,0,'health'],[20,0,'health'],[0,-28,'health'],[0,0,'ammo'],[28,28,'ammo'],[-28,-28,'ammo'],[0,28,'health'],[28,-14,'ammo']];
 let mapLampPositions = [];
@@ -506,16 +521,16 @@ function addForgeDressing(){
   addRotatingRing(0,0,5.25,4.4,0xff9a3c,0.95); addRotatingRing(0,0,5.55,3.15,0x2cf2ff,-1.25);
   addBeacon(0,0,0xff9a3c,3.4);
   for (const [x,z] of [[-30,6],[30,-6],[-6,-30],[6,30]]) addPipe(x,z,8,Math.abs(x)>Math.abs(z)?'z':'x');
-  for (const [x,z] of [[-12,22],[13,-23],[24,14],[-23,-13]]) addDestructibleProp(x,z,'barrel');
-  for (const [x,z] of [[-18,16],[18,-16],[26,-22],[-27,21]]) addDestructibleProp(x,z,'crate');
+  // breakables removed — maps are solid only (no destructible props)
+  // breakables removed — maps are solid only (no destructible props)
   addWorldSign('FORGE 09', -40.9, 3.2, -16, Math.PI/2, '#ff9a3c', 'THERMAL REACTOR LIVE');
-  addWorldSign('NEMESIS', 16, 3.1, -40.9, 0, '#ff3b57', 'BOSS BREACH EVERY 5 WAVES');
+  addWorldSign('NEMESIS', 16, 3.1, -40.9, 0, '#ff3b57', 'ENDLESS — BOSS EVERY 5 WAVES');
   addWeather('embers', 260);
 }
 function addNexusDressing(){
   addRotatingRing(0,0,5.1,5.2,0x2cf2ff,1.25); addRotatingRing(0,0,5.65,2.6,0xd040ff,-1.6);
   for (const [x,z] of [[0,0],[30,0],[-30,0],[0,30],[0,-30]]) addBeacon(x,z,0x2cf2ff,2.1);
-  for (const [x,z] of [[12,28],[-12,-28],[28,-12],[-28,12]]) addDestructibleProp(x,z,'data');
+  // breakables removed — maps are solid only (no destructible props)
   addWorldSign('NEXUS CORE', -40.9, 3.3, 14, Math.PI/2, '#2cf2ff', 'SIMULATION LANES ONLINE');
   addWorldSign('RIFT INDEX', 14, 3.3, 40.9, Math.PI, '#d040ff', 'CONTRACT DATA STREAM');
   addWeather('data', 330);
@@ -526,8 +541,8 @@ function addDuskDressing(){
     addSolid(x,0,1.0,54,5.6,MAT.dark,{glow:MAT.orangeGlow});
     addPipe(x,0,50,'z',0x303846);
   }
-  for (const [x,z] of [[-12,28],[12,-28],[-34,0],[34,0]]) addDestructibleProp(x,z,'barrel');
-  for (const [x,z] of [[-12,-28],[12,28],[28,0],[-28,0]]) addDestructibleProp(x,z,'crate');
+  // breakables removed — maps are solid only (no destructible props)
+  // breakables removed — maps are solid only (no destructible props)
   addWorldSign('DUSK YARD', -40.9, 3.4, 10, Math.PI/2, '#ff9a3c', 'CONTAINER BLOCKADE');
   addWorldSign('EVAC DENIED', 10, 3.4, 40.9, Math.PI, '#ff3b57', 'BLACKOUT RAIN FRONT');
   const l1 = new THREE.SpotLight(0x88bbff, 3.2, 70, 0.28, 0.45, 1.2); l1.position.set(-34,9,-34); l1.target.position.set(0,0,0); worldGroup.add(l1); worldGroup.add(l1.target);
@@ -622,12 +637,16 @@ function buildForgeLayout(){
   addSolid( 16, -10, 10, 1.4, 2.6, MAT.wall, { glow:MAT.cyanGlow });
   addSolid( 10,  18, 1.4, 10, 2.6, MAT.wall, { glow:MAT.orangeGlow });
   addSolid(-10, -18, 1.4, 10, 2.6, MAT.wall, { glow:MAT.orangeGlow });
+  // FIX: forge scatter must be identical for every player — a global mrand that advances
+  // with every buildMap call desyncs LAN peers who built thumbnails in different order.
+  // Use a map-seeded local RNG so the 16 crates land in the same spots for everyone.
   let placed = 0;
+  const rng = seededRng('FORGE_v2');
   while (placed < 16){
-    const x = (mrand()*2-1) * 38, z = (mrand()*2-1) * 38;
+    const x = (rng()*2-1) * 38, z = (rng()*2-1) * 38;
     if (Math.hypot(x,z) < 12 || (Math.abs(x) > 28 && Math.abs(z) > 28)) continue;
-    const s = 1.4 + mrand()*1.4, h = 0.9 + mrand()*1.3;
-    addSolid(x, z, s, s, h, mrand() > .5 ? MAT.crate : MAT.crate2, { glow: mrand() > .6 ? MAT.cyanGlow : null });
+    const s = 1.4 + rng()*1.4, h = 0.9 + rng()*1.3;
+    addSolid(x, z, s, s, h, rng() > .5 ? MAT.crate : MAT.crate2, { glow: rng() > .6 ? MAT.cyanGlow : null });
     placed++;
   }
   for (const [x,z,w,d,h] of [[-24,-2,6,1,1.15],[24,2,6,1,1.15],[-2,24,1,6,1.15],[2,-24,1,6,1.15],[12,8,5,1,1.15],[-12,-8,5,1,1.15]])
@@ -669,8 +688,8 @@ function buildDuskYardLayout(){
 function addColdStorageDressing(){
   addRotatingRing(0,0,5.6,3.6,0x66eaff,1.1); addRotatingRing(0,0,5.95,2.2,0x2cf2ff,-1.4);
   addBeacon(0,14,0x66eaff,2.6); addBeacon(0,-14,0x66eaff,2.6);
-  for (const [x,z] of [[-24,-9],[24,9],[-24,9],[24,-9]]) addDestructibleProp(x,z,'crate');
-  for (const [x,z] of [[-8,-30],[8,30],[30,-8],[-30,8]]) addDestructibleProp(x,z,'barrel');
+  // breakables removed — maps are solid only (no destructible props)
+  // breakables removed — maps are solid only (no destructible props)
   addWorldSign('COLD STORAGE', -40.9, 3.3, -12, Math.PI/2, '#66eaff', 'FREEZER AISLES 12-B');
   addWorldSign('KEEP FROZEN', 12, 3.3, 40.9, Math.PI, '#2cf2ff', 'THERMAL LOCK ENGAGED');
   for (const [x,z] of [[-36,0],[36,0]]) addPipe(x,z,9,'z');
@@ -703,35 +722,210 @@ function addCrane(x,z){
   addSolid(x, z, 1.0, 20, 0.7, MAT.dark, { y0: 6.1, glow: MAT.orangeGlow });
 }
 function addRiftDocksDressing(){
-  addCrane(-26,-26); addCrane(26,26);
-  addRotatingRing(0,34,4.6,3.4,0xff9a3c,0.8);
-  addBeacon(0,-34,0xff9a3c,2.6); addBeacon(0,34,0x2cf2ff,2.6);
-  for (const [x,z] of [[-12,0],[12,0],[-34,-12],[34,12]]) addDestructibleProp(x,z,'crate');
-  for (const [x,z] of [[-6,-24],[6,24],[24,-20],[-24,20]]) addDestructibleProp(x,z,'barrel');
-  addWorldSign('RIFT DOCKS', -40.9, 3.4, 12, Math.PI/2, '#2cf2ff', 'CONTAINER BERTH 7');
-  addWorldSign('NO MANIFEST', 12, 3.4, -40.9, 0, '#ff9a3c', 'BLACKOUT RAIN FRONT');
-  const l1 = new THREE.SpotLight(0x2cf2ff, 2.8, 64, 0.3, 0.45, 1.2); l1.position.set(-30,9,30); l1.target.position.set(0,0,0); worldGroup.add(l1); worldGroup.add(l1.target);
-  const l2 = new THREE.SpotLight(0xff9a3c, 2.4, 58, 0.32, 0.45, 1.2); l2.position.set(30,9,-30); l2.target.position.set(0,0,0); worldGroup.add(l2); worldGroup.add(l2.target);
-  worldAnim.push({ spot:l1, target:l1.target, center:new THREE.Vector3(0,0,0), radius:20, speed:0.5, phase:1.2 });
-  worldAnim.push({ spot:l2, target:l2.target, center:new THREE.Vector3(0,0,0), radius:18, speed:-0.6, phase:3.1 });
-  addWeather('rain', 540);
+  // RIFT DOCKS — vertical harbor
+  addRotatingRing(0,0,5.2,3.2,0x2cf2ff,0.6);
+  addWorldSign('RIFT DOCKS', -40.9,3.8,0, Math.PI/2, '#2cf2ff', 'VERTICAL YARD // CRANE HOLD');
+  addWorldSign('YARD HIGH', 0,3.6,40.9, Math.PI, '#ff9a3c', 'STACKS 3-HIGH — CLIMB');
+  addWeather('rain', 280);
 }
 function buildRiftDocksLayout(){
-  // rain-slick dockside: long container lanes, gantry cranes, pier cover
-  for (const [x,z,w,d,h] of [[0,-14,26,3,3.0],[0,14,26,3,3.0]]) addSolid(x,z,w,d,h,MAT.crate2,{glow:MAT.orangeGlow});
-  addSolid(0, 0, 4, 10, 1.2, MAT.dark, { glow:MAT.cyanGlow });
-  addSolid(0, 0, 2.4, 4, 2.8, MAT.wall, { y0:1.2, glow:MAT.cyanGlow });
-  for (const sx of [-1,1]){
-    addSolid(sx*20, 0, 6, 14, 1.5, MAT.crate, { glow:MAT.cyanGlow });
-    addSolid(sx*30, 0, 3.4, 24, 3.6, MAT.wall, { glow:MAT.orangeGlow });
-    addSolid(sx*12, -28, 10, 2.6, 2.4, MAT.crate2, { glow:MAT.cyanGlow });
-    addSolid(sx*12, 28, 10, 2.6, 2.4, MAT.crate2, { glow:MAT.cyanGlow });
+  // === RIFT DOCKS — VERTICAL HARBOR v2 (usable buildings, not giant blocks) ===
+  // central pier
+  addSolid(0,0, 48,14,0.4, MAT.dark, {glow:MAT.cyanGlow});
+  // freighter north — 2-level, boardable
+  addSolid(0,15, 30,8,2.4, MAT.dark, {glow:MAT.orangeGlow}); // hull
+  addSolid(0,15, 22,5,2.8, MAT.wall, {y0:2.4, glow:MAT.cyanGlow}); // lower deck
+  addSolid(0,15, 14,3,2.0, MAT.dark, {y0:5.2, glow:MAT.orangeGlow}); // bridge
+  addSolid(-9,15, 2.8,2.8,3.2, MAT.wall, {y0:2.4}); addSolid(9,15, 2.8,2.8,3.2, MAT.wall, {y0:2.4});
+  addSolid(-8,8.5, 2.4,4,0.6, MAT.dark); addSolid(8,8.5, 2.4,4,0.6, MAT.dark); // ramps
+  // ---- north warehouses — hollow, enterable, windowed, walkable roof ----
+  for(const wx of [-21,21]){
+    // north wall solid — shifted outward 1m for wider center
+    addSolid(wx, 33.5, 12,1,4.2, MAT.wall, {glow:MAT.orangeGlow});
+    // south wall with 3m door gap centered
+    addSolid(wx-3.75, 24.5, 4.5,1,4.2, MAT.wall, {glow:MAT.orangeGlow});
+    addSolid(wx+3.75, 24.5, 4.5,1,4.2, MAT.wall, {glow:MAT.orangeGlow});
+    // west wall split with 2m window gap at center
+    addSolid(wx-5.5, 26.25, 1,3.5,4.2, MAT.wall);
+    addSolid(wx-5.5, 31.75, 1,3.5,4.2, MAT.wall);
+    // east wall split with window
+    addSolid(wx+5.5, 26.25, 1,3.5,4.2, MAT.wall);
+    addSolid(wx+5.5, 31.75, 1,3.5,4.2, MAT.wall);
+    // roof walkable
+    addSolid(wx,29, 12,10,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+    // interior cover crates
+    addSolid(wx-2.5,29, 2.2,2.2,1.2, MAT.crate);
+    addSolid(wx+2.5,29, 2.2,2.2,1.0, MAT.crate2);
+    // interior loft walkable at 2.2m (north half)
+    addSolid(wx,31.8, 8,2.2,0.35, MAT.dark, {y0:2.2});
+    // exterior stairs to roof (south side, outside warehouse)
+    for(let i=0;i<7;i++) addSolid(wx, 22.2 - i*0.9, 2.0,0.85,0.6, MAT.crate2, {y0:i*0.6});
   }
-  for (const [x,z,c] of [[-20,-14,0xff9a3c],[20,14,0xff9a3c],[20,-14,0x2cf2ff],[-20,14,0x2cf2ff],[0,36,0x2cf2ff],[0,-36,0xff9a3c]]) addLamp(x,z,c);
+  // north perimeter cover behind warehouses (low wall for north spawns) — widened 32
+  addSolid(0,39, 32,1.2,2.6, MAT.crate, {glow:MAT.cyanGlow});
+  // east/west container lanes — split with gap, moved outward for better sightline
+  for(const ex of [-27.5,27.5]){
+    addSolid(ex, 3.6, 2.4,5,3.2, MAT.wall, {glow:MAT.cyanGlow}); // north segment
+    addSolid(ex,-3.6, 2.4,5,3.2, MAT.wall, {glow:MAT.cyanGlow}); // south segment
+  }
+  // south container towers — moved south 2m and outward 1m, more diagonal
+  for(const tx of [-15,15]){
+    addSolid(tx,-20, 8,6,2.2, MAT.crate, {glow:MAT.cyanGlow}); // base
+    addSolid(tx,-20, 8,6,2.0, MAT.crate2, {y0:2.2}); // mid
+    addSolid(tx,-20, 6,4,1.6, MAT.crate, {y0:4.2, glow:MAT.cyanGlow}); // top crate
+    // stairs to mid then top on south face
+    for(let i=0;i<4;i++) addSolid(tx, -24.2 - i*0.85, 2.0,0.85,0.55, MAT.crate2, {y0:i*0.55});
+    for(let i=0;i<3;i++) addSolid(tx, -22.5 + i*0.85, 1.8,0.75,0.55, MAT.crate, {y0:2.2+i*0.55});
+  }
+  addSolid(0,-26, 14,3.2,2.2, MAT.crate2); // south low wall connecting towers — lengthened
+  // harbor offices — rearranged diagonal for cross-fire (was east/west, now NW/SE offset)
+  // west office shifted NW to  -28,6
+  addSolid(-28, 6, 8,5,3.0, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid(-28, 8.6, 8,0.9,1.0, MAT.dark, {y0:3.0, glow:MAT.orangeGlow}); // roof parapet north
+  addSolid(-28,3.4, 8,0.9,1.0, MAT.dark, {y0:3.0});
+  addSolid(-31.5, 6, 0.9,5,1.0, MAT.dark, {y0:3.0});
+  addSolid(-24.5, 6, 0.9,5,1.0, MAT.dark, {y0:3.0});
+  addSolid(-28,6, 6,4,0.4, MAT.dark, {y0:3.0}); // roof
+  addSolid(-28, 7, 2,1.2,1.0, MAT.crate2);
+  // east office shifted SE to 28,-8
+  addSolid(28, -8, 8,5,3.0, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid(28, -5.4, 8,0.9,1.0, MAT.dark, {y0:3.0, glow:MAT.orangeGlow});
+  addSolid(28,-10.6, 8,0.9,1.0, MAT.dark, {y0:3.0});
+  addSolid(31.5, -8, 0.9,5,1.0, MAT.dark, {y0:3.0});
+  addSolid(24.5, -8, 0.9,5,1.0, MAT.dark, {y0:3.0});
+  addSolid(28,-8, 6,4,0.4, MAT.dark, {y0:3.0});
+  addSolid(28, -7, 2,1.2,1.0, MAT.crate);
+  // central elevated walkway — connects over pier at 4.2m
+  addSolid(0,0, 36,2.0,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid(0,7, 2.0,8,3.0, MAT.wall, {y0:0.4}); addSolid(0,-7, 2.0,8,3.0, MAT.wall, {y0:0.4}); // supports
+  for(let i=0;i<8;i++) addSolid(-16, -6 + i*0.9, 2.2,0.9,0.55, MAT.crate2, {y0:i*0.55}); // west stairs to walkway — moved inward 2m
+  for(let i=0;i<8;i++) addSolid(16, -6 + i*0.9, 2.2,0.9,0.55, MAT.crate2, {y0:i*0.55}); // east stairs
+  // crane — tall beam — pillars moved outward 1m for wider span
+  addSolid(-17,0, 1.2,1.2,7.2, MAT.dark); addSolid(17,0, 1.2,1.2,7.2, MAT.dark);
+  addSolid(0,0, 36,1.0,0.6, MAT.dark, {y0:6.8, glow:MAT.orangeGlow});
+  // control tower northwest — pushed to corner
+  addSolid(-32,32, 7,7,6.8, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid(-32,32, 5,5,0.4, MAT.dark, {y0:3.2, glow:MAT.cyanGlow}); // mid platform
+  addSolid(-32,32, 4,4,1.6, MAT.dark, {y0:6.8, glow:MAT.orangeGlow}); // cab
+  for(let i=0;i<6;i++) addSolid(-28,32, 1.2,0.9,0.55, MAT.crate2, {y0:i*0.55});
+  // southeast watch platform (mirrors tower, low) — pushed to corner
+  addSolid(32,-32, 6,6,3.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid(32,-32, 4,4,0.4, MAT.dark, {y0:3.2});
+  for(let i=0;i<4;i++) addSolid(32,-28.2 + i*0.9, 1.2,0.9,0.55, MAT.crate2, {y0:i*0.55});
   addRiftDocksDressing();
-  activeSpawnPoints = [[38,-20],[-38,20],[38,20],[-38,-20],[0,34],[0,-34],[34,0],[-34,0]];
-  activePickupLayout = [[0,0,'ammo'],[-20,7,'health'],[20,-7,'health'],[0,22,'ammo'],[0,-22,'ammo'],[-34,20,'health'],[34,-20,'health'],[34,20,'ammo'],[-34,-20,'ammo']];
+  // fixed spawn points: -30,30 and 30,-30 were inside towers (control tower / SE platform) — moved to open ground
+  activeSpawnPoints = [[30,30],[-30,18],[30,-18],[-30,-30],[0,34],[0,-34],[34,0],[-34,0]];
+  activePickupLayout = [[0,0,'ammo'],[14,14,'health'],[-14,14,'health'],[14,-14,'health'],[-14,-14,'health'],[0,20,'ammo'],[0,-20,'ammo'],[20,0,'ammo'],[-20,0,'ammo']];
 }
+
+function addAshenCitadelDressing(){
+  // minimal castle — no clutter, no lag
+  addRotatingRing(0,0,5.5,2.8,0xff6a2c,0.6);
+  addRotatingRing(0,0,4.0,1.8,0xff9a3c,-0.8);
+  addWorldSign('ASHEN CITADEL', -40.9,3.8,-10, Math.PI/2, '#ff6a2c', 'BURNED THRONE // ASH FALL');
+  addWorldSign('HOLD THE GATES', 10,3.6,40.9, Math.PI, '#ff9a3c', 'FOUR GATES // FOUR BASTIONS');
+  addWeather('embers', 220);
+}
+function buildAshenCitadelLayout(){
+  // === ASHEN CITADEL — CLEAN CITADEL (rebuilt keep + fixed bastion stairs) ===
+  // outer curtain wall — continuous ring with 4 gate gaps (7.5m), connected to bastions
+  addSolid(-17.25, 33, 22.5,2.2,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid( 17.25, 33, 22.5,2.2,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid( 33, 17.25, 2.2,22.5,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid( 33,-17.25, 2.2,22.5,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid(-17.25,-33, 22.5,2.2,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid( 17.25,-33, 22.5,2.2,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid(-33, 17.25, 2.2,22.5,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  addSolid(-33,-17.25, 2.2,22.5,4.2, MAT.wall, {glow:MAT.cyanGlow});
+  // gatehouses — 4.5x4.5 towers 5.2m tall flanking each gate
+  for (const [x,z] of [[-6,33],[6,33],[-6,-33],[6,-33],[-33,-6],[-33,6],[33,-6],[33,6]]){
+    addSolid(x,z,4.5,4.5,5.2, MAT.wall, {glow:MAT.orangeGlow});
+    addSolid(x, z+1.65, 4.5,0.7,0.9, MAT.dark, {y0:5.2, glow:MAT.orangeGlow});
+    addSolid(x, z-1.65, 4.5,0.7,0.9, MAT.dark, {y0:5.2, glow:MAT.orangeGlow});
+    addSolid(x+1.65, z, 0.7,4.5,0.9, MAT.dark, {y0:5.2, glow:MAT.orangeGlow});
+    addSolid(x-1.65, z, 0.7,4.5,0.9, MAT.dark, {y0:5.2, glow:MAT.orangeGlow});
+  }
+  // gate lintels
+  addSolid(0,33, 7.5,2.0,1.0, MAT.dark, {y0:3.2, glow:MAT.cyanGlow});
+  addSolid(0,-33,7.5,2.0,1.0, MAT.dark, {y0:3.2, glow:MAT.cyanGlow});
+  addSolid(33,0,2.0,7.5,1.0, MAT.dark, {y0:3.2, glow:MAT.cyanGlow});
+  addSolid(-33,0,2.0,7.5,1.0, MAT.dark, {y0:3.2, glow:MAT.cyanGlow});
+  // corner bastions — 10x10 towers 5.4m tall, with crenellations
+  for (const [sx,sz] of [[1,1],[1,-1],[-1,1],[-1,-1]]){
+    addSolid(sx*33, sz*33, 10,10,5.4, MAT.wall, {glow:MAT.cyanGlow});
+    addSolid(sx*33, sz*38.0, 10,1.0,1.0, MAT.dark, {y0:5.4, glow:MAT.orangeGlow});
+    addSolid(sx*38.0, sz*33, 1.0,10,1.0, MAT.dark, {y0:5.4, glow:MAT.orangeGlow});
+    addSolid(sx*33, sz*28.0, 10,0.6,0.7, MAT.dark, {y0:5.4});
+    addSolid(sx*28.0, sz*33, 0.6,10,0.7, MAT.dark, {y0:5.4});
+  }
+  // wall-walks — walkable slabs on top of curtain walls
+  addSolid(-17.25,33,22.5,1.6,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid( 17.25,33,22.5,1.6,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid( 33, 17.25,1.6,22.5,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid( 33,-17.25,1.6,22.5,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid(-17.25,-33,22.5,1.6,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid( 17.25,-33,22.5,1.6,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid(-33, 17.25,1.6,22.5,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  addSolid(-33,-17.25,1.6,22.5,0.4, MAT.dark, {y0:4.2, glow:MAT.cyanGlow});
+  // wall outer parapets
+  addSolid(-17.25,33.85,22.5,0.6,1.0, MAT.wall, {y0:4.6});
+  addSolid( 17.25,33.85,22.5,0.6,1.0, MAT.wall, {y0:4.6});
+  addSolid(-17.25,-33.85,22.5,0.6,1.0, MAT.wall, {y0:4.6});
+  addSolid( 17.25,-33.85,22.5,0.6,1.0, MAT.wall, {y0:4.6});
+  addSolid(33.85, 17.25,0.6,22.5,1.0, MAT.wall, {y0:4.6});
+  addSolid(33.85,-17.25,0.6,22.5,1.0, MAT.wall, {y0:4.6});
+  addSolid(-33.85, 17.25,0.6,22.5,1.0, MAT.wall, {y0:4.6});
+  addSolid(-33.85,-17.25,0.6,22.5,1.0, MAT.wall, {y0:4.6});
+  // bastion access stairs — fixed: pulled 3m inside from wall so not stuck inside wall
+  // 8 steps 3.2 wide, straight toward bastion face, ends just shy of bastion/wall
+  for(const [sx,sz] of [[1,1],[1,-1],[-1,1],[-1,-1]]){
+    for(let i=0;i<8;i++){
+      const z = sz*20 + sz*i*1.0;
+      addSolid(sx*30, z, 3.2,1.0,0.55, MAT.crate2, {y0:i*0.55});
+    }
+  }
+  // central keep — REBUILT from scratch (clean geometry)
+  // keep foundation 14x14
+  addSolid(0,0,14,14,1.0, MAT.dark, {glow:MAT.cyanGlow});
+  // keep outer walls with 3.5m doors — 4 sides, 2 segments each
+  addSolid(-4.0, 6.4, 5.0,1.2,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  addSolid( 4.0, 6.4, 5.0,1.2,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  addSolid(-4.0,-6.4, 5.0,1.2,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  addSolid( 4.0,-6.4, 5.0,1.2,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  addSolid( 6.4,-4.0, 1.2,5.0,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  addSolid( 6.4, 4.0, 1.2,5.0,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  addSolid(-6.4,-4.0, 1.2,5.0,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  addSolid(-6.4, 4.0, 1.2,5.0,4.5, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+  // keep corner towers — integrated 3.5x3.5
+  for(const [sx,sz] of [[1,1],[1,-1],[-1,1],[-1,-1]]){
+    addSolid(sx*6.2, sz*6.2, 3.5,3.5,6.4, MAT.wall, {y0:1.0, glow:MAT.cyanGlow});
+    addSolid(sx*6.2, sz*7.5, 3.5,0.7,0.9, MAT.dark, {y0:7.4});
+    addSolid(sx*6.2, sz*4.9, 3.5,0.7,0.9, MAT.dark, {y0:7.4});
+    addSolid(sx*7.5, sz*6.2, 0.7,3.5,0.9, MAT.dark, {y0:7.4});
+    addSolid(sx*4.9, sz*6.2, 0.7,3.5,0.9, MAT.dark, {y0:7.4});
+  }
+  // keep interior — clean open hall
+  // keep roof — solid 12x12 walkable with parapet ring
+  addSolid(0,0,12,12,0.5, MAT.dark, {y0:5.5, glow:MAT.orangeGlow});
+  addSolid(0,6,12,0.8,1.0, MAT.dark, {y0:6.0});
+  addSolid(0,-6,12,0.8,1.0, MAT.dark, {y0:6.0});
+  addSolid(6,0,0.8,12,1.0, MAT.dark, {y0:6.0});
+  addSolid(-6,0,0.8,12,1.0, MAT.dark, {y0:6.0});
+  // keep entry steps — 2 per door
+  for(const [dx,dz,wo,ho] of [[0,8.2,3.2,1.6],[0,-8.2,3.2,1.6],[8.2,0,1.6,3.2],[-8.2,0,1.6,3.2]]){
+    addSolid(dx,dz,wo,ho,0.5, MAT.crate2, {y0:0});
+    addSolid(dx*0.85,dz*0.85,wo*0.85,ho*0.85,0.5, MAT.crate2, {y0:0.5});
+  }
+  // simple corner walls — tall L-shaped cover
+  addSolid(-14, 14, 6,1.0,4.4, MAT.crate); addSolid(-17, 11, 1.0,4,4.4, MAT.crate);
+  addSolid( 14, 14, 6,1.0,4.4, MAT.crate); addSolid( 17, 11, 1.0,4,4.4, MAT.crate);
+  addSolid(-14,-14, 6,1.0,4.4, MAT.crate2); addSolid(-17,-11, 1.0,4,4.4, MAT.crate2);
+  addSolid( 14,-14, 6,1.0,4.4, MAT.crate2); addSolid( 17,-11, 1.0,4,4.4, MAT.crate2);
+  addAshenCitadelDressing();
+  activeSpawnPoints = [[0,28],[0,-28],[28,0],[-28,0],[22,22],[-22,22],[22,-22],[-22,-22]];
+  activePickupLayout = [[0,0,'ammo'],[10,10,'health'],[-10,-10,'health'],[14,0,'ammo'],[-14,0,'ammo'],[0,18,'health'],[0,-18,'health'],[18,18,'health'],[-18,-18,'health']];
+}
+
 function buildMap(name='FORGE'){
   currentMapName = (name || 'FORGE').toUpperCase();
   clearWorld();
@@ -741,6 +935,7 @@ function buildMap(name='FORGE'){
   else if (currentMapName === 'DUSK YARD') buildDuskYardLayout();
   else if (currentMapName === 'COLD STORAGE') buildColdStorageLayout();
   else if (currentMapName === 'RIFT DOCKS') buildRiftDocksLayout();
+  else if (currentMapName === 'ASHEN CITADEL') buildAshenCitadelLayout();
   else { currentMapName = 'FORGE'; buildForgeLayout(); }
 }
 function setMap(name){
@@ -762,7 +957,7 @@ function setMap(name){
 /* map vote thumbnails: a top-down blueprint render of each arena, generated once
    from the real solid data so every map offers a true picture of itself */
 const MAP_THUMBS = {};
-const MAP_THUMB_TINT = { 'FORGE':'#ff9a2c', 'NEXUS':'#2cf2ff', 'DUSK YARD':'#b06cff', 'COLD STORAGE':'#9fd8ff', 'RIFT DOCKS':'#2c9fff' };
+const MAP_THUMB_TINT = { 'FORGE':'#ff9a2c', 'NEXUS':'#2cf2ff', 'DUSK YARD':'#b06cff', 'COLD STORAGE':'#9fd8ff', 'RIFT DOCKS':'#2c9fff', 'ASHEN CITADEL':'#ff6a2c' };
 function blueprintThumb(mapName){
   const canvas = document.createElement('canvas'); canvas.width = 360; canvas.height = 220;
   const g = canvas.getContext('2d');
@@ -905,10 +1100,11 @@ const _botRay = new THREE.Vector3(), _botDir = new THREE.Vector3();
 
 /* ================= GAME STATE ================= */
 let mode = 'solo';   // 'solo' (waves) or 'dm' (LAN deathmatch)
-const SOLO_FINAL_WAVE = 15;
+// mutator state set by waveComposition
+const SOLO_FINAL_WAVE = Infinity; // endless — removed 15-wave cap per request
 const S = {
   started:false, paused:true, dead:false, victory:false, sandbox:false,
-  wave:0, score:0, kills:0, deaths:0, shotsFired:0, shotsHit:0, headshots:0,
+  mutator:null, wave:0, score:0, kills:0, deaths:0, shotsFired:0, shotsHit:0, headshots:0,
   longestStreak:0, cashEarned:0, xpEarned:0, weaponKills:{},
   toSpawn:[], spawnTimer:0, intermission:3, startTime:0,
 };
@@ -928,7 +1124,7 @@ const player = {
   bobT: 0, stepT: 0, shake: 0,
   fovKick: 0,
   grenades: 3, slideT: 0, slideCd: 0, crouch: 0, invuln:0, invulnUntil:0,
-  crouched: false, coyoteT: 0, jumpBufferT: 0, airJumpsUsed: 0, burnFxT: 0, _firedHeld: false,   // predeclared — object is sealed at load
+  crouched: false, coyoteT: 0, jumpBufferT: 0, airJumpsUsed: 0, burnFxT: 0, burnUntil: 0, burnNext: 0, burnDps: 0, _firedHeld: false,   // predeclared — object is sealed at load
 };
 const slideDir = new THREE.Vector3();
 
@@ -1025,7 +1221,7 @@ function showDeploySequence(kind='solo'){
   if (title) title.textContent = kind === 'dm' ? 'LAN BLACKOUT' : 'SOLO DEPLOY';
   if (sub) sub.textContent = kind === 'dm'
     ? `Round ${net.round || 1} // map ${currentMapName} // shared gun ladder // kill 30 is golden-shank only`
-    : `Wave mission // map ${currentMapName} // Nemesis signatures at waves 5, 10, and 15`;
+    : `Endless waves // map ${currentMapName} // Boss rotation every 5 waves (NEMESIS / TITAN / SPECTRE / WARLORD / COLOSSUS)`;
   ov.classList.remove('hidden','fadeOut','show');
   void ov.offsetWidth;
   ov.classList.add('show');
@@ -1201,6 +1397,14 @@ updateSettingsUI();
 applyRuntimeSettings();
 
 function applyLocalSkinAppearance(){
+  if (isInfect()){
+    applyInfectSkin();
+    return;
+  }
+  if (isJugg()){
+    applyJuggSkin();
+    return;
+  }
   const sk = skinDef(PROGRESS.skin);
   try {
     if (armMats?.plate) armMats.plate.color.setHex(sk.eye);
@@ -1208,6 +1412,24 @@ function applyLocalSkinAppearance(){
   } catch(e){}
   try { if (net && net.on) netSend({ t:'skin', skin:PROGRESS.skin }); } catch(e){}
 }
+function applyInfectSkin(){
+  const forced = net.infected ? 'toxic' : 'rift';
+  const sk = skinDef(forced);
+  try {
+    if (armMats?.plate) armMats.plate.color.setHex(sk.eye);
+    if (armMats?.sleeve) armMats.sleeve.color.setHex(Math.max(0x111111, sk.color));
+  } catch(e){}
+  // do NOT send skin to server — server already forced it; suppress to avoid overwrite
+}
+function applyJuggSkin(){
+  const forced = net.isJuggernaut ? 'juggernaut' : 'rift';
+  const sk = skinDef(forced);
+  try {
+    if (armMats?.plate) armMats.plate.color.setHex(sk.eye);
+    if (armMats?.sleeve) armMats.sleeve.color.setHex(Math.max(0x111111, sk.color));
+  } catch(e){}
+}
+function isInfectSurvivor(){ return isInfect() && !net.infected; }
 function updateProgressUI(){
   const lvl = progressLevel();
   const cur = xpForLevel(lvl), next = xpForLevel(lvl+1);
@@ -1231,6 +1453,7 @@ function renderSkinGrid(){
   const lvl = progressLevel();
   grid.innerHTML = '';
   for (const sk of SKINS){
+    if (sk.id === 'juggernaut') continue; // internal juggernaut form — not sold in shop
     const unlocked = PROGRESS.unlocked.includes(sk.id);
     const levelOk = lvl >= sk.level;
     const selected = PROGRESS.skin === sk.id;
@@ -1263,8 +1486,23 @@ function updateSkinDetail(){
   btn.classList.remove('hidden');
   btn.disabled = equipped;
   btn.textContent = equipped ? 'EQUIPPED' : unlocked ? 'EQUIP' : lvl < sk.level ? `REQUIRES LVL ${sk.level}` : `BUY — ${sk.cost.toLocaleString()} CR`;
-  btn.onclick = () => {
+  btn.onclick = async () => {
     if (PROGRESS.skin === sk.id) return;
+    // online: the server's wallet is the only one that matters — buy AND equip ride the books
+    if (apiUp.ok !== false){
+      if (!unlocked && lvl < sk.level){ addKillFeed(null, `SKIN LOCKED — REACH <b>LEVEL ${sk.level}</b>`); return; }
+      btn.disabled = true;
+      const r = await apiPost('buy', { key: syncKey, skin: sk.id });
+      btn.disabled = false;
+      if (r && r.ok){
+        adoptServerProfile(r.profile);
+        if (r.bought) SFX.pickup();
+        applyLocalSkinAppearance(); updateProgressUI(); updateSkinDetail();
+        return;
+      }
+      if (r){ addKillFeed(null, `SERVER DENIED — <b>${String(r.reason || 'purchase failed').toUpperCase()}</b>`); return; }
+      // r === null → the probe says offline; drop through to the legacy local wallet
+    }
     if (!unlocked){
       if (lvl < sk.level){ addKillFeed(null, `SKIN LOCKED — REACH <b>LEVEL ${sk.level}</b>`); return; }
       if (PROGRESS.cash < sk.cost){ addKillFeed(null, `NOT ENOUGH CREDITS — NEED <b>${sk.cost} CR</b>`); return; }
@@ -1409,7 +1647,7 @@ const WEAPON_BLUEPRINTS = [
   ['MIRAGE PDW',         'SMG',     true,  17,1000, 44, 264, .021, .0095, .008, .036, 1,  'rifle',    88, false],
   ['PROTOCOL ZERO',      'EXOTIC',  false,155,  48,  4,  24, .035, .0005, .060, .220, 1,  'sniper',  275, true ],
   // --- specials: kind hits at 15th slot, splash def at 16th ---
-  ['HELLFIRE MK-7',      'HEAVY',   true,   5, 900, 90, 270, .030, .0200, .004, .020, 1,  'flame',   13, false, 'flame'],
+  ['HELLFIRE MK-7',      'HEAVY',   true,   8, 920, 120, 320, .022, .0160, .006, .020, 1,  'flame',   14, false, 'flame'],
   ['LOBBER GL',          'LAUNCHER',false, 55,  80,  4,  24, .030, .0100, .050, .180, 1,  'launch', 200, false, 'gl', { r:4.5, dmg:45 }],
   ['ATLAS ROCKET',       'LAUNCHER',false, 85,  45,  1,  12, .010, .0020, .080, .240, 1,  'launch', 240, false, 'rocket', { r:5.5, dmg:60 }],
   ['HAVOC MGL',          'LAUNCHER',false, 40,  60,  6,  30, .045, .0180, .050, .160, 3,  'launch', 200, false, 'gl', { r:3.4, dmg:35 }],
@@ -1422,7 +1660,7 @@ const WEAPON_BLUEPRINTS = [
   ['SABLE-6 AR',           'RIFLE',   true,  20, 700, 33, 198, .014, .0038, .011, .050, 1,  'rifle',   121, false],
   ['VERDICT LEVER',        'RIFLE',   false, 72,  95,  8,  48, .010, .0012, .030, .130, 1,  'rifle',   200, false],
   ['JACKHAMMER-8',         'SHOTGUN', true,   5, 300, 20,  80, .070, .0520, .020, .070, 6,  'shotgun',  33, false],
-  ['CYCLOPS SLUG-12',      'SHOTGUN', false, 95,  55,  3,  21, .020, .0060, .050, .200, 1,  'shotgun',  95, false],
+  ['CYCLOPS SLUG-12',      'SHOTGUN', false,105,  65,  4,  28, .016, .0050, .045, .180, 1,  'shotgun', 110, false],
   ['LONG TOM FOWLER',      'SHOTGUN', false, 18,  30,  2,  14, .050, .0300, .060, .240,14,  'shotgun',  60, false, 'hitscan', null, 3.6],
   ['BLUNDERBUSS ROYALE',   'SHOTGUN', false, 15,  70,  4,  24, .078, .0560, .042, .180,12,  'shotgun',  28, false],
   ['DUST DEVIL',           'PISTOL',  false, 11, 130,  6,  36, .046, .0300, .030, .120, 5,  'shotgun',  40, false],
@@ -1434,6 +1672,42 @@ const WEAPON_BLUEPRINTS = [
   ['HAVOC FLAREGUN',       'PISTOL',  false, 45,  65,  1,  14, .020, .0080, .028, .110, 1,  'launch',  160, false, 'gl', { r:2.6, dmg:32, speed:24, grav:13 }, 1.6],
   ['ICICLE CARBINE',       'ENERGY',  false, 58, 260, 12,  72, .010, .0014, .019, .075, 1,  'plasma',  225, false, 'plasma', { speed:72 }],
   ['SUPERNOVA CASTER',     'ENERGY',  false,110,  22,  1,   6, .030, .0012, .050, .180, 1,  'plasma',  240, false, 'plasma', { r:4.6, dmg:70, speed:44 }],
+  // === EXPANSION PACK — 28 new frames (fictional names, balanced) ===
+  // pistols: heavy, auto, dual
+  ['D-9 DEVASTATOR',       'PISTOL',  false, 68, 165,  7,  35, .012, .0020, .028, .115, 1,  'pistol',  155, false],
+  ['TEMPEST G-18',         'PISTOL',  true,  18, 850, 20, 100, .020, .0080, .009, .036, 1,  'pistol',   90, false],
+  ['TWIN VIPER MK-II',     'PISTOL',  true,  26, 620, 22, 110, .018, .0060, .011, .045, 1,  'pistol',  115, false],
+  // smgs: p90 / mp5 / ppsh drum
+  ['VERTEX P-50',          'SMG',     true,  17, 900, 50, 200, .022, .0100, .008, .032, 1,  'rifle',   85, false],
+  ['STRIKER MP-5',         'SMG',     true,  19, 800, 30, 150, .016, .0060, .010, .040, 1,  'rifle',  100, false],
+  ['STORMDRUM V-41',       'SMG',     true,  13,1100, 71, 213, .026, .0120, .007, .030, 1,  'rifle',   82, false],
+  // rifles / battle rifles
+  ['KRONOS KR-47',         'RIFLE',   true,  28, 600, 30, 120, .018, .0050, .020, .080, 1,  'rifle',  135, false],
+  ['VANGUARD V-4',         'RIFLE',   true,  23, 700, 30, 150, .014, .0035, .012, .050, 1,  'rifle',  125, false],
+  ['CHIMERA AUG-X',        'RIFLE',   true,  24, 680, 30, 150, .015, .0030, .013, .055, 1,  'rifle',  128, false],
+  ['FRENZY FAM-3',         'RIFLE',   true,  17, 950, 25, 125, .016, .0040, .015, .060, 1,  'rifle',  118, false],
+  // shotguns: auto drum + double-barrel
+  ['THUNDERMAW AA-X',      'SHOTGUN', true,   7, 260, 20,  80, .066, .0500, .024, .080, 8,  'shotgun',  34, false],
+  ['DOUBLETHORN DT-2',     'SHOTGUN', false, 14,  70,  2,  20, .074, .0520, .050, .180, 12, 'shotgun',  32, false, 'hitscan', null, 3.0],
+  // snipers / dmr
+  ['WIDOW AWP-IX',         'SNIPER',  false,145,  42,  5,  20, .045, .0004, .055, .205, 1,  'sniper',  260, true ],
+  ['DRACO DMR-7',          'DMR',     false, 62, 220, 10,  50, .011, .0016, .020, .085, 1,  'rifle',  190, false],
+  // machine guns: sustained + minigun
+  ['COVERFIRE M-249',      'LMG',     true,  27, 600, 80, 240, .020, .0070, .014, .065, 1,  'rifle',  135, false],
+  ['VORTEX MINIGUN',       'LMG',     true,  14,1200,100, 300, .028, .0130, .006, .028, 1,  'rifle',  110, false],
+  // --- specials (12) — bow / rail / energy / launchers / vintage ---
+  ['RIFTBOLT CROSSFIRE',   'BOW',     false,115,  45,  1,  24, .012, .0006, .025, .090, 1,  'pistol',  220, false, 'arrow',  { speed:52, grav:6 }, 1.1],
+  ['STARFIRE RAIL-9',      'RAIL',    false,110,  60,  5,  20, .018, .0008, .040, .160, 1,  'sniper',  280, true ],
+  ['VOLT STORM ARC',       'ENERGY',  true,  22, 620, 30, 150, .020, .0070, .010, .040, 1,  'plasma',  115, false, 'plasma', { r:2.4, dmg:14, speed:55 }],
+  ['TITAN ARM X-1',        'HEAVY',   false, 90,  55,  1,  12, .020, .0080, .080, .240, 1,  'launch',  240, false, 'rocket', { r:5.8, dmg:70 }],
+  ['GALE AUTOBOW',         'BOW',     true,  32, 240, 12,  72, .014, .0030, .012, .045, 1,  'pistol',  150, false, 'arrow',  { speed:48, grav:7 }],
+  ['QUAKE PULSE RIFLE',    'LAUNCHER',false, 55,  75,  4,  20, .030, .0100, .050, .180, 1,  'launch',  180, false, 'gl',     { r:4.8, dmg:50, speed:28, grav:12 }],
+  ['HELIOS LASER XR',      'ENERGY',  true,  20, 760, 30, 180, .014, .0040, .009, .035, 1,  'plasma',  135, false, 'plasma', { speed:85 }],
+  ['SHARD NAILSTORM',      'SMG',     true,  16, 720, 32, 160, .018, .0060, .011, .040, 1,  'rifle',   95, false],
+  ['NOVA PLASMA ORB',      'ENERGY',  false, 70,  80,  5,  25, .030, .0100, .045, .160, 1,  'launch',  175, false, 'plasma', { r:4.0, dmg:45, speed:32, grav:10 }],
+  ['SKYWARD JUMPER',       'LAUNCHER',false, 45,  60,  1,  12, .030, .0100, .040, .120, 1,  'launch',  200, false, 'rocket', { r:6.5, dmg:45, speed:28, grav:12 }],
+  ['THUMPER M79',          'LAUNCHER',false, 75,  50,  1,  18, .030, .0100, .060, .200, 1,  'launch',  180, false, 'gl',     { r:5.0, dmg:65, speed:24, grav:14 }],
+  ['PULSE MUSKET ECHO',    'VINTAGE', false,142,  52,  1,  18, .030, .0008, .060, .220, 1,  'sniper',  230, false, 'hitscan', null, 2.8],
 ];
 const WEAPONS = WEAPON_BLUEPRINTS.map((b, i) => ({
   name:b[0], slot:b[1], auto:b[2], dmg:b[3], rpm:b[4], mag:b[5], reserve:b[6],
@@ -1442,7 +1716,7 @@ const WEAPONS = WEAPON_BLUEPRINTS.map((b, i) => ({
   index:i, accent:[0x2cf2ff,0xff9a3c,0xff3b57,0x8fe08a,0xd040ff,0xffd040][i % 6],
   darkAccent:[0x0d6670,0x7a3a10,0x701929,0x1f6a38,0x4e196a,0x745c14][i % 6]
 }));
-WEAPONS.forEach(w => { w.ammo = w.mag; w.res = w.reserve; w.cool = 0; w.reloading = 0; });
+WEAPONS.forEach(w => { w.origMag = w.mag; w.origReserve = w.reserve; w.ammo = w.mag; w.res = w.reserve; w.cool = 0; w.reloading = 0; });
 { const mg = $('menuGunCount'); if (mg) mg.textContent = WEAPONS.length;
   const av = $('arsenalVal'); if (av) av.textContent = '1 / ' + WEAPONS.length; }   // the menu never lies about the size of the armory again
 const RARITIES = [
@@ -1459,6 +1733,7 @@ function rollRarity(){
   return RARITIES[0];
 }
 let weaponIndex = 0;
+let hunterWeaponBackup = null; // remembers hunter gun before becoming juggernaut so it restores on loss
 let jumpPollPrev = false;   // edge latch for the keydown-independent jump poll
 const CW = () => WEAPONS[weaponIndex];
 
@@ -2000,7 +2275,7 @@ function showWeaponRoll(w, tierLabel='RANDOMIZED'){
   const el = $('weaponRoll');
   const rc = '#' + currentRarity.color.toString(16).padStart(6,'0');
   if (el){
-    el.innerHTML = `<span>${tierLabel} // <b style="color:${rc}">${currentRarity.name}</b></span><b>${w.name}</b><small>${w.slot} // TIER ${mode === 'dm' ? Math.min((net.myScore||0)+1, 30) : weaponIndex+1} // DMG ×${currentRarity.dmg.toFixed(2)}</small>`;
+    el.innerHTML = `<span>${tierLabel} // <b style="color:${rc}">${currentRarity.name}</b></span><b>${w.name}</b><small>${w.slot} // TIER ${mode === 'dm' ? Math.min((net.myScore||0)+1, net.limit || 30) : weaponIndex+1} // DMG ×${currentRarity.dmg.toFixed(2)}</small>`;
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
   }
   addKillFeed(null, `ARSENAL ${tierLabel === 'RANDOMIZED' ? 'ROTATED' : 'ADVANCED'} &nbsp;⟶&nbsp; <b style="color:${rc}">${currentRarity.name}</b> ${w.name}`);
@@ -2010,6 +2285,11 @@ function rotateWeaponForKill(){
   let next = weaponIndex;
   for (let tries=0; tries<18 && next === weaponIndex; tries++) next = (Math.random() * WEAPONS.length) | 0;
   if (next === weaponIndex) next = (weaponIndex + 1) % WEAPONS.length;
+  // hunters in juggernaut must not roll the juggernaut's VORTEX MINIGUN as a random hunter weapon
+  if (isJugg() && !isJuggSelf() && next === JUGG_MG_INDEX){
+    for (let tries=0; tries<12 && next === JUGG_MG_INDEX; tries++) next = (Math.random() * WEAPONS.length) | 0;
+    if (next === JUGG_MG_INDEX) next = (next + 1 + (Math.random() * (WEAPONS.length-1)|0)) % WEAPONS.length;
+  }
   switchWeapon(next, { force:true, roll:true });
   currentRarity = rollRarity();
   const w = CW();
@@ -2025,15 +2305,29 @@ const KNIFE_DEFS = [
   { name:'RIPPER SHANK', dmg:25,  backstab:99999, golden:false, speedMul:1.05 },
   { name:'GOLDEN SHANK', dmg:50,  backstab:99999, golden:true,  speedMul:1.15 },
 ];
-const BS_DOT = -0.5;                // attacker must sit inside the victim's rear 120° cone for a backstab
+const BS_DOT = -0.5;                // attacker must sit inside the victim's rear 60° cone for a backstab
+const BS_MIN_DIST = 0.72;            // do not execute while the attacker is inside/overlapping the victim's body
+const BS_ATTACK_DOT = 0.25;          // when supplied, attacker must be facing the victim (no drive-by/backward stabs)
 const KNIFE_CODE = 100;            // replicated weapon slot: 100 = knife, 101 = golden knife
 let knifeMode = 0;                 // 0 = gun, 1 = knife
 let knifeSwingT = 0, knifeSwingCd = 0, knifeSwingId = 0;
 function isKnifeFight(){ return mode === 'dm' && net.dmMode === 'knife'; }   // the ballot's third option: KNIFE FIGHT
-function finalTierScore(){ return isKnifeFight() ? 14 : FINAL_TIER_SCORE; }  // knife fight goes golden one stab early
-function knifeGolden(){ return mode === 'dm' && (net.myScore || 0) >= finalTierScore(); }
-function knifeLocked(){ return isKnifeFight() || knifeGolden(); }       // final tier or knife fight: blades only
+function isInfect(){ return mode === 'dm' && net.dmMode === 'infect'; }
+function isAutoMode(){ return mode === 'dm' && net.dmMode === 'auto'; }
+function isShotgunMode(){ return mode === 'dm' && net.dmMode === 'shotgun'; }
+function isSniperMode(){ return mode === 'dm' && net.dmMode === 'sniper'; }
+function isOneShot(){ return mode === 'dm' && net.dmMode === 'oneshot'; }
+function isJugg(){ return mode === 'dm' && net.dmMode === 'juggernaut'; }
+function isJuggSelf(){ return isJugg() && net.isJuggernaut; }
+function isNoGoldenMode(){ return isAutoMode() || isShotgunMode() || isSniperMode() || isOneShot() || isJugg(); }
+function currentModeLimit(){ if (isKnifeFight()) return 15; if (isShotgunMode()) return 20; if (isSniperMode()) return SNIPER_LIMIT; if (isAutoMode()) return AUTO_LIMIT; if (isOneShot()) return ONESHOT_LIMIT; if (isJugg()) return JUGG_LIMIT; if (isInfect()) return 0; return 30; }
+function currentLadderRound(){ if (isAutoMode()) return AUTO_ROUND; if (isShotgunMode()) return SHOTGUN_ROUND; if (isSniperMode()) return SNIPER_ROUND; if (isOneShot()) return PISTOL_ROUND; return LADDER_ROUND; }
+function finalTierScore(){ return isKnifeFight() ? 14 : isNoGoldenMode() ? Infinity : FINAL_TIER_SCORE; }  // knife fight goes golden one stab early; auto/shotgun/oneshot/jugg never golden
+function knifeGolden(){ return mode === 'dm' && !isInfect() && !isJugg() && !isNoGoldenMode() && (net.myScore || 0) >= finalTierScore(); }
+function knifeLocked(){ return isKnifeFight() || knifeGolden() || (isInfect() && net.infected) || (isJugg() && false) || isOneShot(); }       // final tier or knife fight: blades only — zombies locked to knife — one-shot disables knife entirely
 function currentKnifeDef(){ return KNIFE_DEFS[knifeGolden() ? 1 : 0]; }
+function juggHpFor(n){ n = Math.max(1, n|0); const hp = 200 + n * 50; return Math.max(200, Math.min(hp, 1000)); }
+function currentJuggHp(){ if (net.juggHp && typeof net.juggHp === 'number' && net.juggHp > 0) return net.juggHp|0; const cnt = (net.scores?.length || (net.players.size + 1) || 5); return juggHpFor(cnt); }
 
 function buildKnifeModel(golden){
   // a proper drop-point combat blade: pommel → grip → guard → belly → clip tip, edge glowing
@@ -2076,6 +2370,7 @@ function updateWeaponVisibility(){
 }
 function equipGunSlot(){
   if (!knifeMode) return;
+  if (isInfect() && net.infected){ addKillFeed(null, '<b style="color:#2fd04a">INFECTED — BLADES ONLY</b>'); return; }
   if (knifeLocked()){ addKillFeed(null, isKnifeFight() ? 'KNIFE FIGHT — <b>BLADES ONLY</b>' : 'FINAL TIER — <b style="color:#ffd040">GOLDEN SHANK</b> ONLY'); return; }
   knifeMode = 0;
   switchT = Math.max(switchT, 0.2);
@@ -2084,6 +2379,7 @@ function equipGunSlot(){
 }
 function equipKnifeSlot(){
   if (knifeMode) return;
+  if (isOneShot()){ addKillFeed(null, '<b style="color:#ffd040">ONE SHOT</b> — KNIFE DISABLED · PISTOLS ONLY'); return; }
   knifeMode = 1; mouseR = false; adsT = 0;
   switchT = Math.max(switchT, 0.2);
   updateWeaponVisibility(); updateAmmoHUD(); SFX.reloadBolt();
@@ -2102,10 +2398,20 @@ function tryKnifeSwing(){
       p:[+player.pos.x.toFixed(2), +(player.pos.y+1.3).toFixed(2), +player.pos.z.toFixed(2)] });
   }
 }
-function isBackstab(fx, fz, vx, vz){
-  // fx/fz = victim's visual forward, v = unit vector from victim to attacker
-  const vl = Math.hypot(vx, vz) || 1;
-  return (fx*vx + fz*vz) / vl < BS_DOT;
+function isBackstab(fx, fz, vx, vz, afx=null, afz=null){
+  // fx/fz = victim's visual forward; v = vector from victim to attacker.
+  // Keep a real gap between the two capsules: at zero/near-zero separation the
+  // rear-cone sign becomes unstable and a timed overlap could be rewarded as a stab.
+  const vl = Math.hypot(vx, vz);
+  if (vl < BS_MIN_DIST) return false;
+  if ((fx*vx + fz*vz) / vl >= BS_DOT) return false;
+  // In live combat also require the attacker to be looking toward the victim.
+  // The optional arguments preserve the small geometry helper API used by tests.
+  if (afx != null && afz != null){
+    const al = Math.hypot(afx, afz) || 1;
+    if ((afx*(-vx) + afz*(-vz)) / (al * vl) < BS_ATTACK_DOT) return false;
+  }
+  return true;
 }
 function knifeStrike(){
   if (!S.started || S.dead || S.paused || !knifeMode) return;
@@ -2123,7 +2429,7 @@ function knifeStrike(){
     if ((dx*fx+dy*fy+dz*fz)/len < minDot && d > 1.1) continue;
     anyHit = true;
     const eth = e.group.rotation.y;
-    const bs = isBackstab(-Math.sin(eth), -Math.cos(eth), player.pos.x - tp.x, player.pos.z - tp.z);
+    const bs = isBackstab(-Math.sin(eth), -Math.cos(eth), player.pos.x - tp.x, player.pos.z - tp.z, fx, fz);
     const dmg = bs ? def.backstab : def.dmg;
     if (bs){
       spawnSparks(new THREE.Vector3(tp.x, tp.y + 1.1*e.type.scale, tp.z), 0xff7040, 22);
@@ -2147,7 +2453,7 @@ function knifeStrike(){
       const len = Math.sqrt(dx*dx+dy*fy+dz*dz) || 1;
       if ((dx*fx+dy*fy+dz*fz)/len < minDot && d > 1.1) continue;
       anyHit = true;
-      const bs = isBackstab(-Math.sin(rp.yaw), -Math.cos(rp.yaw), player.pos.x - tp.x, player.pos.z - tp.z);
+      const bs = isBackstab(-Math.sin(rp.yaw), -Math.cos(rp.yaw), player.pos.x - tp.x, player.pos.z - tp.z, fx, fz);
       const dmg = bs ? 200 : def.dmg;                 // server caps dmg at 200 — enough to drop 100 hp instantly
       if (bs){
         spawnSparks(new THREE.Vector3(tp.x, tp.y + 1.15, tp.z), 0xff7040, 24);
@@ -2179,27 +2485,160 @@ function knifeStrike(){
    Every player gets the same weapon at the same score. Kills promote you
    one tier; getting shanked costs you one point and one tier. The final
    tier (29+) locks you to the golden knife — the 30th kill is knife-only. */
-const GUN_LADDER = [
-  42, 20,  2, 22, 43,               // pistols
-   9,  8,  7, 47, 30, 31, 36,       // smgs
-  17, 18, 38, 19,  1, 16,           // shotguns
-  24, 26,  6, 34, 44,               // rifles
-  49, 52, 50, 53, 51, 15,           // ordnance tier: flamer → havoc → grenades → napalm → rockets → rail sniper
-];
+const GUN_LADDER = Array.from({ length: WEAPONS.length }, (_, i) => i);
 const FINAL_TIER_SCORE = 29;
+const AUTO_LIMIT = 20;
+const SHOTGUN_LIMIT = 20;
+const SNIPER_LIMIT = 15;
+const ONESHOT_LIMIT = 20;
+const JUGG_LIMIT = 60;
+// auto/shotgun/sniper filtered ladders — only those weapon types appear in those modes
+const AUTO_LADDER = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].auto && WEAPONS[i].rpm >= 400 && WEAPONS[i].name !== 'HELLFIRE MK-7');
+const SHOTGUN_BASE = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].slot==='SHOTGUN');
+const PISTOL_BASE = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].slot==='PISTOL');
+const SNIPER_BASE = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].slot==='SNIPER');
+const PISTOL_LADDER = Array.from({length:ONESHOT_LIMIT}, (_,k)=>PISTOL_BASE[k % PISTOL_BASE.length]);
+const JUGG_MG_INDEX = WEAPONS.findIndex(w=>w.name==='VORTEX MINIGUN');
+const MUSKET_INDEX = WEAPONS.findIndex(w=>w.name==='LEADLINE MUSKET');
+const SNOWBALL_INDEX = WEAPONS.findIndex(w=>w.name==='SNOWBALL SLINGER');
+const ATLAS_INDEX = WEAPONS.findIndex(w=>w.name==='ATLAS ROCKET');
+// shotgun pool is only 13 unique — expand to 20 so the ladder covers first-to-20 cleanly
+const SHOTGUN_LADDER = Array.from({length:SHOTGUN_LIMIT}, (_,k)=>SHOTGUN_BASE[k % SHOTGUN_BASE.length]);
+const SNIPER_LADDER = Array.from({length:SNIPER_LIMIT}, (_,k)=>SNIPER_BASE[k % SNIPER_BASE.length]);
+// weighted helpers for automatics: force 1 LMG / 1 SMG / 1 RIFLE per 3 tiers so it doesn't feel same-y
+function buildWeightedAutoLadder(seed){
+  const lmgPool = AUTO_LADDER.filter(i=>WEAPONS[i].slot==='LMG');
+  const smgPool = AUTO_LADDER.filter(i=>WEAPONS[i].slot==='SMG');
+  const riflePool = AUTO_LADDER.filter(i=>WEAPONS[i].slot==='RIFLE');
+  const otherPool = AUTO_LADDER.filter(i=>!['LMG','SMG','RIFLE'].includes(WEAPONS[i].slot));
+  const rnd = mulberry32(((seed>>>0)||1)>>>0);
+  function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(rnd()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]]; } return a; }
+  shuffle(lmgPool); shuffle(smgPool); shuffle(riflePool); shuffle(otherPool);
+  let li=0, si=0, ri=0, oi=0;
+  const out=[];
+  for(let tier=0; tier<AUTO_LIMIT; tier++){
+    const mod=tier%3;
+    let pick=null;
+    if(mod===0) pick=lmgPool[li++ % lmgPool.length];
+    else if(mod===1) pick=smgPool[si++ % smgPool.length];
+    else pick=riflePool[ri++ % riflePool.length];
+    if(pick===undefined) pick=otherPool[oi++ % otherPool.length] ?? AUTO_LADDER[tier % AUTO_LADDER.length];
+    out.push(pick);
+  }
+  // light shuffle within each 3-block to keep some randomness while preserving weighting
+  for(let i=0;i<out.length;i+=3){ if(rnd()<0.5) [out[i],out[i+1]]=[out[i+1],out[i]]; }
+  return out;
+}
 /* the ladder's 29 stops stay the ladder — but the deck is re-dealt every LAN round from the
-   server's seed, so tier 7 means something different each match, for everyone equally */
+   server's seed, so tier 7 means something different each match, for everyone equally.
+   Now the full 100-gun armory is the deck: each round you get 29 random guns from the whole pool. */
 let LADDER_ROUND = GUN_LADDER.slice();
+let AUTO_ROUND = AUTO_LADDER.slice();
+let SHOTGUN_ROUND = SHOTGUN_LADDER.slice();
+let SNIPER_ROUND = SNIPER_LADDER.slice();
+let PISTOL_ROUND = PISTOL_LADDER.slice();
 function shuffleLadder(seed){
   const rnd = mulberry32(((seed >>> 0) || 1) >>> 0);   // seeded PRNG lives up at the world-gen helpers
   LADDER_ROUND = GUN_LADDER.slice();
   for (let i = LADDER_ROUND.length - 1; i > 0; i--){ const j = (rnd() * (i + 1)) | 0; [LADDER_ROUND[i], LADDER_ROUND[j]] = [LADDER_ROUND[j], LADDER_ROUND[i]]; }
+  AUTO_ROUND = buildWeightedAutoLadder(seed);
+  SHOTGUN_ROUND = SHOTGUN_LADDER.slice();
+  for (let i = SHOTGUN_ROUND.length - 1; i > 0; i--){ const j = (rnd() * (i + 1)) | 0; [SHOTGUN_ROUND[i], SHOTGUN_ROUND[j]] = [SHOTGUN_ROUND[j], SHOTGUN_ROUND[i]]; }
+  // diminishing returns: don't roll same shotgun twice in a row in the 20-tier ladder
+  for (let i=1;i<SHOTGUN_ROUND.length;i++){
+    if (SHOTGUN_ROUND[i]===SHOTGUN_ROUND[i-1]){
+      // find next non-equal to swap
+      let swap=-1;
+      for(let k=i+1;k<SHOTGUN_ROUND.length;k++) if(SHOTGUN_ROUND[k]!==SHOTGUN_ROUND[i]){ swap=k; break; }
+      if(swap!==-1) [SHOTGUN_ROUND[i],SHOTGUN_ROUND[swap]]=[SHOTGUN_ROUND[swap],SHOTGUN_ROUND[i]];
+      else {
+        // fallback: pick any different from pool
+        const alt = SHOTGUN_BASE.find(x=>x!==SHOTGUN_ROUND[i]);
+        if(alt!==undefined) SHOTGUN_ROUND[i]=alt;
+      }
+    }
+  }
+  // pistols: shuffled ladder for ONE SHOT — dedup repeats too
+  PISTOL_ROUND = PISTOL_LADDER.slice();
+  for (let i = PISTOL_ROUND.length - 1; i > 0; i--){ const j = (rnd() * (i + 1)) | 0; [PISTOL_ROUND[i], PISTOL_ROUND[j]] = [PISTOL_ROUND[j], PISTOL_ROUND[i]]; }
+  for (let i=1;i<PISTOL_ROUND.length;i++){
+    if (PISTOL_ROUND[i]===PISTOL_ROUND[i-1]){
+      let swap=-1;
+      for(let k=i+1;k<PISTOL_ROUND.length;k++) if(PISTOL_ROUND[k]!==PISTOL_ROUND[i]){ swap=k; break; }
+      if(swap!==-1) [PISTOL_ROUND[i],PISTOL_ROUND[swap]]=[PISTOL_ROUND[swap],PISTOL_ROUND[i]];
+      else { const alt = PISTOL_BASE.find(x=>x!==PISTOL_ROUND[i]); if(alt!==undefined) PISTOL_ROUND[i]=alt; }
+    }
+  }
+  // snipers: shuffled ladder for SNIPERS — dedup repeats too
+  SNIPER_ROUND = SNIPER_LADDER.slice();
+  for (let i = SNIPER_ROUND.length - 1; i > 0; i--){ const j = (rnd() * (i + 1)) | 0; [SNIPER_ROUND[i], SNIPER_ROUND[j]] = [SNIPER_ROUND[j], SNIPER_ROUND[i]]; }
+  for (let i=1;i<SNIPER_ROUND.length;i++){
+    if (SNIPER_ROUND[i]===SNIPER_ROUND[i-1]){
+      let swap=-1;
+      for(let k=i+1;k<SNIPER_ROUND.length;k++) if(SNIPER_ROUND[k]!==SNIPER_ROUND[i]){ swap=k; break; }
+      if(swap!==-1) [SNIPER_ROUND[i],SNIPER_ROUND[swap]]=[SNIPER_ROUND[swap],SNIPER_ROUND[i]];
+      else { const alt = SNIPER_BASE.find(x=>x!==SNIPER_ROUND[i]); if(alt!==undefined) SNIPER_ROUND[i]=alt; }
+    }
+  }
+  // final weapons: force last tier to iconic closers
+  if (SNIPER_ROUND.length && ATLAS_INDEX>=0) SNIPER_ROUND[SNIPER_ROUND.length-1] = ATLAS_INDEX;
+  if (AUTO_ROUND.length && MUSKET_INDEX>=0) AUTO_ROUND[AUTO_ROUND.length-1] = MUSKET_INDEX;
+  if (SHOTGUN_ROUND.length && SNOWBALL_INDEX>=0) SHOTGUN_ROUND[SHOTGUN_ROUND.length-1] = SNOWBALL_INDEX;
 }
 function ladderRarity(sc){
   return sc >= 27 ? RARITIES[4] : sc >= 21 ? RARITIES[3] : sc >= 14 ? RARITIES[2] : sc >= 6 ? RARITIES[1] : RARITIES[0];
 }
 function equipLadderTier(sc, { quiet=false } = {}){
-  sc = clamp(sc|0, 0, FINAL_TIER_SCORE + 1);
+  // clear stale juggernaut backup when not in juggernaut mode
+  if (!isJugg() && hunterWeaponBackup !== null) hunterWeaponBackup = null;
+  // juggernaut: juggernaut gets VORTEX MINIGUN with 200+50HP/player infinite ammo, hunters get complete random weapons like solo (new random every kill)
+  if (isJugg()){
+    if (net.isJuggernaut){
+      // save hunter gun so it restores when you lose jugg
+      if (hunterWeaponBackup === null && weaponIndex !== JUGG_MG_INDEX && weaponIndex >=0) hunterWeaponBackup = weaponIndex;
+      knifeMode = 0;
+      const idx = JUGG_MG_INDEX >=0 ? JUGG_MG_INDEX : 0;
+      switchWeapon(idx, { force:true, roll:!quiet });
+      const w = CW();
+      w.ammo = 999; w.res = 999; w.reserve = 999; w.mag = w.origMag || w.mag; w.cool = 0; w.reloading = 0;
+      // ensure model is VORTEX MINIGUN — JUGG_MG_INDEX must point at it
+      updateWeaponVisibility(); updateAmmoHUD();
+      if (!quiet) showWeaponRoll(w, 'JUGGERNAUT LOADOUT — VORTEX MINIGUN');
+      return;
+    } else {
+      // hunters: restore previous gun if we just lost jugg, otherwise complete random hunter gun
+      knifeMode = 0;
+      let idx;
+      if (hunterWeaponBackup !== null && hunterWeaponBackup >=0 && hunterWeaponBackup < WEAPONS.length && hunterWeaponBackup !== JUGG_MG_INDEX){
+        idx = hunterWeaponBackup;
+        hunterWeaponBackup = null;
+      } else {
+        idx = (Math.random()*WEAPONS.length)|0;
+        // avoid giving hunters the vortex minigun as a regular spawn — that's juggernaut exclusive
+        if (idx === JUGG_MG_INDEX) idx = (idx + 1 + (Math.random()* (WEAPONS.length-1)|0)) % WEAPONS.length;
+        // avoid same weapon twice in a row if possible
+        if (WEAPONS.length > 1 && idx === weaponIndex){
+          for(let t=0; t<8 && idx===weaponIndex; t++) idx=(Math.random()*WEAPONS.length)|0;
+          if (idx===JUGG_MG_INDEX) idx=(idx+1)%WEAPONS.length;
+        }
+      }
+      switchWeapon(idx, { force:true, roll:!quiet });
+      currentRarity = rollRarity();
+      const w = CW();
+      w.ammo = w.mag; w.res = w.reserve; w.cool = 0; w.reloading = 0;
+      updateWeaponVisibility(); updateAmmoHUD();
+      if (!quiet) showWeaponRoll(w, `HUNTER LOADOUT`);
+      return;
+    }
+  }
+  const lim = currentModeLimit();
+  let maxSc = FINAL_TIER_SCORE + 1;
+  if (isShotgunMode()) maxSc = SHOTGUN_LIMIT;
+  else if (isSniperMode()) maxSc = SNIPER_LIMIT;
+  else if (isAutoMode()) maxSc = AUTO_LIMIT;
+  else if (isOneShot()) maxSc = ONESHOT_LIMIT;
+  else if (isJugg()) maxSc = JUGG_LIMIT;
+  sc = clamp(sc|0, 0, maxSc);
   if (isKnifeFight()){          // ballot said blades — you never touch the ladder at all
     knifeMode = 1; mouseR = false; adsT = 0;
     switchT = Math.max(switchT, 0.22);
@@ -2207,7 +2646,7 @@ function equipLadderTier(sc, { quiet=false } = {}){
     if (!quiet && knifeGolden()){ showBanner('GOLDEN SHANK'); addKillFeed(null, 'ONE MORE STAB — <b style="color:#ffd040">GOLDEN SHANK</b> // +15% SPEED'); SFX.reloadBolt(); }
     return;
   }
-  if (sc >= FINAL_TIER_SCORE){
+  if (!isNoGoldenMode() && sc >= FINAL_TIER_SCORE){
     knifeMode = 1; mouseR = false; adsT = 0;
     switchT = Math.max(switchT, 0.22);
     updateWeaponVisibility(); updateAmmoHUD();
@@ -2218,11 +2657,26 @@ function equipLadderTier(sc, { quiet=false } = {}){
     }
     return;
   }
+  // ensure mag/restore for one-shot leave: restore any mutated pistol mags
+  if (!isOneShot()){
+    for (const pw of WEAPONS) if (pw.origMag!==undefined && pw.mag!==pw.origMag){ pw.mag = pw.origMag; pw.reserve = pw.origReserve; }
+  }
   knifeMode = 0;
   currentRarity = ladderRarity(sc);
-  switchWeapon(LADDER_ROUND[clamp(sc, 0, LADDER_ROUND.length-1)], { force:true, roll:true });
+  const ladder = currentLadderRound();
+  let idx = ladder[clamp(sc, 0, ladder.length-1)];
+  // final weapon closers: automatics → musket, shotguns → snowball, snipers → atlas rocket
+  if (isAutoMode() && sc >= AUTO_LIMIT-1 && MUSKET_INDEX>=0) idx = MUSKET_INDEX;
+  else if (isShotgunMode() && sc >= SHOTGUN_LIMIT-1 && SNOWBALL_INDEX>=0) idx = SNOWBALL_INDEX;
+  else if (isSniperMode() && sc >= SNIPER_LIMIT-1 && ATLAS_INDEX>=0) idx = ATLAS_INDEX;
+  switchWeapon(idx, { force:true, roll:true });
   const w = CW();
-  w.ammo = w.mag; w.res = w.reserve; w.cool = 0; w.reloading = 0;
+  // ONE SHOT: 1-bullet mag, infinite reserve (not headshot-only — normal damage)
+  if (isOneShot()){
+    w.mag = 1; w.ammo = 1; w.res = 999; w.reserve = 999; w.cool = 0; w.reloading = 0;
+  } else {
+    w.ammo = w.mag; w.res = w.reserve; w.cool = 0; w.reloading = 0;
+  }
   updateWeaponVisibility(); updateAmmoHUD();
   if (!quiet) showWeaponRoll(w, `TIER ${sc + 1}`);
 }
@@ -2252,6 +2706,7 @@ function reloadDuration(w){
 }
 function tryReload(){
   const w = CW();
+  if (isJuggSelf()) return; // juggernaut has infinite ammo — never reloads
   if (knifeMode || w.reloading > 0 || w.ammo === w.mag || w.res <= 0) return;
   const dur = reloadDuration(w);
   w.reloading = dur;
@@ -2345,8 +2800,9 @@ const _dir = new THREE.Vector3(), _origin = new THREE.Vector3(), _hitPoint = new
 function fireWeapon(){
   const w = CW();
   if (w.cool > 0 || w.reloading > 0 || switchT > 0) return;
-  if (w.ammo <= 0){ SFX.dry(); w.cool = 0.25; if (w.res > 0) tryReload(); return; }
-  w.ammo--; w.cool = 60 / w.rpm;
+  if (w.ammo <= 0){ SFX.dry(); w.cool = 0.25; if (w.res > 0 && !isJuggSelf()) tryReload(); return; }
+  if (!isJuggSelf()) w.ammo--; else w.ammo = Math.max(w.ammo, 999); // juggernaut infinite ammo — never consume
+  w.cool = 60 / w.rpm;
   S.shotsFired += w.pellets;
   SFX[w.sfx]();
 
@@ -2429,16 +2885,18 @@ function fireWeapon(){
       S.shotsHit++; if (headshot) S.headshots++;
       spawnSparks(_hitPoint, headshot ? 0xffd040 : 0xff8040, headshot ? 14 : 8);
       spawnDamagePopup(_hitPoint, Math.round(dmg), headshot);
-      if (w.kind === 'flame') applyBurn(hitEnemy, 3, 6);   // afterburn: ~18dmg over 3s once the jet lets go
+      if (w.kind === 'flame') applyBurn(hitEnemy, 4, 10);   // BUFFED: Hellfire afterburn 40 dmg over 4s
       if (damageEnemy(hitEnemy, dmg)) anyKill = true;
     } else if (hitNetId){
       anyHit = true;
       const dmg = w.dmg * (currentRarity.dmg || 1) * (headshot ? 2 : 1);
       S.shotsHit++; if (headshot) S.headshots++;
       spawnSparks(_hitPoint, headshot ? 0xffd040 : 0xff8040, headshot ? 14 : 8);
-      spawnDamagePopup(_hitPoint, Math.round(dmg), headshot);
-      if (w.kind === 'flame'){ const rpBurn = net.players.get(hitNetId); if (rpBurn) applyBurn(rpBurn, 3, 6); }
-      netSend({ t:'hit', target:hitNetId, dmg, burn: w.kind === 'flame' || undefined });
+      // juggernaut does 20% less damage — popup reflects actual dealt (server also enforces 0.8)
+      const dispDmg = isJuggSelf() ? Math.round(dmg * 0.8) : Math.round(dmg);
+      spawnDamagePopup(_hitPoint, dispDmg, headshot);
+      if (w.kind === 'flame'){ const rpBurn = net.players.get(hitNetId); if (rpBurn) applyBurn(rpBurn, 4, 10); }
+      netSend({ t:'hit', target:hitNetId, dmg, w:weaponIndex, hs:headshot||undefined, burn: w.kind === 'flame' || undefined });
     } else if (hitDestructible){
       anyHit = true;
       const dmg = w.dmg * (currentRarity.dmg || 1);
@@ -2529,7 +2987,7 @@ function spawnPlayerProjectile(origin, dir, w){
   scene.add(m);
   const sp = (w.splash && w.splash.speed) || st.speed;
   const gv = (w.splash && w.splash.grav != null) ? w.splash.grav : st.grav;
-  playerShots.push({ mesh:m, vel:dir.clone().multiplyScalar(sp), grav:gv, kind:w.kind, splash:w.splash, dmg:w.dmg, life:6, direct:null });
+  playerShots.push({ mesh:m, vel:dir.clone().multiplyScalar(sp), grav:gv, kind:w.kind, splash:w.splash, dmg:w.dmg, life:6, direct:null, weapon:w });
 }
 
 /* another runner's ordnance should LOOK the same as your own — same ball, same arc, same boom —
@@ -2600,7 +3058,7 @@ function stepHazards(dt){
 }
 
 /* flamethrower victims smoulder: ticks drip-fire damage for a few seconds after the jet connects */
-function applyBurn(target, sec=3, dps=4){
+function applyBurn(target, sec=4, dps=10){
   target.burnUntil = Date.now() + sec * 1000;
   target.burnDps = dps;
   if (!target.burnNext || target.burnNext < Date.now()) target.burnNext = Date.now() + 250;
@@ -2623,10 +3081,29 @@ function stepBurns(dt){
     }
     if (now > e.burnUntil) e.burnUntil = 0;
   }
+  // local player burn — YOU can be set alight too (was missing: burnFxT showed flames but dealt no damage)
+  if (player.burnUntil && !S.dead){
+    if (now >= player.burnNext){
+      const t = player.pos;
+      const mat = new THREE.MeshBasicMaterial({ color:FLAME_COLORS[(Math.random() * 3) | 0], transparent:true, opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false });
+      const m = new THREE.Mesh(sparkGeo, mat);
+      m.position.set(t.x + rand(-0.35, 0.35), t.y + rand(0.6, 1.6), t.z + rand(-0.35, 0.35));
+      m.scale.setScalar(rand(1.0, 2.0));
+      scene.add(m);
+      particles.push({ mesh:m, vel:new THREE.Vector3(rand(-0.3, 0.3), rand(1.2, 2.6), rand(-0.3, 0.3)), life:rand(0.2, 0.4), maxLife:0.4, grav:2, type:'spark' });
+      damagePlayer(Math.round(player.burnDps * 0.5), player.pos);
+      player.burnNext = now + 500;
+    }
+    if (now > player.burnUntil) { player.burnUntil = 0; player.burnFxT = 0; }
+  } else if (player.burnUntil && S.dead){
+    // keep the timer ticking while spectating so burn doesn't cling through respawn invuln unfairly
+    if (now > player.burnUntil) { player.burnUntil = 0; player.burnFxT = 0; }
+  }
+  // remote burn visuals — the victim handles their own burn damage (victim-authoritative),
+  // but the shooter still sees the flames on their target for feedback
   if (net.on) for (const rp of net.players.values()){
     if (!rp.burnUntil) continue;
     if (now >= rp.burnNext){
-      netSend({ t:'hit', target:rp.id, dmg:Math.round(rp.burnDps * 0.5 * mult) });
       const t = rp.group.position;
       const mat = new THREE.MeshBasicMaterial({ color:FLAME_COLORS[(Math.random() * 3) | 0], transparent:true, opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false });
       const m = new THREE.Mesh(sparkGeo, mat);
@@ -2682,6 +3159,35 @@ function explodePlayerShot(ps, point){
   const camD = camera.position.distanceTo(pos);
   if (r && camD < 12) player.shake = Math.min(player.shake + (1 - camD / 12) * 0.45, 0.7);
   if (r){ flashTimer = Math.max(flashTimer, 0.1); flashLight.intensity = Math.max(flashLight.intensity, 7); }
+  // self knockback — SKYWARD JUMPER rocket jump (jump + shoot ground below = launch)
+  if (r && !S.dead && !ps.visual){
+    const isSkyward = (ps.weapon && ps.weapon.name === 'SKYWARD JUMPER') || (ps.kind === 'rocket' && ps.splash && ps.splash.r === 6.5);
+    const isRocket = ps.kind === 'rocket';
+    if (isSkyward || isRocket){
+      const pCenter = player.pos.clone().add(new THREE.Vector3(0, 0.95, 0));
+      const pd = pCenter.distanceTo(pos);
+      const knockR = isSkyward ? 7.8 : 5.8;
+      if (pd < knockR){
+        const fall = 1 - clamp(pd / knockR, 0, 1);
+        const dir = pCenter.clone().sub(pos).normalize();
+        if (dir.y < 0.25){ dir.y = 0.38; dir.normalize(); }
+        const power = (isSkyward ? 15.0 : 6.5) * fall;
+        const upBoost = (isSkyward ? 6.8 : 2.4) * fall;
+        const jumpBonus = (!player.grounded && player.vel.y > -2) ? (isSkyward ? 2.4 : 0.6) : 0;
+        player.vel.x += dir.x * power;
+        player.vel.z += dir.z * power;
+        player.vel.y = Math.max(player.vel.y, -1.5) + dir.y * power * 0.62 + upBoost + jumpBonus;
+        player.grounded = false;
+        player.coyoteT = 0;
+        // self damage — skyward is forgiving so rocket jumps aren't punished
+        if (pd < r + 0.8){
+          const sd = isSkyward ? Math.round(10 * fall * 0.35) : Math.round(16 * fall);
+          if (sd > 0) damagePlayer(sd, pos);
+        }
+        if (isSkyward){ spawnRing(player.pos.clone().add(new THREE.Vector3(0,0.12,0)), 0xffd040); }
+      }
+    }
+  }
 }
 
 /* distance from a point to the segment the projectile covers THIS frame —
@@ -2819,6 +3325,7 @@ function spawnPlayerPieces(pos, color=0x2c6eff){
 /* ================= GRENADES ================= */
 const grenadesLive = [];
 function throwGrenade(){
+  if (isOneShot()){ addKillFeed(null, '<b style="color:#ffd040">ONE SHOT</b> — GRENADES DISABLED'); return; }
   if (!S.started || S.paused || S.dead || player.grenades <= 0) return;
   if (knifeLocked()){ addKillFeed(null, isKnifeFight() ? 'KNIFE FIGHT — <b>BLADES ONLY</b>' : 'FINAL TIER — <b style="color:#ffd040">GOLDEN SHANK</b> ONLY'); return; }
   player.grenades--;
@@ -2830,8 +3337,28 @@ function throwGrenade(){
   m.position.copy(camera.position).addScaledVector(_dir, 0.5);
   m.castShadow = true;
   scene.add(m);
-  grenadesLive.push({ mesh:m, fuse:1.7,
-    vel:_dir.clone().multiplyScalar(15.5).add(new THREE.Vector3(player.vel.x*0.4, 3.4, player.vel.z*0.4)) });
+  const vel = _dir.clone().multiplyScalar(15.5).add(new THREE.Vector3(player.vel.x*0.4, 3.4, player.vel.z*0.4));
+  grenadesLive.push({ mesh:m, fuse:1.7, vel });
+  if (net.on) netSend({ t:'nade', o:[+m.position.x.toFixed(2), +m.position.y.toFixed(2), +m.position.z.toFixed(2)], v:[+vel.x.toFixed(2), +vel.y.toFixed(2), +vel.z.toFixed(2)] });
+}
+function spawnRemoteGrenadeVisual(originArr, velArr){
+  const mat = new THREE.MeshStandardMaterial({ color:0x39424f, roughness:.4, metalness:.6, emissive:0x22ff88, emissiveIntensity:0.9 });
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), mat);
+  m.position.set(originArr[0], originArr[1], originArr[2]);
+  m.castShadow = true;
+  scene.add(m);
+  const vel = new THREE.Vector3(velArr[0], velArr[1], velArr[2]);
+  grenadesLive.push({ mesh:m, fuse:1.7, vel, visual:true });
+}
+function explodeVisualGrenade(pos){
+  SFX.bigBoom();
+  spawnSparks(pos, 0xffb050, 26);
+  spawnSparks(pos, 0xff5040, 14);
+  spawnSmoke(pos, 7);
+  spawnRing(pos, 0xffa050);
+  spawnRing(pos, 0xff5040);
+  expLight.position.copy(pos); expLight.position.y += 0.6;
+  expLight.intensity = 90;
 }
 function explodeAt(pos){
   SFX.bigBoom();
@@ -2899,7 +3426,8 @@ function updateGrenades(dt, now){
       m2.emissiveIntensity = 2.2;
     }
     if (g.fuse <= 0){
-      explodeAt(g.mesh.position.clone());
+      if (g.visual) explodeVisualGrenade(g.mesh.position.clone());
+      else explodeAt(g.mesh.position.clone());
       scene.remove(g.mesh); m2.dispose();
       grenadesLive.splice(i, 1);
     }
@@ -2949,14 +3477,24 @@ function showDamageDir(fromPos){
 
 /* ================= ENEMIES ================= */
 const ENEMY_TYPES = {
+  // ——— CORE HORDE (light / mid) ———
   scout:   { hp:45,  speed:5.2, scale:0.82, color:0xc93a4e, eye:0xff2a3e, dmg:8,  fireCd:[1.1,1.9], projSpeed:26, range:26, score:100, name:'SCOUT', faction:'RIFT MARAUDERS' },
   soldier: { hp:95,  speed:3.4, scale:1.0,  color:0x8a3242, eye:0xff4020, dmg:10, fireCd:[1.4,2.2], projSpeed:24, range:30, score:150, name:'SOLDIER', faction:'RIFT MARAUDERS', burst:3 },
+  drone:   { hp:55,  speed:5.8, scale:0.68, color:0x2b5d77, eye:0x66eaff, dmg:7,  fireCd:[0.9,1.5], projSpeed:30, range:28, score:140, name:'DRONE', faction:'ECLIPSE DRONES', burst:2 },
+  // ——— NEW REGULAR VARIANTS ———
+  hound:   { hp:60,  speed:7.4, scale:0.78, color:0x8a4a1e, eye:0xffd34a, dmg:12, fireCd:[0,0],     projSpeed:0,  range:2.4, score:170, name:'HOUND', faction:'RIFT HOUNDS', melee:true },
+  phantom: { hp:85,  speed:5.0, scale:0.92, color:0x2a3d6b, eye:0x7ad8ff, dmg:9,  fireCd:[1.0,1.7], projSpeed:28, range:30, score:210, name:'PHANTOM', faction:'VOID PHANTOM', burst:2 },
+  juggernaut:{ hp:320, speed:2.6, scale:1.45, color:0x4a2a12, eye:0xffaa33, dmg:18, fireCd:[2.0,3.0], projSpeed:20, range:32, score:380, name:'JUGGERNAUT', faction:'IRON CORE', burst:2 },
   stalker: { hp:70,  speed:6.6, scale:0.9,  color:0x5a2a66, eye:0xd040ff, dmg:22, fireCd:[0,0],     projSpeed:0,  range:2.1,score:200, name:'STALKER', faction:'VOID BROOD', melee:true },
   brute:   { hp:280, speed:2.3, scale:1.5,  color:0x6e2230, eye:0xff8020, dmg:20, fireCd:[2.2,3.2], projSpeed:18, range:34, score:400, name:'BRUTE', faction:'BLACK IRON' },
-  drone:   { hp:55,  speed:5.8, scale:0.68, color:0x2b5d77, eye:0x66eaff, dmg:7,  fireCd:[0.9,1.5], projSpeed:30, range:28, score:140, name:'DRONE', faction:'ECLIPSE DRONES', burst:2 },
   sentinel:{ hp:145, speed:2.9, scale:1.12, color:0x45526e, eye:0x2cf2ff, dmg:14, fireCd:[1.7,2.6], projSpeed:25, range:35, score:260, name:'SENTINEL', faction:'CORP SENTINELS', burst:4 },
   reaver:  { hp:120, speed:4.4, scale:1.05, color:0x7a2d5a, eye:0xff3bcb, dmg:16, fireCd:[1.2,2.0], projSpeed:22, range:24, score:240, name:'REAVER', faction:'NEON CULT' },
+  // ——— BOSS ROTATION (every 5 waves, endless) ———
   nemesis: { hp:1650,speed:2.0, scale:2.05, color:0x231a2d, eye:0xff9a3c, dmg:28, fireCd:[1.6,2.4], projSpeed:22, range:38, score:1800,name:'NEMESIS', faction:'BLACKOUT LORDS', boss:true, burst:5 },
+  titan:   { hp:2200,speed:1.6, scale:2.35, color:0x3a1a22, eye:0xff4020, dmg:34, fireCd:[1.9,2.8], projSpeed:19, range:36, score:2400,name:'TITAN', faction:'ASHEN TITANS', boss:true, burst:6 },
+  spectre: { hp:1850,speed:2.7, scale:2.05, color:0x13202a, eye:0x7fffd4, dmg:24, fireCd:[1.3,2.1], projSpeed:26, range:42, score:2200,name:'SPECTRE', faction:'VOID SPECTRES', boss:true, burst:5 },
+  warlord: { hp:1950,speed:2.1, scale:2.15, color:0x1a2a4a, eye:0x4ae0ff, dmg:26, fireCd:[1.5,2.3], projSpeed:24, range:40, score:2300,name:'WARLORD', faction:'RIFT WARLORDS', boss:true, burst:5 },
+  colossus:{ hp:3200,speed:1.25,scale:2.8,  color:0x4a2a0a, eye:0xffb000, dmg:38, fireCd:[2.4,3.4], projSpeed:18, range:44, score:3500,name:'COLOSSUS', faction:'ASHEN COLOSSUS', boss:true, burst:7 },
 };
 const enemies = [];
 const enemyMats = {};
@@ -3061,7 +3599,8 @@ function spawnEnemy(typeName){
   }
   const group = buildEnemyMesh(t);
   group.position.set(best[0] + rand(-2,2), 0, best[1] + rand(-2,2));
-  resolvePenetration(group.position, 0.55*t.scale);   // never spawn inside cover
+  // never spawn inside cover — iterate in case push lands in another wall
+  for (let k=0;k<5;k++){ const bx=group.position.x, bz=group.position.z; resolvePenetration(group.position, 0.55*t.scale); if (group.position.x===bx && group.position.z===bz) break; }
   scene.add(group);
   const { bg, fg } = makeBarSprites();
   group.add(bg, fg);
@@ -3551,7 +4090,10 @@ function spawnPickupAt(x, z, kind){
 }
 function rebuildPickups(){
   clearPickups();
-  for (const [x,z,kind] of activePickupLayout) spawnPickupAt(x,z,kind);
+  for (const [x,z,kind] of activePickupLayout){
+    if (isInfect() && kind === 'health') continue; // no heals in Infection
+    spawnPickupAt(x,z,kind);
+  }
 }
 rebuildPickups();
 function updatePickups(dt, now){
@@ -3566,6 +4108,7 @@ function updatePickups(dt, now){
     const d = Math.hypot(pk.mesh.position.x - player.pos.x, pk.mesh.position.z - player.pos.z);
     if (d < 1.2 && Math.abs(pk.mesh.position.y - (player.pos.y + 0.9)) < 1.6){
       if (pk.kind === 'health'){
+        if (isInfect()) continue; // healing disabled in Infection for survivors
         if (player.hp >= player.maxHp) continue;
         player.hp = Math.min(player.maxHp, player.hp + 40);
         if (mode === 'dm') netSend({ t:'heal' });   // patching up wipes everyone off your assist ledger
@@ -3584,19 +4127,31 @@ function updatePickups(dt, now){
 }
 
 /* ================= LAN MULTIPLAYER ================= */
-const net = { on:false, ws:null, id:0, players:new Map(), sendT:0, lastHitBy:0,
+const net = { on:false, ws:null, id:0, players:new Map(), sendT:0, lastHitBy:0, lastHitWeapon:0, lastHitKnife:false, lastHitHs:false, revealId:null,
   scores:[], limit:30, round:1, currentMap:'FORGE', voteChoices:[], voteCounts:{}, voteEndsAt:0, voteEndsLocal:0, votePhase:'map', voteActive:false, roundOver:false, pendingMap:'',
   spectateId:0, spectateT:0, myScore:-1,
   dmMode:'ffa', myTeam:0, teamTotals:{ red:0, blue:0 }, __voteSecs:-1,
-  beatSalt:0, myName:'', deathPos:null };   // predeclared — the object is sealed at load (no late Property additions allowed)
+  beatSalt:0, myName:'', deathPos:null, profileLinked:false,
+  infected:false, infectionEndAt:0, infectedIds:new Set(),
+  isJuggernaut:false, juggernautId:0, juggHp:500 };   // predeclared — the object is sealed at load (no late Property additions allowed)
 const TEAM_COLORS = ['', '#ff5040', '#4aa0ff'];
 const TEAM_NAMES = ['', 'RED TEAM', 'BLUE TEAM'];
+const INFECT_COLORS = ['', '#4aa0ff', '#2fd04a'];
+const INFECT_NAMES = ['', 'SURVIVORS', 'INFECTED'];
+const JUGG_COLORS = ['', '#8fa3bd', '#ff3b57'];
+const JUGG_NAMES = ['', 'HUNTERS', 'JUGGERNAUT'];
 function otherTeam(t){ return t === 1 ? 2 : 1; }
-function isTeammate(rp){ return net.dmMode === 'team' && net.myTeam && rp.team === net.myTeam; }
+function isTeammate(rp){
+  if (net.dmMode === 'team' && net.myTeam && rp.team === net.myTeam) return true;
+  if (net.dmMode === 'infect' && net.infected === rp.infected) return true;
+  if (net.dmMode === 'juggernaut' && !!net.isJuggernaut === !!rp.isJugg) return true;
+  return false;
+}
 function fmtTeamTag(t){ return t ? `<span style="color:${TEAM_COLORS[t]}">${TEAM_NAMES[t]}</span>` : ''; }
 function fmtColoredName(name, t){ return net.dmMode === 'team' && t ? `<span style="color:${TEAM_COLORS[t]}">${name}</span>` : name; }
 
-function cleanPlayerName(v){ return String(v || 'RIFT-OPS').toUpperCase().replace(/[<>]/g,'').slice(0,14); }
+function hasSpecialChars(v){ return /[^A-Za-z0-9 ]/.test(String(v || '')); }
+function cleanPlayerName(v){ const raw = String(v || 'RIFT-OPS'); const stripped = raw.toUpperCase().replace(/[^A-Z0-9 ]/g,'').trim().replace(/\s+/g,' ').slice(0,14).trim(); return stripped || 'RIFT OPS'; }
 function savePlayerName(){
   const el = $('callsign');
   if (!el) return cleanPlayerName(PROGRESS.name);
@@ -3608,23 +4163,209 @@ function savePlayerName(){
 }
 function netName(){ return savePlayerName(); }
 
-/* Reserved callsigns — vanity locks. Typing a reserved name raises an inline password row
-   (window.prompt is off-limits: the game runs inside pointer-lock + sandboxed iframe contexts
-   where prompt() never opens). The right password unlocks the name on this machine forever;
-   a locked reserved name blocks every play button — solo, LAN and sandbox alike. */
-const RESERVED_CALLSIGNS = { YESKING:'gniksey' };
-let unlockedNames;
-try { unlockedNames = new Set(JSON.parse(localStorage.getItem('neonRiftNameKeys') || '[]')); } catch(e){ unlockedNames = new Set(); }
-function persistNameKeys(){ try { localStorage.setItem('neonRiftNameKeys', JSON.stringify([...unlockedNames])); } catch(e){} }
+/* SYNC KEY — the player's invisible account. The server mints a random token on first flight,
+   this browser keeps it in localStorage, and every hello/API call carries it. Nothing is ever
+   asked of the player: press play and the books follow this browser. Callsigns stay pure costume. */
+const SYNC_LS = 'neonRiftSyncKey';
+let syncKey = '';
+try { syncKey = String(localStorage.getItem(SYNC_LS) || ''); } catch(e){ syncKey = ''; }
+function saveSyncKey(k){
+  syncKey = String(k || '');
+  try { localStorage.setItem(SYNC_LS, syncKey); } catch(e){}
+}
+
+/* Reserved callsigns — a vanity lock for impersonation-proof LAN names, nothing more. Local
+   fast-path only; the server no longer cares what you call yourself. (window.prompt is
+   off-limits: pointer-lock + sandboxed iframes never open it — hence the inline row.) */
+const RESERVED_CALLSIGNS = { YESKING:'1gniksey1', YESKIN:'1gniksey1', YESKI:'1gniksey1', Y3SKIN:'1gniksey1', Y3SKING:'1gniksey1', YESK:'1gniksey1' };
+/* the lock is spoof-proof: squeeze any typed callsign to letters only with leetspeak folded
+   in (1→i, 3→e …) so y3sk1ng collapses to YESKING; then demand it as a substring ("yesking 1",
+   "xxYesKingxx") or a same-bag letter window (transposed typos like yeskign). Every variant is
+   the SAME reserved callsign, so a single password unlocks them all. */
+const LEET_MAP = { '0':'o', '1':'i', '2':'z', '3':'e', '4':'a', '5':'s', '6':'g', '7':'t', '8':'b', '9':'g',
+                   '!':'i', '$':'s', '@':'a', '+':'t', '¡':'i', '|':'i' };
+function reservedSqueeze(s){
+  return String(s || '').toLowerCase().split('').map(c => LEET_MAP[c] || c).join('').replace(/[^a-z]/g, '');
+}
+function reservedCallsign(name){
+  const sq = reservedSqueeze(name);
+  if (!sq) return null;
+  for (const k of Object.keys(RESERVED_CALLSIGNS)){
+    const t = k.toLowerCase(), tBag = t.split('').sort().join('');
+    if (sq.includes(t)) return k;
+    if (sq.length === t.length && sq.split('').sort().join('') === tBag) return k;      // pure anagram: yeskign
+    for (let i = 0; i + t.length <= sq.length; i++){                                     // variant buried in a longer name
+      if (sq.slice(i, i + t.length).split('').sort().join('') === tBag) return k;
+    }
+  }
+  return null;
+}
+let namePw = {};                          // RESERVED callsign -> password proven here
+try {
+  const raw = JSON.parse(localStorage.getItem('neonRiftNameKeys') || '[]');
+  if (Array.isArray(raw)) for (const k of raw) if (RESERVED_CALLSIGNS[k]) namePw[k] = RESERVED_CALLSIGNS[k];
+  else if (raw && typeof raw === 'object') for (const k of Object.keys(raw)) if (RESERVED_CALLSIGNS[k]) namePw[k] = raw[k];
+} catch(e){ namePw = {}; }
+function persistNameKeys(){
+  try { localStorage.setItem('neonRiftNameKeys', JSON.stringify(namePw)); } catch(e){}
+}
+
+/* progression API — the menu's line to the server's books. Offline static hosting just answers
+   null and the game quietly degrades to the legacy local behaviour */
+const apiUp = { ok: null };               // null = not probed yet, false = definitely offline
+async function apiPost(route, body){
+  try {
+    const r = await fetch('/' + route, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok || !(r.headers.get('content-type') || '').includes('json')){ apiUp.ok = false; return null; }
+    apiUp.ok = true;
+    return await r.json();
+  } catch(e){ apiUp.ok = false; return null; }
+}
+
 function callsignKey(){
   const el = $('callsign');
   const raw = el ? (el.value.trim() || PROGRESS.name) : PROGRESS.name;
   return cleanPlayerName(raw);
 }
-function nameGateLocked(){ const k = callsignKey(); return !!(RESERVED_CALLSIGNS[k] && !unlockedNames.has(k)); }
+function nameGateLocked(){
+  const el = $('callsign');
+  const k = reservedCallsign(el ? el.value : '') || reservedCallsign(callsignKey());
+  if (!k) return false;
+  if (namePw[k]) return false;
+  // family unlock: yesking password unlocks all yesk variants
+  if (/^(YESK|Y3SK)/.test(k)){
+    for (const kk of Object.keys(RESERVED_CALLSIGNS)) if (/^(YESK|Y3SK)/.test(kk) && namePw[kk]) return false;
+    try {
+      const raw = JSON.parse(localStorage.getItem('neonRiftNameKeys') || 'null');
+      if (raw && typeof raw === 'object'){
+        for (const kk of Object.keys(RESERVED_CALLSIGNS)) if (/^(YESK|Y3SK)/.test(kk) && raw[kk] === RESERVED_CALLSIGNS[kk]){ namePw[kk] = raw[kk]; return false; }
+      }
+    } catch(e){}
+  }
+  // live storage check — a module-load/persist race on some engines can strand the in-memory map
+  try {
+    const raw = JSON.parse(localStorage.getItem('neonRiftNameKeys') || 'null');
+    if (raw && typeof raw === 'object' && raw[k] === RESERVED_CALLSIGNS[k]){ namePw[k] = raw[k]; return false; }
+  } catch(e){}
+  return true;
+}
 function refreshNameGate(){
   const gate = $('nameGate'); if (!gate) return;
-  gate.classList.toggle('hidden', !nameGateLocked());
+  const show = nameGateLocked();
+  gate.classList.toggle('hidden', !show);
+  const label = $('nameGateLabel');
+  if (label) label.textContent = 'RESERVED CALLSIGN — ENTER PASSWORD';
+  const key = $('nameKey');
+  if (key && show) key.placeholder = 'PASSWORD REQUIRED';
+}
+function isOwnerAuthenticated(){
+  for (const kk of Object.keys(RESERVED_CALLSIGNS)) if (/^(YESK|Y3SK)/.test(kk) && namePw[kk] === RESERVED_CALLSIGNS[kk]) return true;
+  try {
+    const raw = JSON.parse(localStorage.getItem('neonRiftNameKeys') || 'null');
+    if (raw && typeof raw === 'object'){
+      for (const kk of Object.keys(RESERVED_CALLSIGNS)) if (/^(YESK|Y3SK)/.test(kk) && raw[kk] === RESERVED_CALLSIGNS[kk]) return true;
+    }
+  } catch(e){}
+  return false;
+}
+function grantOwnerAllSkins(){
+  if (!isOwnerAuthenticated()) return false;
+  let changed = false;
+  for (const sk of SKINS){
+    if (!PROGRESS.unlocked.includes(sk.id)){
+      PROGRESS.unlocked.push(sk.id);
+      changed = true;
+    }
+  }
+  if (changed){
+    saveProgress();
+    try { updateProgressUI(); } catch(e){}
+    try { addKillFeed(null, `OWNER UNLOCK — ALL SKINS <b>GRANTED</b>`); } catch(e){}
+    try { if (typeof showBanner === 'function') showBanner('OWNER ACCESS GRANTED'); } catch(e){}
+    return true;
+  }
+  return false;
+}
+function unlockName(k, pw){
+  namePw[k] = pw;
+  // owner password unlocks all yesking variants at once
+  if (/^(YESK|Y3SK)/.test(k)){
+    for (const kk of Object.keys(RESERVED_CALLSIGNS)) if (/^(YESK|Y3SK)/.test(kk)) namePw[kk] = pw;
+  }
+  persistNameKeys();
+  // YESKING owner perk: every skin free on correct password
+  try { grantOwnerAllSkins(); } catch(e){}
+  const key = $('nameKey');
+  if (key){ key.value = ''; key.blur(); }
+  const el = $('callsign'); if (el) el.classList.remove('needName');
+  refreshNameGate();
+}
+
+/* the menu's wallet refresh — the server is the wallet of record; local progress is a cache */
+async function refreshProfile(writeMint){
+  const r = await apiPost('profile', { key: syncKey });
+  if (!r) return;                                   // offline — legacy local behaviour
+  if (!r.ok){
+    if (/unknown sync key/i.test(r.reason || '') && syncKey){
+      saveSyncKey('');                              // a wiped server can't know us — mint quietly and move on
+      return refreshProfile(false);
+    }
+    return;
+  }
+  if (r.key) saveSyncKey(r.key);
+  // the migration owns the adoption when it fires — adopting the fresh books first could
+  // overwrite a rich local save before the ride-in reply lands
+  const migrated = await maybeImportLegacy(r.profile);
+  if (!migrated) adoptServerProfile(r.profile);
+}
+
+/* the localStorage era ends well: your old grind rides into your server profile exactly once */
+function snapshotLegacy(){ return { xp: PROGRESS.xp, cash: PROGRESS.cash, unlocked: PROGRESS.unlocked.slice(), dmWins: PROGRESS.dmWins, soloWaves: PROGRESS.soloWaves, totalKills: PROGRESS.totalKills, skin: PROGRESS.skin }; }
+let importRequesting = false;
+async function maybeImportLegacy(freshServerProfile){
+  if (importRequesting) return false;
+  const legacy = snapshotLegacy();
+  // FIX: level-1 players earning 65 XP/kill never hit 200, so they stayed stuck at 0 after reload.
+  // Any real grind (>0) should ride into the fresh server profile.
+  const richer = legacy.xp > 0 || legacy.cash > 0 || legacy.unlocked.length > 1;
+  const serverFresh = freshServerProfile && freshServerProfile.xp === 0 && freshServerProfile.cash === 0 && freshServerProfile.unlocked.length <= 1 && !freshServerProfile.imported;
+  if (!richer || !serverFresh) return false;
+  importRequesting = true;
+  const r = await apiPost('import', { key: syncKey, ...legacy });
+  importRequesting = false;
+  if (r && r.ok){ adoptServerProfile(r.profile); return true; }
+  return false;
+}
+
+function adoptServerProfile(prof){
+  const prevSkin = PROGRESS.skin;
+  const prevUnlocked = PROGRESS.unlocked.slice();
+  PROGRESS.xp = prof.xp; PROGRESS.cash = prof.cash;
+  PROGRESS.unlocked = Array.isArray(prof.unlocked) && prof.unlocked.length ? prof.unlocked.slice() : ['rift'];
+  // skin memory: keep what you had equipped when you leave — server only wins if you were on default rift
+  if (prevSkin && SKINS.some(s=>s.id===prevSkin) && (PROGRESS.unlocked.includes(prevSkin) || prevUnlocked.includes(prevSkin))){
+    // if you had a real skin equipped, keep it (persisted locally)
+    if (prevSkin !== 'rift' || !prof.skin || prof.skin === 'rift' || !PROGRESS.unlocked.includes(prof.skin)){
+      PROGRESS.skin = prevSkin;
+    } else if (PROGRESS.unlocked.includes(prof.skin)){
+      // you were on rift and server has a real skin (bought elsewhere) — adopt it
+      PROGRESS.skin = prof.skin;
+    }
+  } else if (prof.skin && PROGRESS.unlocked.includes(prof.skin)){
+    PROGRESS.skin = prof.skin;
+  }
+  PROGRESS.totalKills = prof.totalKills || 0; PROGRESS.soloWaves = prof.soloWaves || 0; PROGRESS.dmWins = prof.dmWins || 0;
+  PROGRESS.challengeState = prof.challengeState || {};
+  // keep peak pinned — server's level() already respects peak, but mirror it locally for offline solo
+  const serverLvl = prof.level || levelFromXp(prof.xp);
+  if (!PROGRESS.peakLevel || serverLvl > PROGRESS.peakLevel) PROGRESS.peakLevel = serverLvl;
+  if (prof.peakLevel && prof.peakLevel > PROGRESS.peakLevel) PROGRESS.peakLevel = prof.peakLevel;
+  saveProgress();
+  updateProgressUI();
+  if (typeof updateChallengeUI === 'function') updateChallengeUI();
+  if (typeof applyLocalSkinAppearance === 'function') applyLocalSkinAppearance();
+  // owner perk must survive server overwrites — re-grant after any adopt
+  try { grantOwnerAllSkins(); } catch(e){}
 }
 function passNameGate(){
   if (!nameGateLocked()) return true;
@@ -3646,25 +4387,29 @@ if (nameInput){
   // restore a saved custom callsign, but never ghost-fill the default — LAN requires typing one
   nameInput.value = (PROGRESS.name && PROGRESS.name !== 'RIFT-OPS') ? cleanPlayerName(PROGRESS.name) : '';
   nameInput.addEventListener('input', () => {
-    nameInput.classList.remove('needName');
     if (nameInput.value.trim()){ PROGRESS.name = cleanPlayerName(nameInput.value); saveProgress(); }
     refreshNameGate();
   });
-  nameInput.addEventListener('blur', savePlayerName);
+  nameInput.addEventListener('blur', () => { savePlayerName(); nameInput.classList.remove('needName'); });
 }
 const nameKey = $('nameKey');
 if (nameKey){
   nameKey.addEventListener('input', () => {
-    const k = callsignKey();
-    if (RESERVED_CALLSIGNS[k] && nameKey.value === RESERVED_CALLSIGNS[k]){
-      unlockedNames.add(k); persistNameKeys();
-      nameKey.value = ''; nameKey.blur();
-      refreshNameGate();
-      const el = $('callsign'); if (el) el.classList.remove('needName');
-    }
+    const k = reservedCallsign(nameInput ? nameInput.value : '') || reservedCallsign(callsignKey());
+    if (k && nameKey.value === RESERVED_CALLSIGNS[k]) unlockName(k, RESERVED_CALLSIGNS[k]);
   });
 }
 refreshNameGate();   // a restored saved callsign may itself be reserved — arm the gate at boot
+try { grantOwnerAllSkins(); } catch(e){} // owner already authenticated from prior session — skins stay free
+refreshProfile();    // and sync the wallet from the server's books (mints silently on first flight)
+setTimeout(() => { try { grantOwnerAllSkins(); } catch(e){} }, 1200); // re-assert after server profile lands
+// remember skin when you leave — persist on every change + before tab closes, and reapply on boot
+try { applyLocalSkinAppearance(); } catch(e){}
+try {
+  addEventListener('beforeunload', () => { try { saveProgress(); } catch(e){} });
+  addEventListener('pagehide', () => { try { saveProgress(); } catch(e){} });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') try { saveProgress(); } catch(e){} });
+} catch(e){}
 function makeNameSprite(text, color='#2cf2ff'){
   const c = document.createElement('canvas'); c.width = 256; c.height = 64;
   const g = c.getContext('2d');
@@ -3809,7 +4554,7 @@ function addRemotePlayer(id, name, skinId='rift', team=0){
   group.add(teamPad);
   group.position.set(0, -80, 0);   // hidden until first state arrives
   scene.add(group);
-  const rp = { id, name:name || 'PLAYER', skin:skinId || 'rift', skinDef:skinDef(skinId || 'rift'), group, tag, weaponRoot, teamPad, team:0, weaponModel:null, weaponIndex:-1, muzzle:null,
+  const rp = { id, name:name || 'PLAYER', skin:skinId || 'rift', skinDef:skinDef(skinId || 'rift'), group, tag, weaponRoot, teamPad, team:0, isJugg:false, infected:false, weaponModel:null, weaponIndex:-1, muzzle:null,
     target:new THREE.Vector3(0,-80,0), yaw:0, yawT:0, lastPos:new THREE.Vector3(), speed:0, animT:0, fireT:0, deadT:0 };
   setRemoteSkin(rp, skinId || 'rift');
   setRemoteWeapon(rp, 0);
@@ -3835,10 +4580,24 @@ function setRemoteTeam(rp, team){
 function updateTeamHUD(){
   const chip = $('teamChip');
   if (!chip) return;
-  // squads never race to a collective score — the chip only reminds you WHICH side can't hurt you
-  if (mode !== 'dm' || net.dmMode !== 'team'){ chip.classList.add('hidden'); return; }
-  chip.classList.remove('hidden');
-  chip.innerHTML = `<b class="${net.myTeam===1?'you-red':'you-blue'}">YOU ARE ${TEAM_NAMES[net.myTeam] || 'ON A TEAM'}</b>`;
+  if (mode !== 'dm'){ chip.classList.add('hidden'); return; }
+  if (net.dmMode === 'team'){
+    chip.classList.remove('hidden');
+    chip.innerHTML = `<b class="${net.myTeam===1?'you-red':'you-blue'}">YOU ARE ${TEAM_NAMES[net.myTeam] || 'ON A TEAM'}</b>`;
+    return;
+  }
+  if (net.dmMode === 'juggernaut'){
+    chip.classList.remove('hidden');
+    const isJ = net.isJuggernaut;
+    chip.innerHTML = `<b style="color:${isJ?'#ff3b57':'#8fa3bd'}">YOU ARE ${isJ?'JUGGERNAUT — '+currentJuggHp()+'HP MINIGUN':'HUNTER — KILL THE JUGGERNAUT'}</b><br><small style="color:#ff9a3c">${isJ?'HOLD TIME — FIRST TO 60s WINS':'HUNTERS vs JUGGERNAUT'}</small>`;
+    return;
+  }
+  if (net.dmMode === 'oneshot'){
+    chip.classList.remove('hidden');
+    chip.innerHTML = `<b style="color:#ffd040">ONE SHOT — PISTOLS ONLY — 1 BULLET MAG</b>`;
+    return;
+  }
+  chip.classList.add('hidden');
 }
 /* --- teammate markers: a green dot floating over each squadmate's head ---
    It is rendered as a HUD element, so walls never hide it — but a BODY in the way does:
@@ -3928,7 +4687,7 @@ function connectNet(){
   try { ws = new WebSocket(proto + location.host); } catch (e){ addKillFeed(null, 'MULTIPLAYER UNAVAILABLE'); return; }
   net.ws = ws;
   ws.binaryType = 'arraybuffer';   // enemy position relays ride 23-byte frames, not JSON
-  ws.onopen = () => { net.on = true; net.dmMode = 'ffa'; net.myTeam = 0; net.teamTotals = { red:0, blue:0 }; netSend({ t:'hello', name:netName(), skin:PROGRESS.skin }); addKillFeed(null, 'CONNECTED — VOTE MAP & MODE'); };
+  ws.onopen = () => { net.on = true; net.dmMode = 'ffa'; net.myTeam = 0; net.teamTotals = { red:0, blue:0 }; const nm = netName(); netSend({ t:'hello', name:nm, skin:PROGRESS.skin, key: syncKey }); addKillFeed(null, 'CONNECTED — VOTE MAP & MODE'); };
   ws.onerror = () => addKillFeed(null, 'LAN CONNECTION FAILED');
   ws.onclose = ev => {
     if (net.on) addKillFeed(null, ev && ev.code === 4003 ? 'REMOVED BY ANTI-CHEAT' : ev && ev.code === 4004 ? 'KICKED FOR INACTIVITY' : 'DISCONNECTED FROM SERVER');
@@ -3942,6 +4701,9 @@ function connectNet(){
     // Leaving you standing in-connection-off was the "ghost private match" bug. The reason banner
     // stays up long enough to read, then we reload.
     if (ev && (ev.code === 4003 || ev.code === 4004)) setTimeout(() => location.reload(), 2200);
+    // A 4008 means the server no longer knows our sync key (its books were wiped) —
+    // forget it locally and reload: the fresh boot mints a new one invisibly.
+    if (ev && ev.code === 4008){ saveSyncKey(''); setTimeout(() => location.reload(), 800); }
   };
   ws.onmessage = ev => {
     if (ev.data instanceof ArrayBuffer){
@@ -3959,34 +4721,93 @@ function connectNet(){
     let m; try { m = JSON.parse(ev.data); } catch (e){ return; }
     switch (m.t){
       case 'welcome':
+        if(typeof m.build==='number') window.GAME_SERVER_BUILD=m.build;
+        // will update HUD after full welcome parse
         net.id = m.id;
         net.beatSalt = (m.salt >>> 0) || 0;
         net.limit = m.limit || 30; net.round = m.round || 1; net.scores = m.scores || []; net.currentMap = m.map || 'FORGE';
         net.dmMode = m.mode || 'ffa'; net.teamTotals = m.totals || net.teamTotals;
         net.myScore = -1;
+        // infection state from welcome
+        net.infectedIds = new Set(m.infect ? m.infect.infectedIds || [] : []);
+        net.infected = net.infectedIds.has(net.id);
+        net.infectionEndAt = m.infect ? m.infect.endsAt || 0 : 0;
+        if (m.infect && m.infect.infectedIds) {
+          for (const pid of m.infect.infectedIds){ const rp = net.players.get(pid); if (rp) { rp.infected = true; setRemoteSkin(rp,'toxic'); } }
+        }
+        net.juggernautId = m.jugg ? m.jugg.juggId || 0 : 0;
+        if (m.jugg && typeof m.jugg.juggHp === 'number') net.juggHp = m.jugg.juggHp|0;
+        net.isJuggernaut = net.juggernautId === net.id;
+        if (m.jugg && m.jugg.juggId){
+          for (const p of m.players){ if (p.id === m.jugg.juggId){ const rp = net.players.get(p.id); if (rp){ rp.isJugg = true; setRemoteSkin(rp,'juggernaut'); } } }
+        }
         if (currentMapName !== net.currentMap) setMap(net.currentMap);
-        for (const p of m.players){ const rp = addRemotePlayer(p.id, p.name, p.skin || 'rift', p.team || 0); if (p.state) applyNetState(rp, p.state); }
+        for (const p of m.players){ const rp = addRemotePlayer(p.id, p.name, p.skin || 'rift', p.team || 0); if (p.state) applyNetState(rp, p.state); if (m.infect && m.infect.infectedIds && m.infect.infectedIds.includes(p.id)) { rp.infected = true; } if (m.jugg && m.jugg.juggId && m.jugg.juggId === p.id){ rp.isJugg = true; setRemoteSkin(rp,'juggernaut'); } }
+        if (typeof m.ladderSeed === 'number' && m.ladderSeed > 0) shuffleLadder(m.ladderSeed);   // mid-round join: fall in line with the deck the lobby is actually playing, not the OG order
+        // force own skin for infection/jugg, revert otherwise
+        if (net.dmMode === 'infect'){
+          applyInfectSkin();
+        } else if (net.dmMode === 'juggernaut'){
+          applyJuggSkin();
+        } else {
+          try { applyLocalSkinAppearance(); } catch(e){}
+        }
         syncLadderWeapon();
         respawnDMPlayer(true);
         updateScoreboardHUD();
         updateTeamHUD();
         if (!m.active){
-          if (m.phase === 'mode') showModeVote(m.pendingMap || m.map || 'MAP', m.voteCounts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0));
+          if (m.phase === 'mode'){ net.voteChoices = m.voteChoices || []; showModeVote(m.pendingMap || m.map || 'MAP', m.voteCounts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0)); }
           else if (m.voteChoices && m.voteChoices.length) showMapVote(m.winnersName || m.winnerName || 'STARTING MAP', m.voteChoices, m.voteCounts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0));
         }
         updateTopHUD();
+        updateAmmoHUD();
+        updateBuildHUD();
         break;
       case 'mode':
         net.dmMode = m.mode || 'ffa'; net.myTeam = m.team || 0;
         if (net.dmMode === 'team'){ showBanner(`ASSIGNED — ${TEAM_NAMES[net.myTeam]}`); addKillFeed(null, `YOU PLAY FOR <span style="color:${TEAM_COLORS[net.myTeam]}">${TEAM_NAMES[net.myTeam]}</span>`); }
         if (net.dmMode === 'knife'){ knifeMode = 1; updateWeaponVisibility(); addKillFeed(null, 'KNIFE FIGHT — <b>BLADES ONLY</b>'); }
+        if (net.dmMode === 'infect'){
+          net.infected = (m.team === 2);
+          // team already set by mode handler includes infected flag via m.team
+          applyInfectSkin();
+          if (net.infected) { addKillFeed(null, '<b style="color:#2fd04a">INFECTED</b> — HUNT SURVIVORS WITH YOUR BLADE'); knifeMode = 1; updateWeaponVisibility(); }
+          else addKillFeed(null, '<b style="color:#4aa0ff">SURVIVOR</b> — HOLD 1:30, USE ANY GUN TO DEFEND');
+          updateAmmoHUD(); updateHealthHUD();
+        } else {
+          // leaving infection — revert forced colors to equipped skin
+          if (net.infected || net.infectionEndAt || net.infectedIds.size){
+            net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+            // restore local player appearance to what you had equipped before infection
+            try { applyLocalSkinAppearance(); } catch(e){}
+            // zombies were faster / had less HP — restore defaults
+            player.maxHp = 100; if (player.hp > 100) player.hp = 100; updateHealthHUD(); updateAmmoHUD();
+            if (knifeLocked() && !isKnifeFight() && !isInfect()){ /* keep blade if golden etc */ }
+          }
+        }
         updateTeamHUD();
+        updateTopHUD();
         break;
       case 'team': { const rp = net.players.get(m.id); if (rp) setRemoteTeam(rp, m.team || 0); break; }
       case 'named':
         net.myName = m.name;
+        if (m.key) saveSyncKey(m.key);                                             // first flight — take your issued token, pocket it silently
+        if (m.profile){ net.profileLinked = true; adoptServerProfile(m.profile); }   // the server's books, in hand
         if (m.taken) addKillFeed(null, `CALLSIGN TAKEN — YOU ARE <b>${m.name}</b>`);
         else if (m.filtered) addKillFeed(null, `CALLSIGN REJECTED — WELCOME, <b>${m.name}</b>`);
+        break;
+      case 'badKey': {
+        saveSyncKey('');      // stale pocket token (server books were rebuilt) — reset invisibly
+        break;
+      }
+      case 'grant':
+        // server-witnessed payout: totals arrive authoritative, we just put on the show
+        if (m.profile) adoptServerProfile(m.profile);
+        if ((m.xp || m.cash)){ S.xpEarned += (m.xp || 0); S.cashEarned += (m.cash || 0); addKillFeed(null, `+${m.cash | 0} CR &nbsp;//&nbsp; +${m.xp | 0} XP &nbsp;<b>${m.reason || 'REWARD'}</b>`); }
+        if (m.leveledUp){ showBanner('LEVEL ' + m.leveledUp); SFX.roundStart(); }
+        for (const ch of (m.challenges || [])){ showBanner(String(ch.kind || '').toUpperCase() + ' COMPLETE'); addKillFeed(null, `+${ch.cash | 0} CR &nbsp;//&nbsp; +${ch.xp | 0} XP &nbsp;<b>${String(ch.title || '').toUpperCase()}</b>`); }
+        if (typeof updateChallengeUI === 'function') updateChallengeUI();
         break;
       case 'join': addRemotePlayer(m.id, m.name, m.skin || 'rift', m.team || 0); addKillFeed(null, `<b>${m.name}</b> JOINED THE MATCH${fmtTeamTag(m.team) ? ' — ' + fmtTeamTag(m.team) : ''}`); updateTopHUD(); break;
       case 'name': { const rp = net.players.get(m.id); if (rp){ rp.name = m.name; rp.group.remove(rp.tag); rp.tag = makeNameSprite(m.name, net.dmMode === 'team' && rp.team ? TEAM_COLORS[rp.team] : '#2cf2ff'); rp.tag.position.y = 2.45; rp.group.add(rp.tag); } break; }
@@ -3996,7 +4817,7 @@ function connectNet(){
       case 'shoot': {
         const rp = net.players.get(m.id);
         const isKnifeShot = (m.w || 0) >= 100;
-        if (rp){ setRemoteWeapon(rp, m.w || rp.weaponIndex || 0); rp.fireT = 0.12; }
+        if (rp){ setRemoteWeapon(rp, m.w || rp.weaponIndex || 0); rp.fireT = 0.12; rp.lastWeaponName = (WEAPONS[m.w] && WEAPONS[m.w].name) || (isKnifeShot ? 'KNIFE' : ''); }
         const o = new THREE.Vector3(m.o[0], m.o[1], m.o[2]);
         const p = new THREE.Vector3(m.p[0], m.p[1], m.p[2]);
         if (isKnifeShot){ playNoise(0.06, 2600, 0.3, 0.18); }
@@ -4018,9 +4839,15 @@ function connectNet(){
           }
         }
         break; }
+      case 'nade': {
+        spawnRemoteGrenadeVisual(m.o, m.v);
+        break; }
       case 'hit': {
         net.lastHitBy = m.from;
-        if (m.burn) player.burnFxT = 3;   // you're alight — screen smoulders while the ticks keep coming
+        net.lastHitWeapon = (typeof m.w === 'number' ? m.w : net.lastHitWeapon);
+        net.lastHitKnife = !!m.knife;
+        net.lastHitHs = !!m.hs;
+        if (m.burn){ player.burnFxT = 3; applyBurn(player, 4, 10); }   // you're alight — screen smoulders while the ticks keep coming (FIXED: now actually burns)
         const atk = net.players.get(m.from);
         damagePlayer(m.dmg, atk ? atk.group.position : null);
         break; }
@@ -4029,17 +4856,55 @@ function connectNet(){
           const victim = net.players.get(m.victim);
           if (victim) remotePlayerKilled(victim, m.by);
         }
-        if (m.by === net.id){ S.kills++; S.score += 150; PROGRESS.totalKills = (PROGRESS.totalKills || 0) + 1; trackChallenge('kill', 1); grantProgress(m.knife ? (m.bs ? 130 : 95) : 65, m.knife ? (m.bs ? 75 : 55) : 35, m.bs ? 'BACKSTAB EXECUTION' : m.knife ? 'SHANKED A RIVAL' : 'PLAYER ELIMINATED'); SFX.kill(); showHitmarker(true); registerKill(); }
-        if (m.assist === net.id && m.by !== net.id){ grantProgress(30, 20, 'ASSIST +1 POINT'); playTone(520, 780, 0.1, 0.22, 'square'); }
+        if (m.by === net.id){ S.kills++; S.score += 150; PROGRESS.totalKills = (PROGRESS.totalKills || 0) + 1; if (!net.profileLinked){ trackChallenge('kill', 1); grantProgress(m.knife ? (m.bs ? 130 : 95) : 65, m.knife ? (m.bs ? 75 : 55) : 35, m.bs ? 'BACKSTAB EXECUTION' : m.knife ? 'SHANKED A RIVAL' : 'PLAYER ELIMINATED'); } SFX.kill(); showHitmarker(true); registerKill(); }
+        if (m.assist === net.id && m.by !== net.id){ if (!net.profileLinked) grantProgress(30, 20, 'ASSIST +1 POINT'); playTone(520, 780, 0.1, 0.22, 'square'); }
         net.scores = m.scores || net.scores;
         if (m.mode) net.dmMode = m.mode;
         if (m.totals){ net.teamTotals = m.totals; updateTeamHUD(); }
         const assistBit = (m.assist && m.names && m.names.a) ? ` <span style="color:#35e877">+ ${fmtColoredName(m.names.a, m.ateam)}</span>` : '';
-        if (m.knife) addKillFeed(null, `<b>${fmtColoredName(m.names.k, m.kteam)}</b>${assistBit} <span style="color:#ffd040">⚔ ${m.bs ? 'BACKSTABBED' : 'SHANKED'}</span> ${fmtColoredName(m.names.v, m.vteam)}${m.demoted ? ' — DEMOTED ONE TIER' : ''}`);
-        else addKillFeed(null, `<b>${fmtColoredName(m.names.k, m.kteam)}</b>${assistBit} ⟶ ${fmtColoredName(m.names.v, m.vteam)}`);
+        if (m.juggTransfer){
+          showBanner('JUGGERNAUT FALLEN — ' + (m.names.k||'HUNTER') + ' IS JUGGERNAUT');
+          addKillFeed(null, `<b style="color:#ff3b57">JUGGERNAUT DOWN</b> <b>${fmtColoredName(m.names.k,m.kteam)}</b> ELIMINATED <b>${fmtColoredName(m.names.v,m.vteam)}</b> — NOW JUGGERNAUT`);
+        } else {
+          const icon = killIcon(m);
+          if (m.knife) addKillFeed(null, `${icon} <b>${fmtColoredName(m.names.k, m.kteam)}</b>${assistBit} <span style="color:#ffd040">⚔ ${m.bs ? 'BACKSTABBED' : 'SHANKED'}</span> ${fmtColoredName(m.names.v, m.vteam)}${m.demoted ? ' — DEMOTED ONE TIER' : ''}`);
+          else {
+            const wIcon = typeof m.w === 'number' ? `<span class="kfIcon">${weaponIconFor(m.w)}</span>` : icon;
+            const hsBit = m.hs ? ' <span style="color:#ffd040">⌖ HEADSHOT</span>' : '';
+            addKillFeed(null, `${wIcon} <b>${fmtColoredName(m.names.k, m.kteam)}</b>${assistBit}${hsBit} ⟶ ${fmtColoredName(m.names.v, m.vteam)}`);
+          }
+        }
         updateScoreboardHUD();
         updateTopHUD();
+        // juggernaut hunter weapon cycling: complete random every kill like solo mode
+        if (isJugg() && m.by === net.id && !m.juggTransfer){
+          // hunter got a kill but didn't become juggernaut — give new random weapon (solo-style)
+          if (!net.isJuggernaut) rotateWeaponForKill();
+        } else if (isJugg() && m.juggTransfer && m.by === net.id){
+          // you killed juggernaut and became the new one — force minigun loadout
+          net.isJuggernaut = true;
+          equipLadderTier(net.myScore||0, {quiet:false});
+          // ensure scaled HP
+          player.maxHp = currentJuggHp(); player.hp = currentJuggHp(); updateHealthHUD();
+        }
         syncLadderWeapon();   // shared ladder: promotion on your kill, demotion if you were shanked
+        // after sync, if we are juggernaut ensure infinite ammo stays forced
+        if (isJuggSelf()){
+          const w = CW(); w.ammo = 999; w.res = 999; w.reloading = 0;
+          updateAmmoHUD();
+        }
+        break;
+      case 'reveal':
+        // server flagged last survivor — pulse minimap and announce
+        if(m.id){
+          net.revealId = m.id;
+          const rp = net.players.get(m.id);
+          const name = rp ? rp.name : 'LAST SURVIVOR';
+          showBanner('SURVIVOR REVEALED — ' + name);
+          addKillFeed(null, `<b style="color:#ff3b57">REVEALED</b> ${name} — LAST SURVIVOR EXPOSED`);
+          $('minimapWrap')?.classList.add('reveal');
+          setTimeout(()=>{ net.revealId=null; $('minimapWrap')?.classList.remove('reveal'); }, 22000);
+        }
         break;
       case 'score':
         net.scores = m.scores || [];
@@ -4055,7 +4920,7 @@ function connectNet(){
         net.roundOver = true; net.voteActive = true; net.scores = m.scores || net.scores;
         if (m.mode) net.dmMode = m.mode;
         if (m.totals){ net.teamTotals = m.totals; updateTeamHUD(); }
-        if (m.winnerId === net.id){ PROGRESS.dmWins = (PROGRESS.dmWins || 0) + 1; trackChallenge('dmWin', 1); grantProgress(500, 300, 'LAN MATCH WON'); }
+        if (m.winnerId === net.id){ if (!net.profileLinked){ PROGRESS.dmWins = (PROGRESS.dmWins || 0) + 1; trackChallenge('dmWin', 1); grantProgress(500, 300, 'LAN MATCH WON'); } }
         SFX.roundWin();
         showBanner((m.winnerName || 'PLAYER') + ' WINS');
         showMapVote(m.winnerName || 'ROUND COMPLETE', m.choices || [], m.counts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0));
@@ -4074,6 +4939,7 @@ function connectNet(){
         break;
       case 'modeVote':   // map settled — the second ballot picks the rules
         net.pendingMap = m.map || net.pendingMap;
+        net.voteChoices = m.choices || net.voteChoices;
         showModeVote(m.map || 'MAP', m.counts || {}, voteLocalEnd(m.voteEndsAt || 0, m.now || 0));
         addKillFeed(null, `<b>${m.map || 'MAP'}</b> TAKES THE MAP VOTE — NOW VOTE THE MODE`);
         break;
@@ -4081,7 +4947,16 @@ function connectNet(){
         net.dmMode = m.mode || 'ffa';
         showBanner(m.modeName || 'FREE FOR ALL');
         addKillFeed(null, `<b>${m.map || net.pendingMap}</b> // <b>${m.modeName}</b> — ROUND INCOMING`);
-        if (net.dmMode !== 'team'){ net.myTeam = 0; updateTeamHUD(); }
+        if (net.dmMode !== 'team'){ net.myTeam = 0; if (net.dmMode !== 'infect') { net.infected = false; } updateTeamHUD(); }
+        if (net.dmMode === 'infect') net.voteChoices = [];
+        else {
+          // leaving infection voting preview — revert preview colors back to equipped
+          if (net.infected || net.infectionEndAt){
+            net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+            try { applyLocalSkinAppearance(); } catch(e){}
+            player.maxHp = 100; updateHealthHUD(); updateAmmoHUD();
+          }
+        }
         $('voteTimer').textContent = `LOCKED IN — ${m.map || net.pendingMap} // ${m.modeName || ''}`;
         break;
       case 'voteUpdate': {
@@ -4097,9 +4972,111 @@ function connectNet(){
         updateTeamHUD();
         net.myScore = -1; knifeMode = 0;
         if (typeof m.ladderSeed === 'number') shuffleLadder(m.ladderSeed);   // fresh deck, same deal for the whole lobby
-        hideMapVote(); setMap(net.currentMap); resetMatchStats(); syncLadderWeapon(); respawnDMPlayer(true);
-        SFX.roundStart(); showBanner('ROUND ' + net.round);
+        if(typeof m.build==='number' && m.build) window.GAME_SERVER_BUILD=m.build;
+        updateBuildHUD();
+        hideMapVote(); setMap(net.currentMap); resetMatchStats();
+        // infection/jugg/oneshot setup
+        if (net.dmMode === 'infect' && m.infect){
+          net.infectedIds = new Set(m.infect.infectedIds || []);
+          net.infected = net.infectedIds.has(net.id);
+          net.infectionEndAt = m.infect.endsAt || (Date.now()+90000);
+          net.isJuggernaut = false; net.juggernautId = 0;
+          for (const pid of net.infectedIds){ const rp = net.players.get(pid); if (rp) { rp.infected = true; rp.team = 2; setRemoteSkin(rp,'toxic'); } }
+          for (const rp of net.players.values()) if (!net.infectedIds.has(rp.id)) { rp.infected = false; rp.team = 1; setRemoteSkin(rp,'rift'); if(rp.isJugg){ rp.isJugg=false; } }
+          applyInfectSkin();
+          if (net.infected){ knifeMode = 1; updateWeaponVisibility(); }
+          addKillFeed(null, net.infected ? '<b style="color:#2fd04a">YOU ARE INFECTED</b> — SHANK SURVIVORS TO SPREAD' : '<b style="color:#4aa0ff">SURVIVOR</b> — HOLD 1:30');
+        } else if (net.dmMode === 'juggernaut' && m.jugg){
+          net.juggernautId = m.jugg.juggId || 0;
+          net.isJuggernaut = net.juggernautId === net.id;
+          net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+          for (const rp of net.players.values()){ if (rp.id === net.juggernautId){ rp.isJugg = true; rp.team = 2; setRemoteSkin(rp,'juggernaut'); } else { rp.isJugg = false; rp.team = 1; setRemoteSkin(rp,'rift'); } }
+          // store server-provided HP if present
+          if (m.jugg && typeof m.jugg.juggHp === 'number') net.juggHp = m.jugg.juggHp|0;
+          applyJuggSkin();
+          // ensure scaled HP
+          if (net.isJuggernaut){ const hp=currentJuggHp(); player.maxHp = hp; player.hp = hp; updateHealthHUD(); }
+          addKillFeed(null, net.isJuggernaut ? `<b style="color:#ff3b57">YOU ARE THE JUGGERNAUT</b> — ${currentJuggHp()}HP MINIGUN, HOLD TIME +1s PER KILL` : '<b style="color:#8fa3bd">HUNTER</b> — KILL THE JUGGERNAUT TO BECOME IT');
+        } else if (net.dmMode === 'oneshot'){
+          net.isJuggernaut = false; net.juggernautId = 0;
+          net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+          for (const rp of net.players.values()){ rp.isJugg=false; rp.infected=false; rp.team=0; }
+          try { applyLocalSkinAppearance(); } catch(e){}
+          addKillFeed(null, '<b style="color:#ffd040">ONE SHOT</b> — PISTOLS ONLY · 1 BULLET · ∞ RESERVE');
+        } else {
+          const wasInfect = net.infected || (net.infectionEndAt && net.infectionEndAt > 0) || net.infectedIds.size > 0;
+          const wasJugg = net.isJuggernaut || net.juggernautId;
+          net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+          net.isJuggernaut = false; net.juggernautId = 0;
+          if (wasInfect || wasJugg){
+            try { applyLocalSkinAppearance(); } catch(e){}
+            for (const rp of net.players.values()){ if (rp.infected || rp.isJugg){ rp.infected=false; rp.isJugg=false; rp.team=0; setRemoteSkin(rp,'rift'); } }
+            player.maxHp = 100; if (player.hp>100) player.hp=100; updateHealthHUD();
+          }
+        }
+        syncLadderWeapon(); respawnDMPlayer(true);
+        if (net.dmMode === 'infect' && net.infected) { knifeMode = 1; updateWeaponVisibility(); }
+        if (net.dmMode === 'juggernaut' && net.isJuggernaut){ syncLadderWeapon(); updateAmmoHUD(); }
+        SFX.roundStart(); showBanner('ROUND ' + net.round + (net.dmMode==='infect' ? (net.infected?' — INFECTED':' — SURVIVOR') : net.dmMode==='juggernaut' ? (net.isJuggernaut?' — JUGGERNAUT':' — HUNTER') : net.dmMode==='oneshot' ? ' — ONE SHOT' : ''));
+        updateScoreboardHUD(); updateTopHUD(); updateAmmoHUD(); updateHealthHUD();
+        break;
+      case 'infect': {
+        const id = m.id; const isMe = id === net.id;
+        if (isMe){
+          net.infected = true; net.infectedIds.add(id);
+          applyInfectSkin();
+          knifeMode = 1; updateWeaponVisibility();
+          player.maxHp = 80; if (player.hp > player.maxHp) player.hp = player.maxHp;
+          // fix late-join infected sometimes staying invincible: clear stale spawn protection
+          player.invuln = 0; player.invulnUntil = performance.now() - 1;
+          updateHealthHUD(); updateAmmoHUD();
+          showBanner('INFECTED — NOW HUNT');
+          SFX.kill();
+        }
+        const rp = net.players.get(id);
+        if (rp){ rp.infected = true; rp.team = 2; setRemoteSkin(rp, m.skin || 'toxic'); }
+        if (!isMe) addKillFeed(null, `<b style="color:#2fd04a">${rp?rp.name:'A PLAYER'}</b> TURNED — SPREADS THE SWARM`);
+        updateTopHUD();
+        break; }
+      case 'jugg': {
+        const isMe = m.id === net.id;
+        net.juggernautId = m.juggId || net.juggernautId;
+        if (m.id === net.juggernautId) net.isJuggernaut = (m.isJugg && m.id===net.id) || (m.juggId===net.id);
+        else if (m.isJugg && m.id!==net.id) {/* other is jugg */}
+        // full refresh: server sends per-player jugg status for all
+        const rp = net.players.get(m.id);
+        if (rp){ rp.isJugg = !!m.isJugg; rp.team = m.isJugg?2:1; setRemoteSkin(rp, m.isJugg?'juggernaut':'rift'); }
+        if (isMe){
+          net.isJuggernaut = !!m.isJugg;
+          if (typeof m.juggHp === 'number') net.juggHp = m.juggHp|0;
+          applyJuggSkin();
+          if (net.isJuggernaut){ const hp=currentJuggHp(); player.maxHp=hp; player.hp=hp; updateHealthHUD(); showBanner('YOU ARE THE JUGGERNAUT '+hp+'HP'); SFX.kill(); }
+          else {
+            player.maxHp=100; if(player.hp> currentJuggHp()) player.hp=100; updateHealthHUD(); showBanner('HUNTER — KILL THE JUGGERNAUT');
+            // died as juggernaut but still holding minigun — force proper hunter gun (backup or random)
+            if (weaponIndex === JUGG_MG_INDEX){
+              try { equipLadderTier(net.myScore||0, {quiet:true}); } catch(e){}
+            }
+          }
+          syncLadderWeapon(); updateAmmoHUD();
+        }
+        updateScoreboardHUD(); updateTopHUD(); updateTeamHUD();
+        if (!isMe && m.isJugg) addKillFeed(null, `<b style="color:#ff3b57">${rp?rp.name:'PLAYER'}</b> IS NOW THE JUGGERNAUT`);
+        break; }
+      case 'juggScore':
+        net.scores = m.scores || net.scores;
+        net.limit = m.limit || net.limit;
+        if (m.totals) net.teamTotals = m.totals;
         updateScoreboardHUD(); updateTopHUD();
+        // also update myScore for HUD
+        const meJ = (net.scores||[]).find(p=>p.id===net.id);
+        if (meJ) net.myScore = meJ.score;
+        syncLadderWeapon();
+        break;
+      case 'infectWin':
+        addKillFeed(null, m.winner === 'survivors' ? '<b style="color:#4aa0ff">SURVIVORS HOLD</b> — OUTLASTED 1:30' : '<b style="color:#2fd04a">INFECTED TAKE ALL</b>');
+        showBanner(m.winner === 'survivors' ? 'SURVIVORS HOLD' : 'INFECTED SWARM');
+        SFX.roundWin();
         break;
     }
   };
@@ -4159,7 +5136,8 @@ function updateNet(dt){
     rp.slideBlend = lerp(rp.slideBlend || 0, rp.slide ? 1 : 0, 1 - Math.exp(-14*dt));
     rp.crouchBlend = lerp(rp.crouchBlend || 0, (rp.crouching && !rp.slide) ? 1 : 0, 1 - Math.exp(-10*dt));
     const sb = rp.slideBlend, cb = rp.crouchBlend;
-    g.scale.set(1 + sb*0.16 + cb*0.05, 1 - sb*0.38 - cb*0.26, 1 + sb*0.16 + cb*0.05);   // slides squash long, crouches shorten
+    const jScale = rp.isJugg ? 1.22 : 1;
+    g.scale.set((1 + sb*0.16 + cb*0.05)*jScale, (1 - sb*0.38 - cb*0.26)*jScale, (1 + sb*0.16 + cb*0.05)*jScale);   // slides squash long, crouches shorten; jugg bigger
     g.rotation.x = sb * 0.22;
   }
 }
@@ -4171,9 +5149,12 @@ function remotePlayerKilled(rp, killerId){
   setTimeout(() => { if (rp.group) rp.group.visible = true; }, 2600);
 }
 function respawnDMPlayer(silent=false){
+  try{ hideDeathRecap(); }catch(e){}
   const sp = activeSpawnPoints[(Math.random() * activeSpawnPoints.length) | 0];
   player.pos.set(sp[0] * 0.8 + rand(-2, 2), 0, sp[1] * 0.8 + rand(-2, 2));
   player.vel.set(0, 0, 0);
+  // infection zombies have slightly less health; juggernaut HP 200+50*players; one-shot has 1HP (instant kill)
+  if (isOneShot()){ player.maxHp = 1; } else if (isInfect() && net.infected){ player.maxHp = 80; } else if (isJugg() && net.isJuggernaut){ player.maxHp = currentJuggHp(); } else { player.maxHp = 100; }
   player.hp = player.maxHp;
   player.invuln = 1.5;
   player.invulnUntil = performance.now() + 1500;   // wall-clock: slow frames must not stretch spawn protection
@@ -4182,8 +5163,13 @@ function respawnDMPlayer(silent=false){
   if (mode === 'dm' && !net.voteActive){ S.paused = false; fallbackMode = true; locked = true; canvas.style.cursor = 'none'; }
   net.spectateId = 0; net.spectateT = 0;
   $('spectate').classList.remove('show');
+  // fix juggernaut death: if you died as juggernaut you still have minigun — force back to proper hunter gun
+  if (!isJuggSelf() && weaponIndex === JUGG_MG_INDEX){
+    try { equipLadderTier(net.myScore||0, {quiet:true}); } catch(e){}
+  }
   const rw = CW();                                   // redeploy locked & loaded — respawn always tops off your gun
-  rw.reloading = 0; rw.ammo = rw.mag; rw.cool = 0;
+  rw.reloading = 0; rw.cool = 0;
+  if (isJuggSelf()){ rw.ammo = 999; rw.res = 999; rw.reloading = 0; } else { rw.ammo = rw.mag; rw.res = rw.reserve; if (rw.res>rw.reserve) rw.res=rw.reserve; }
   updateAmmoHUD();
   updateHealthHUD();
   if (!silent){ SFX.respawn(); showBanner('REDEPLOYED'); }
@@ -4201,8 +5187,22 @@ function dmDeath(){
   s.innerHTML = killer ? `SPECTATING <b>${killer.name}</b>` : 'RESPAWNING';
   s.classList.add('show');
   spawnPlayerPieces(new THREE.Vector3(deathPos.x, deathPos.y, deathPos.z), skinDef(PROGRESS.skin).color);
+  // death recap: 2s replay + "killed by X with Y"
+  try { showDeathRecap(killer); } catch(e){}
   setTimeout(() => { if (mode === 'dm' && S.dead) respawnDMPlayer(false); }, 2700);
 }
+function showDeathRecap(killer){
+  const el=$('deathRecap'), txt=$('deathText'), sub=$('deathSub');
+  if(!el||!txt) return;
+  const wName = killer && killer.lastWeaponName ? killer.lastWeaponName : (net.lastHitWeapon ? (WEAPONS[net.lastHitWeapon]?.name||'') : '');
+  const killerName = killer ? killer.name : 'UNKNOWN';
+  const weaponStr = wName ? `WITH <b>${wName}</b>` : (net.lastHitKnife ? 'WITH <b>KNIFE</b>' : '');
+  txt.innerHTML = `KILLED BY <b>${killerName}</b> ${weaponStr}`;
+  sub.textContent = 'SPECTATING KILLER — 2S REPLAY';
+  el.classList.remove('hidden'); void el.offsetWidth; el.classList.add('show');
+  setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>el.classList.add('hidden'),400); }, 2500);
+}
+function hideDeathRecap(){ const el=$('deathRecap'); if(el){ el.classList.remove('show'); el.classList.add('hidden'); } }
 function updateSpectate(dt){
   if (mode !== 'dm' || !S.dead) return;
   net.spectateT = Math.max(0, net.spectateT - dt);
@@ -4260,6 +5260,28 @@ function die(){
   $('deadStats').innerHTML = matchStatsHtml(`WAVES SURVIVED <b>${Math.max(0, S.wave - 1)}</b>`);
   $('paused').classList.add('hidden');
   $('dead').classList.remove('hidden');
+  sendSoloReport(false);
+}
+/* the solo report — the mission ends, the client files what it earned, the server cross-checks it
+   against physics (waves can't clear faster than possible) and its own payout tables, and the
+   books adjust: whatever the server ratifies becomes the truth of record. */
+async function sendSoloReport(victory){
+  if (S.sandbox || apiUp.ok === false) return;
+  const waves = Math.max(0, S.wave - (victory ? 0 : 1));
+  if (waves < 1) return;
+  const r = await apiPost('solo', { key: syncKey, waves, kills: S.kills, victory: !!victory, xp: S.xpEarned, cash: S.cashEarned, elapsedMs: performance.now() - S.startTime });
+  if (!r || !r.ok) return;
+  // local accrual kept the mission feeling instant — now reconcile to what the server ratified
+  const rexXp = Math.max(0, S.xpEarned - (r.granted.xp || 0));
+  const rexCash = Math.max(0, S.cashEarned - (r.granted.cash || 0));
+  if (rexXp || rexCash){
+    PROGRESS.xp = Math.max(0, PROGRESS.xp - rexXp);
+    PROGRESS.cash = Math.max(0, PROGRESS.cash - rexCash);
+    addKillFeed(null, `SERVER RATIFIED +${r.granted.cash} CR &nbsp;//&nbsp; +${r.granted.xp} XP <b>FIELD REPORT</b>`);
+  } else addKillFeed(null, `FIELD REPORT ACCEPTED — +${r.granted.cash} CR &nbsp;//&nbsp; +${r.granted.xp} XP`);
+  adoptServerProfile(r.profile);
+  if (r.leveledUp){ showBanner('LEVEL ' + r.leveledUp); SFX.roundStart(); }
+  for (const ch of (r.challenges || [])){ showBanner(String(ch.kind || '').toUpperCase() + ' COMPLETE'); addKillFeed(null, `+${ch.cash} CR &nbsp;//&nbsp; +${ch.xp} XP &nbsp;<b>${String(ch.title || '').toUpperCase()}</b>`); }
 }
 function soloVictory(){
   if (S.dead) return;
@@ -4269,47 +5291,72 @@ function soloVictory(){
   mouseL = mouseR = false;
   canvas.style.cursor = 'crosshair';
   try { document.exitPointerLock(); } catch(e){}
-  PROGRESS.soloWaves = Math.max(PROGRESS.soloWaves || 0, SOLO_FINAL_WAVE);
+  PROGRESS.soloWaves = Math.max(PROGRESS.soloWaves || 0, S.wave);
   grantProgress(750, 500, 'MISSION COMPLETE');
   S.score += 2500;
   updateTopHUD();
   SFX.roundWin();
+  sendSoloReport(true);
   $('deadTitle').textContent = 'MISSION COMPLETE';
-  $('deadSubtitle').textContent = 'Wave 15 cleared — extraction authorized';
+  $('deadSubtitle').textContent = `Wave ${S.wave} cleared — endless hold broken`;
   $('restartBtn').textContent = 'Main Menu';
-  $('deadStats').innerHTML = matchStatsHtml(`SOLO WAVES CLEARED <b>${SOLO_FINAL_WAVE}</b>`);
+  $('deadStats').innerHTML = matchStatsHtml(`WAVES SURVIVED <b>${S.wave}</b> — ENDLESS`);
   $('paused').classList.add('hidden');
   $('dead').classList.remove('hidden');
 }
 
+const MUTATORS = ['LOW GRAVITY','DOUBLE SPEED','DARKNESS'];
+function getMutatorForWave(n){ if(n%10!==0 || n===0) return null; return MUTATORS[(Math.floor(n/10)-1) % MUTATORS.length]; }
 function waveComposition(n){
+  // ENDLESS + LOWERED exponential: gentle linear growth, soft cap scaling
+  // No more 15-wave limit — scales forever with diminishing increases
   const list = [];
-  const scouts = 2 + n;
-  const soldiers = Math.floor(n * 0.75);
-  const stalkers = n >= 2 ? 1 + Math.floor(n/3) : 0;
-  const brutes = n >= 4 ? Math.floor((n-2)/3) : 0;
-  const drones = n >= 3 ? Math.floor(n/2) : 0;
-  const sentinels = n >= 6 ? Math.floor((n-4)/3) : 0;
-  const reavers = n >= 7 ? Math.floor((n-5)/3) : 0;
+  // gentle linear coefficients (much lower than before: 2+n -> 1+0.6n etc)
+  const scouts = 1 + Math.floor(n * 0.6);
+  const soldiers = Math.floor(n * 0.45);
+  const drones = n >= 2 ? Math.floor(n * 0.35) : 0;
+  const hounds = n >= 3 ? Math.floor((n-1) * 0.30) : 0;
+  const stalkers = n >= 4 ? 1 + Math.floor((n-3) * 0.22) : 0;
+  const phantoms = n >= 5 ? Math.floor((n-4) * 0.20) : 0;
+  const brutes = n >= 6 ? Math.floor((n-5) * 0.18) : 0;
+  const sentinels = n >= 8 ? Math.floor((n-7) * 0.16) : 0;
+  const reavers = n >= 7 ? Math.floor((n-6) * 0.18) : 0;
+  const juggernauts = n >= 10 ? Math.floor((n-9) * 0.12) : 0;
   for (let i=0;i<scouts;i++) list.push('scout');
   for (let i=0;i<soldiers;i++) list.push('soldier');
-  for (let i=0;i<stalkers;i++) list.push('stalker');
-  for (let i=0;i<brutes;i++) list.push('brute');
   for (let i=0;i<drones;i++) list.push('drone');
+  for (let i=0;i<hounds;i++) list.push('hound');
+  for (let i=0;i<stalkers;i++) list.push('stalker');
+  for (let i=0;i<phantoms;i++) list.push('phantom');
+  for (let i=0;i<brutes;i++) list.push('brute');
   for (let i=0;i<sentinels;i++) list.push('sentinel');
   for (let i=0;i<reavers;i++) list.push('reaver');
+  for (let i=0;i<juggernauts;i++) list.push('juggernaut');
+  // shuffle
   for (let i=list.length-1;i>0;i--){ const j = (Math.random()*(i+1))|0; [list[i],list[j]] = [list[j],list[i]]; }
-  const capped = list.slice(0, n % 5 === 0 ? 22 : 26);
-  if (n > 0 && n % 5 === 0) capped.push('nemesis');
+  // soft cap: 8 + n capped to 32, not hard 26, grows slowly
+  const softCap = Math.min(32, 10 + Math.floor(n * 0.9));
+  const isBossWave = n % 5 === 0;
+  const cap = isBossWave ? Math.min(softCap, 20 + Math.floor(n*0.5)) : softCap;
+  const capped = list.slice(0, cap);
+  // MULTIPLE BOSSES rotation: nemesis/titan/spectre/warlord/colossus
+  if (isBossWave && n > 0){
+    const bossPool = ['nemesis','titan','spectre','warlord','colossus'];
+    const bossIdx = (Math.floor(n/5)-1) % bossPool.length;
+    const boss = bossPool[bossIdx];
+    capped.push(boss);
+    // every 25 waves add a second boss for spice
+    if (n % 25 === 0){
+      const second = bossPool[(bossIdx+1) % bossPool.length];
+      capped.push(second);
+    }
+  }
   return capped;
 }
 function updateWaves(dt){
   if (S.sandbox) return;            // a sandbox has no waves — only what you spawn in
-  // Solo is a 15-wave mission. LAN Deathmatch is the only mode that uses the first-to-30-kills rule.
-  if (mode === 'solo' && S.wave >= SOLO_FINAL_WAVE && S.toSpawn.length === 0 && enemies.length === 0){
-    soloVictory();
-    return;
-  }
+  // Solo is now ENDLESS — no final wave, no victory screen, just infinite scaling
+
   if (S.toSpawn.length === 0 && enemies.length === 0){
     if (S.intermission <= 0){
       S.intermission = S.wave === 0 ? 0.1 : 6;
@@ -4326,7 +5373,20 @@ function updateWaves(dt){
       S.wave++;
       S.toSpawn = waveComposition(S.wave);
       S.spawnTimer = 0;
-      showBanner(S.wave % 5 === 0 ? 'BOSS WAVE ' + S.wave + ' — NEMESIS INBOUND' : 'WAVE ' + S.wave);
+      const mut = getMutatorForWave(S.wave);
+      S.mutator = mut;
+      if(mut){
+        showBanner('MUTATOR WAVE ' + S.wave + ' — ' + mut);
+        addKillFeed(null, `<b style="color:#ffd040">MUTATOR: ${mut}</b> — ADAPT OR DIE`);
+        // visual cue for darkness
+        if(mut==='DARKNESS'){ document.body.classList.add('mut-dark'); } else document.body.classList.remove('mut-dark');
+      } else { document.body.classList.remove('mut-dark'); }
+      // boss name rotates for variety
+      if (S.wave % 5 === 0){
+        const bossPool = ['NEMESIS','TITAN','SPECTRE','WARLORD','COLOSSUS'];
+        const bossName = bossPool[(Math.floor(S.wave/5)-1) % bossPool.length];
+        showBanner('BOSS WAVE ' + S.wave + ' — ' + bossName + ' INBOUND' + (mut ? ` // ${mut}` : ''));
+      } else if(!mut) showBanner('WAVE ' + S.wave);
       SFX.wave();
       updateTopHUD();
     }
@@ -4462,10 +5522,73 @@ function addKillFeed(enemyName, custom){
   setTimeout(() => div.remove(), 4100);
   while (kf.children.length > 5) kf.lastChild.remove();
 }
+function weaponIconFor(wIdx){
+  const w=WEAPONS[wIdx|0]; if(!w) return '🔫';
+  if(w.slot==='SHOTGUN') return '💥';
+  if(w.slot==='SNIPER' || w.slot==='RAIL') return '🎯';
+  if(w.slot==='LMG') return '🔥';
+  if(w.slot==='SMG') return '⚡';
+  if(w.slot==='PISTOL') return '🔫';
+  if(w.kind==='flame') return '🔥';
+  if(w.kind==='plasma') return '⚛';
+  if(w.kind==='rocket' || w.kind==='gl' || w.kind==='napalm') return '💣';
+  return '🔫';
+}
+function killIcon(m){
+  if(m.bs) return '<span class="kfIcon" style="color:#ff4d4d">💀</span>';
+  if(m.knife) return '<span class="kfIcon">⚔</span>';
+  if(m.hs) return '<span class="kfIcon" style="color:#ffd040">⌖</span>';
+  if(typeof m.w === 'number') return `<span class="kfIcon">${weaponIconFor(m.w)}</span>`;
+  return '<span class="kfIcon">⟶</span>';
+}
 function updateScoreboardHUD(){
   const panel = $('scoreboardPanel'), rows = $('scoreRows');
   if (!panel || !rows) return;
   panel.classList.toggle('hidden', mode !== 'dm' && !net.on);
+  if (net.dmMode === 'juggernaut'){
+    const list = (net.scores || []);
+    const rowJugg = p => `<div class="scoreRow ${p.id===net.id?'me':''}"><span style="color:#ff3b57">${p.name||'PLAYER'}</span><b>${p.score||0}s<small>${p.deaths||0}D</small></b></div>`;
+    const rowHunt = p => `<div class="scoreRow ${p.id===net.id?'me':''}"><span style="color:#8fa3bd">${p.name||'PLAYER'}</span><b>${p.score||0}s<small>${p.deaths||0}D</small></b></div>`;
+    const jugg = list.filter(p=>p.team===2).sort((a,b)=>(b.score||0)-(a.score||0));
+    const hunters = list.filter(p=>p.team===1).sort((a,b)=>(b.score||0)-(a.score||0));
+    const juggName = jugg[0]?.name || (net.isJuggernaut ? net.myName : 'JUGGERNAUT');
+    panel.querySelector('.sbTitle').textContent = `JUGGERNAUT // ${juggName} ${jugg[0]?.score||0}s / ${net.limit||60}s`;
+    rows.innerHTML =
+      `<div class="scoreRow sbTeamHdr" style="color:#ff3b57"><span>JUGGERNAUT</span><b>${jugg.length + (net.isJuggernaut?1:0)}</b></div>` +
+      (jugg.map(rowJugg).join('') || (net.isJuggernaut? rowJugg({id:net.id,name:net.myName,score:net.myScore,team:2}) : '<div class="scoreRow"><span>—</span><b>0</b></div>')) +
+      `<div class="scoreRow sbTeamHdr" style="color:#8fa3bd"><span>HUNTERS</span><b>${hunters.length + (net.isJuggernaut?0:1)}</b></div>` +
+      (hunters.map(rowHunt).join('') || '<div class="scoreRow"><span>—</span><b>0</b></div>');
+    return;
+  }
+  if (net.dmMode === 'oneshot'){
+    panel.querySelector('.sbTitle').textContent = `ONE SHOT // FIRST TO ${net.limit||20}`;
+    const list = (net.scores||[]).slice(0,8);
+    rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${p.name||'PLAYER'}</span><b>${p.score||0}/${net.limit||20}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/20<small>0D</small></b></div>';
+    return;
+  }
+  if (net.dmMode === 'infect'){
+    const list = (net.scores || []);
+    // split survivors (not infected) vs infected using scores team? scores have team field from server; survivor team 1 blue, infected team 2 green
+    const rowSurv = p => `<div class="scoreRow ${p.id===net.id?'me':''}"><span style="color:#4aa0ff">${p.name || 'PLAYER'}</span><b>${p.score || 0}<small>${p.deaths || 0}D</small></b></div>`;
+    const rowInf = p => `<div class="scoreRow ${p.id===net.id?'me':''}"><span style="color:#2fd04a">${p.name || 'PLAYER'}</span><b>${p.score || 0}<small>${p.deaths || 0}D</small></b></div>`;
+    const surv = list.filter(p => p.team === 1).sort((a,b)=>(b.score||0)-(a.score||0));
+    const inf = list.filter(p => p.team === 2).sort((a,b)=>(b.score||0)-(a.score||0));
+    const survCount = surv.length + (net.infected?0:1);
+    const infCount = inf.length + (net.infected?1:0);
+    // if server didn't set team for lobby solo, fallback to all list
+    if (!surv.length && !inf.length){
+      rows.innerHTML = list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${p.name}</span><b>${p.score||0}</b></div>`).join('');
+      panel.querySelector('.sbTitle').textContent = `INFECTION // ${Math.max(0, Math.ceil((net.infectionEndAt-Date.now())/1000))}s LEFT`;
+      return;
+    }
+    panel.querySelector('.sbTitle').textContent = `INFECTION // ${survCount} SURVIVORS vs ${infCount} INFECTED`;
+    rows.innerHTML =
+      `<div class="scoreRow sbTeamHdr" style="color:#4aa0ff"><span>SURVIVORS</span><b>${surv.length + (net.infected?0:1)}</b></div>` +
+      (surv.map(rowSurv).join('') || '<div class="scoreRow"><span>—</span><b>0</b></div>') +
+      `<div class="scoreRow sbTeamHdr" style="color:#2fd04a"><span>INFECTED</span><b>${inf.length + (net.infected?1:0)}</b></div>` +
+      (inf.map(rowInf).join('') || '<div class="scoreRow"><span>—</span><b>0</b></div>');
+    return;
+  }
   panel.querySelector('.sbTitle').textContent = net.dmMode === 'team'
     ? `RED v BLUE // FIRST TEAM TO ${net.limit || 30}`
     : `LEADERBOARD // FIRST TO ${net.limit || 30}`;
@@ -4514,6 +5637,12 @@ const MODE_CARD = {
   FFA:   { title:'FREE FOR ALL', sub:'every runner for themselves — first to 30 kills takes it', cls:'vmFFA' },
   TEAM:  { title:'RED v BLUE',   sub:'teammates can\'t hurt you — first runner to 30 kills still wins', cls:'vmTEAM' },
   KNIFE: { title:'KNIFE FIGHT',  sub:'blades only — first to 15 stabs, and the 15th is GOLDEN. shanks never demote', cls:'vmKNIFE' },
+  INFECT:{ title:'INFECTION',    sub:'1:30 to survive — blue survivors vs green swarm, zombies only knife, late joins are infected', cls:'vmINFECT' },
+  AUTO:  { title:'AUTOMATICS',   sub:'automatic guns only — first to 20 kills, random ladder, final is LEADLINE MUSKET, no golden knife', cls:'vmAUTO' },
+  SHOTGUN:{ title:'SHOTGUNS',    sub:'shotguns only — first to 20 kills, random ladder, final is SNOWBALL SLINGER, no golden knife', cls:'vmSHOTGUN' },
+  SNIPER:{ title:'SNIPERS ONLY', sub:'snipers only — first to 15 kills, random ladder, final is ATLAS ROCKET, no golden knife', cls:'vmSNIPER' },
+  ONESHOT:{ title:'ONE SHOT',    sub:'pistols only — 1 bullet mag · infinite ammo · 1 HP instakill · no knife/grenades · first to 20', cls:'vmONESHOT' },
+  JUGG:  { title:'JUGGERNAUT',   sub:'200+50HP/player minigun juggernaut vs hunters — kill him to become him, +1s per kill, score = time, first to 60', cls:'vmJUGG' },
 };
 function enterVoteMode(paused=true){
   net.voteActive = true;
@@ -4538,13 +5667,17 @@ function showMapVote(winner, choices, counts={}, endsLocal=0){
 }
 function showModeVote(mapName, counts={}, endsLocal=0){
   enterVoteMode();
-  net.votePhase = 'mode'; net.pendingMap = mapName || net.pendingMap; net.voteChoices = ['FFA','TEAM','KNIFE']; net.voteCounts = counts;
+  net.votePhase = 'mode'; net.pendingMap = mapName || net.pendingMap; 
+  // server drives choices — map uses voteChoices already set via roundOver/modeVote handlers
+  // if not set (direct), fallback to 3 of pool
+  if (!net.voteChoices || !net.voteChoices.length) net.voteChoices = ['FFA','TEAM','KNIFE','AUTO','SHOTGUN'];
+  net.voteCounts = counts;
   if (endsLocal) net.voteEndsLocal = endsLocal;
   $('voteWinner').textContent = `${(mapName || 'MAP').toUpperCase()} LOCKED — VOTE THE MODE`;
   renderRoundStats();
   const box = $('voteChoices'); box.innerHTML = '';
-  ['FFA','TEAM','KNIFE'].forEach((m,i) => {
-    const c = MODE_CARD[m];
+  (net.voteChoices || []).forEach((m,i) => {
+    const c = MODE_CARD[m] || MODE_CARD['FFA'];
     const btn = document.createElement('button'); btn.className = 'voteBtn voteModeBtn ' + c.cls; btn.dataset.map = m;
     btn.innerHTML = `<b>${i+1}. ${c.title}</b><span>${c.sub}</span><span class="voteCount">${counts[m] || 0} VOTES</span>`;
     btn.onclick = () => castMapVote(m);
@@ -4576,6 +5709,18 @@ function castMapVote(choice){
   netSend({ t:'vote', map:choice });
 }
 function updateAmmoHUD(){
+  // infection zombies locked to knife
+  if (isInfect() && net.infected && !knifeMode){ knifeMode = 1; updateWeaponVisibility(); }
+  if (isInfect() && net.infected && !knifeLocked()){ /* force */ }
+  // one-shot enforcement: no knife, no grenades, 1 HP
+  if (isOneShot() && knifeMode){ knifeMode=0; updateWeaponVisibility(); }
+  if (isOneShot()) player.grenades = 0;
+  // juggernaut enforcement: must hold VORTEX MINIGUN with infinite ammo
+  if (isJugg() && net.isJuggernaut && weaponIndex !== JUGG_MG_INDEX && JUGG_MG_INDEX>=0 && !knifeMode){
+    // force correct minigun if we drifted (e.g. after hunter rotation)
+    try { equipLadderTier(net.myScore||0, {quiet:true}); } catch(e){}
+    return;
+  }
   const w = CW();
   const sg = $('slotGun'), sk = $('slotKnife');
   if (sg) sg.classList.toggle('active', !knifeMode);
@@ -4584,6 +5729,28 @@ function updateAmmoHUD(){
     sk.classList.toggle('gold', !!knifeGolden());
     sk.textContent = knifeGolden() ? '2 ★ SHANK' : '2 KNIFE';
   }
+  if (isInfect() && net.infected){
+    // zombies: show infected HUD
+    const def = currentKnifeDef();
+    $('weaponName').innerHTML = `<span style="color:#2fd04a">INFECTED</span> ${def.name}`;
+    $('ammoMag').textContent = '—';
+    $('ammoMag').classList.remove('lowammo');
+    $('ammoReserve').textContent = ' ∞';
+    const av = $('arsenalVal'); if (av) av.textContent = net.infected ? `ZOMBIE — INFECT SURVIVORS` : `SURVIVOR — HOLD 1:30`;
+    $('nadeVal').textContent = '×' + player.grenades;
+    $('reloadHint').textContent = 'ZOMBIES ONLY KNIFE — FASTER + LESS HEALTH';
+    return;
+  }
+  if (isJugg() && net.isJuggernaut){
+    $('weaponName').innerHTML = `<span style="color:#ff3b57">JUGGERNAUT</span> VORTEX MINIGUN`;
+    $('ammoMag').textContent = '∞';
+    $('ammoMag').classList.remove('lowammo');
+    $('ammoReserve').textContent = ' / ∞';
+    const av = $('arsenalVal'); if (av) av.textContent = `JUGGERNAUT — ${net.myScore || 0} / ${net.limit || 60} SEC`;
+    $('nadeVal').textContent = '×' + player.grenades;
+    $('reloadHint').textContent = `${currentJuggHp()} HP — MINIGUN — INFINITE AMMO — SLOW — HOLD TIME +1s/KILL TO WIN`;
+    return;
+  }
   if (knifeMode){
     const def = currentKnifeDef();
     $('weaponName').innerHTML = def.golden ? `<span style="color:#ffd040">${def.name}</span>` : def.name;
@@ -4591,7 +5758,7 @@ function updateAmmoHUD(){
     $('ammoMag').classList.remove('lowammo');
     $('ammoReserve').textContent = ' ∞';
     const av = $('arsenalVal'); if (av) av.textContent = mode === 'dm'
-      ? (isKnifeFight() ? `STABS ${net.myScore || 0} / ${net.limit || 15}` : `TIER ${Math.min((net.myScore || 0) + 1, 30)} / 30`)
+      ? (isKnifeFight() ? `STABS ${net.myScore || 0} / ${net.limit || 15}` : `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 30)} / ${net.limit || 30}`)
       : `${weaponIndex+1} / ${WEAPONS.length}`;
     $('nadeVal').textContent = '×' + player.grenades;
     $('reloadHint').textContent = knifeGolden() ? 'FINAL TIER — SHANK TO WIN' : '';
@@ -4601,13 +5768,17 @@ function updateAmmoHUD(){
   $('weaponName').innerHTML = `<span style="color:${rc}">${currentRarity.name}</span> ${w.name}`;
   $('ammoMag').textContent = w.ammo;
   $('ammoMag').classList.toggle('lowammo', w.ammo <= w.mag * 0.25);
-  $('ammoReserve').textContent = ' / ' + w.res;
+  let resText = ' / ' + w.res;
+  if (isOneShot()) resText = ' / ∞';
+  $('ammoReserve').textContent = resText;
   const av = $('arsenalVal');
   if (av) av.textContent = mode === 'dm'
-    ? (isKnifeFight() ? `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 15)} / ${net.limit || 15}` : `TIER ${Math.min((net.myScore || 0) + 1, 30)} / 30`)
+    ? (isKnifeFight() ? `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 15)} / ${net.limit || 15}` : isOneShot() ? `ONE SHOT ${Math.min((net.myScore || 0) + 1, net.limit || 20)} / ${net.limit || 20}` : isJugg() ? `${net.isJuggernaut?'JUGGERNAUT':'HUNTER'} ${net.myScore || 0} / ${net.limit || 60}s` : `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 30)} / ${net.limit || 30}`)
     : `${weaponIndex+1} / ${WEAPONS.length}`;
-  $('nadeVal').textContent = '×' + player.grenades;
-  $('reloadHint').textContent = w.reloading > 0 ? `RELOADING ${Math.round(reloadProgress(w)*100)}%` : (w.ammo === 0 ? 'PRESS R TO RELOAD' : '');
+  $('nadeVal').textContent = isOneShot() ? '— DISABLED' : '×' + player.grenades;
+  if (isOneShot() && !w.reloading && w.ammo===0) $('reloadHint').textContent = 'ONE SHOT — PRESS R TO RELOAD (1 BULLET)';
+  else if (isJugg() && !net.isJuggernaut) $('reloadHint').textContent = 'HUNTER — KILL JUGGERNAUT TO BECOME IT';
+  else $('reloadHint').textContent = w.reloading > 0 ? `RELOADING ${Math.round(reloadProgress(w)*100)}%` : (w.ammo === 0 ? 'PRESS R TO RELOAD' : (isOneShot() ? 'PISTOLS ONLY — 1 BULLET — 1 HP — INSTAKILL' : ''));
 }
 function updateHealthHUD(){
   const frac = clamp(player.hp / player.maxHp, 0, 1);
@@ -4615,9 +5786,92 @@ function updateHealthHUD(){
   $('healthNum').textContent = Math.ceil(player.hp);
   $('healthPanel').classList.toggle('low', frac < 0.35);
 }
+function updateBuildHUD(){
+  const el=$('buildInfo'); if(!el) return;
+  const build=String(window.GAME_BUILD||'dev');
+  const ver=String(window.GAME_VERSION||'v2.0 — 27 OCT 2026');
+  const short = build.length>8?build.slice(-6):build;
+  const server=window.GAME_SERVER_BUILD;
+  if(!server){ el.textContent = `${ver} — BUILD ${short}`; el.className=''; return; }
+  const ok = String(server)===build;
+  el.textContent = `${ver} — BUILD ${short} — `+(ok?'UP TO DATE':'UPDATE REQUIRED — RELOAD');
+  el.className=ok?'ok':'stale';
+}
+setInterval(updateBuildHUD, 2000);
 function updateTopHUD(){
   const mapEl = $('mapName'); if (mapEl) mapEl.textContent = currentMapName;
   if (mode === 'dm'){
+    // jugg timer/score
+    if (isJugg()){
+      const juggScores = (net.scores||[]).find(p=>p.team===2);
+      const hunters = (net.scores||[]).filter(p=>p.team===1).length + (net.isJuggernaut?0:1);
+      const juggName = juggScores ? juggScores.name : 'JUGGERNAUT';
+      $('modeLbl').textContent = net.isJuggernaut ? 'JUGGERNAUT' : 'HUNTER';
+      $('waveVal').textContent = net.juggernautId ? juggName.toUpperCase() : 'HUNT';
+      $('hostilesLbl').textContent = 'HUNTERS';
+      $('hostilesVal').textContent = hunters + ' ALIVE';
+      const me = (net.scores||[]).find(p=>p.id===net.id);
+      $('scoreVal').textContent = me ? `${me.score}s` : '0s';
+      $('killsVal').textContent = net.limit ? `${Math.max(0,(net.limit-(me?me.score:0)))}s TO WIN` : '';
+      return;
+    }
+    if (isOneShot()){
+      $('modeLbl').textContent = 'ONE SHOT';
+      $('hostilesLbl').textContent = 'PISTOLS ONLY';
+      $('waveVal').textContent = net.round || 1;
+      $('hostilesVal').textContent = net.players.size + 1;
+      const me = (net.scores||[]).find(p=>p.id===net.id);
+      const leader = (net.scores||[])[0];
+      $('scoreVal').textContent = me ? me.score : S.kills;
+      $('killsVal').textContent = leader ? `${leader.score}/${net.limit||20}` : `0/${net.limit||20}`;
+      return;
+    }
+    if (isSniperMode()){
+      $('modeLbl').textContent = 'SNIPERS';
+      $('hostilesLbl').textContent = 'SNIPERS ONLY';
+      $('waveVal').textContent = net.round || 1;
+      $('hostilesVal').textContent = net.players.size + 1;
+      const me = (net.scores||[]).find(p=>p.id===net.id);
+      const leader = (net.scores||[])[0];
+      $('scoreVal').textContent = me ? me.score : S.kills;
+      $('killsVal').textContent = leader ? `${leader.score}/${net.limit||15}` : `0/${net.limit||15}`;
+      return;
+    }
+    if (isAutoMode()){
+      $('modeLbl').textContent = 'AUTOMATICS';
+      $('hostilesLbl').textContent = 'AUTOS ONLY';
+      $('waveVal').textContent = net.round || 1;
+      $('hostilesVal').textContent = net.players.size + 1;
+      const me = (net.scores||[]).find(p=>p.id===net.id);
+      const leader = (net.scores||[])[0];
+      $('scoreVal').textContent = me ? me.score : S.kills;
+      $('killsVal').textContent = leader ? `${leader.score}/${net.limit||20}` : `0/${net.limit||20}`;
+      return;
+    }
+    if (isShotgunMode()){
+      $('modeLbl').textContent = 'SHOTGUNS';
+      $('hostilesLbl').textContent = 'SHOTGUNS ONLY';
+      $('waveVal').textContent = net.round || 1;
+      $('hostilesVal').textContent = net.players.size + 1;
+      const me = (net.scores||[]).find(p=>p.id===net.id);
+      const leader = (net.scores||[])[0];
+      $('scoreVal').textContent = me ? me.score : S.kills;
+      $('killsVal').textContent = leader ? `${leader.score}/${net.limit||20}` : `0/${net.limit||20}`;
+      return;
+    }
+    // infection timer
+    if (isInfect() && net.infectionEndAt){
+      const left = Math.max(0, Math.ceil((net.infectionEndAt - Date.now())/1000));
+      const mm = String(Math.floor(left/60)).padStart(2,'0'), ss = String(left%60).padStart(2,'0');
+      $('modeLbl').textContent = 'INFECTION';
+      $('waveVal').textContent = `${mm}:${ss}`;
+      const surv = [...net.players.values()].filter(p=>!p.infected).length + (net.infected?0:1);
+      const zom = [...net.players.values()].filter(p=>p.infected).length + (net.infected?1:0);
+      $('hostilesLbl').textContent = 'SURVIVORS';
+      $('hostilesVal').textContent = surv + ' ALIVE';
+      $('scoreVal').textContent = `${zom} ZOMBIES`;
+      return;
+    }
     $('modeLbl').textContent = 'ROUND';
     $('hostilesLbl').textContent = 'PLAYERS';
     $('waveVal').textContent = net.round || 1;
@@ -4671,10 +5925,38 @@ function drawMinimap(){
     mm.beginPath(); mm.arc(x, z, 2.6, 0, 7); mm.fill();
   }
   // remote players — teammates in team color, rivals red (ffa: everyone a rival)
+  // infection reveal: if survivors ==1 && time left <20s, pulse the last survivor on map for zombies
+  let revealId=null;
+  if(isInfect() && net.infectionEndAt){
+    const survCount = [...net.players.values()].filter(p=>!p.infected).length + (net.infected?0:1);
+    const tLeft = net.infectionEndAt - Date.now();
+    if(survCount===1 && tLeft>0 && tLeft<20000){
+      // find the sole survivor id
+      if(net.infected) revealId = net.id; // we are survivor
+      else {
+        for(const p of net.players.values()) if(!p.infected){ revealId=p.id; break; }
+        if(survCount===1 && [...net.players.values()].filter(p=>!p.infected).length===0) revealId=net.id;
+      }
+      if(revealId) $('minimapWrap')?.classList.add('reveal'); else $('minimapWrap')?.classList.remove('reveal');
+    } else { $('minimapWrap')?.classList.remove('reveal'); }
+  }
   for (const rp of net.players.values()){
     const [x,z] = toMap(rp.group.position.x, rp.group.position.z);
+    const isRevealed = revealId && rp.id===revealId;
+    if(isRevealed){
+      mm.fillStyle = 'rgba(255,60,60,.35)';
+      mm.beginPath(); mm.arc(x, z, 8 + Math.sin(Date.now()*0.008)*3, 0, 7); mm.fill();
+      mm.strokeStyle='#ff3b57'; mm.lineWidth=1.2; mm.stroke();
+    }
     mm.fillStyle = isTeammate(rp) ? TEAM_COLORS[net.myTeam] : '#ff3b57';
-    mm.beginPath(); mm.arc(x, z, 2.6, 0, 7); mm.fill();
+    if(isRevealed) mm.fillStyle='#ffff40';
+    mm.beginPath(); mm.arc(x, z, isRevealed?4:2.6, 0, 7); mm.fill();
+  }
+  // if we are sole survivor revealed, pulse self too
+  if(revealId===net.id){
+    const [pxr,pzr]=toMap(player.pos.x, player.pos.z);
+    mm.fillStyle='rgba(255,255,60,.3)'; mm.beginPath(); mm.arc(pxr,pzr, 10+Math.sin(Date.now()*0.008)*2,0,7); mm.fill();
+    mm.strokeStyle='#ffff40'; mm.lineWidth=1.5; mm.stroke();
   }
   // player
   const [px,pz] = toMap(player.pos.x, player.pos.z);
@@ -4706,7 +5988,10 @@ function updatePlayer(dt, now){
   const ads = adsHeld && CW().reloading <= 0;
   adsT = clamp(adsT + (ads ? dt*8 : -dt*8), 0, 1);
 
-  const speedMul = knifeMode ? currentKnifeDef().speedMul : 1;  // knife +5%, golden shank +15% move speed
+  const infSpeedMul = (isInfect() && net.infected) ? 1.28 : 1; // zombies a tad bit faster — was 1.14 now 1.28
+  const juggSpeedMul = (isJugg() && net.isJuggernaut) ? 0.75 : 1; // juggernaut slow
+  const mutSpeedMul = (mode==='solo' && S.mutator==='DOUBLE SPEED') ? 1.75 : 1;
+  const speedMul = (knifeMode ? currentKnifeDef().speedMul : 1) * infSpeedMul * juggSpeedMul * mutSpeedMul;  // knife +5%, golden shank +15% move speed, zombies +14%, jugg -25%, mutator
   const speed = (ads ? 3.6 : player.crouched ? 3.1 : (sprinting ? 8.4 : 5.7)) * speedMul;
   const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
   let wx = 0, wz = 0;
@@ -4739,7 +6024,8 @@ function updatePlayer(dt, now){
   const jumpHeldNow = !!bindDown('jump');
   if (jumpHeldNow && !jumpPollPrev && (player.jumpBufferT || 0) < 0.22) player.jumpBufferT = 0.22;
   jumpPollPrev = jumpHeldNow;
-  player.vel.y -= 21 * dt;
+  const grav = (mode==='solo' && S.mutator==='LOW GRAVITY') ? 9 : 21;
+  player.vel.y -= grav * dt;
   player.jumpBufferT = Math.max(0, (player.jumpBufferT || 0) - dt);
   if (player.grounded){ player.coyoteT = 0.12; player.airJumpsUsed = 0; }
   else player.coyoteT = Math.max(0, (player.coyoteT || 0) - dt);
@@ -4750,13 +6036,13 @@ function updatePlayer(dt, now){
     player.grounded = false;
     player.slideT = 0;
     SFX.jump();
-  } else if (player.jumpBufferT > 0 && !player.grounded && player.coyoteT <= 0 && knifeGolden() && (player.airJumpsUsed || 0) < 1){
-    // golden shank perk: one more kick of air under your feet, once per leap
+  } else if (player.jumpBufferT > 0 && !player.grounded && player.coyoteT <= 0 && (knifeGolden() || (isInfect() && net.infected)) && (player.airJumpsUsed || 0) < 1){
+    // golden shank perk + zombies double-jump: one more kick of air under your feet, once per leap
     player.jumpBufferT = 0;
     player.airJumpsUsed = 1;
     player.vel.y = 7.2;
     player.slideT = 0;
-    spawnRing(player.pos.clone(), 0xffd040);
+    spawnRing(player.pos.clone(), (isInfect() && net.infected) ? 0x2fd04a : 0xffd040);
     SFX.jump();
   }
 
@@ -4766,7 +6052,27 @@ function updatePlayer(dt, now){
   player.pos.x = clamp(player.pos.x, -ARENA+0.8, ARENA-0.8);
   player.pos.z = clamp(player.pos.z, -ARENA+0.8, ARENA-0.8);
 
+  const oldY = player.pos.y;
   player.pos.y += player.vel.y * dt;
+  // ceiling — hit your head (was noclipping)
+  if (player.vel.y > 0){
+    const oldHead = oldY + P_HEIGHT;
+    const newHead = player.pos.y + P_HEIGHT;
+    let hit = Infinity;
+    for (const s of solids){
+      if (player.pos.x > s.min.x - P_RADIUS*0.85 && player.pos.x < s.max.x + P_RADIUS*0.85 &&
+          player.pos.z > s.min.z - P_RADIUS*0.85 && player.pos.z < s.max.z + P_RADIUS*0.85){
+        // ceiling bottom is between old head and new head (moving up into it)
+        if (s.min.y > oldHead - 0.05 && s.min.y <= newHead + 0.02){
+          if (s.min.y < hit) hit = s.min.y;
+        }
+      }
+    }
+    if (hit !== Infinity){
+      player.pos.y = hit - P_HEIGHT - 0.02;
+      player.vel.y = Math.min(0, player.vel.y * -0.15);
+    }
+  }
   const g = groundHeight(player.pos, player.pos.y + 0.3);
   if (player.pos.y <= g){
     if (!player.grounded && player.vel.y < -4) SFX.land();
@@ -4785,8 +6091,8 @@ function updatePlayer(dt, now){
     player.bobT = lerp(player.bobT, Math.round(player.bobT / Math.PI) * Math.PI, dt*8);
   }
 
-  // health regen
-  if (now - player.lastDamage > 4500 && player.hp < player.maxHp && player.hp > 0){
+  // health regen — disabled in Infection (no regen for survivors)
+  if (!isInfect() && now - player.lastDamage > 4500 && player.hp < player.maxHp && player.hp > 0){
     player.hp = Math.min(player.maxHp, player.hp + 16 * dt);
     updateHealthHUD();
   }
@@ -4991,26 +6297,37 @@ function loop(){
   const now = performance.now();
   gunRoot.visible = S.started && !S.dead && !(CW().scoped && adsT > 0.7);   // no floating viewmodel on the death cam
 
-  if (S.started && !S.paused && !S.dead){
-    updatePlayer(dt, now);
+  if (S.started && !S.paused){
+    if (!S.dead) updatePlayer(dt, now);
+    // projectiles, grenades, hazards and burns must keep flying even when you're spectating —
+    // a grenade you threw before dying still explodes, a rocket mid-air still detonates
     updateGrenades(dt, now);
-    updatePickups(dt, now);
-    stepPlayerShots(dt);   // launchers, napalm pools and burn ticks tick in EVERY mode (solo, sandbox and LAN rounds alike)
+    if (!S.dead) updatePickups(dt, now);
+    stepPlayerShots(dt);
     stepBurns(dt);
     if (mode === 'solo'){
-      updateEnemies(dt, now);
-      updateProjectiles(dt);
-      updateWaves(dt);
+      if (!S.dead){
+        updateEnemies(dt, now);
+        updateWaves(dt);
+      }
+      updateProjectiles(dt);   // enemy shots keep flying while you watch the kill-cam
     }
+    if (mode === 'dm' && S.dead) updateSpectate(dt);
   } else {
     // idle camera drift on menu
     if (!S.started){
       const t = now * 0.0001;
       camera.position.set(Math.sin(t)*26, 9, Math.cos(t)*26);
       camera.lookAt(0, 2, 0);
+    } else if (S.started && S.dead && mode === 'dm'){
+      // death cam while paused (AFK-kill path keeps S.paused true) — still spectate
+      updateSpectate(dt);
+      // keep ordnance alive even through the pause-death edge case
+      updateGrenades(dt, now);
+      stepPlayerShots(dt);
+      stepBurns(dt);
     }
   }
-  if (S.started && S.dead && mode === 'dm') updateSpectate(dt);
   updateNet(dt);
   updateTeamDots();
   updateWorldAtmosphere(dt, now);
@@ -5046,8 +6363,9 @@ Object.seal(net); Object.seal(player); Object.seal(S); Object.seal(SETTINGS);   
 // the debug handle ships only in NR_DEBUG builds — the release artifact drops this whole branch
 if (window.__ALLOW_DBG__)
 window.__dbg = { player, S, camera, enemies, net, keys, spawnEnemy, fireWeapon, grenadesLive, explodeAt, throwGrenade, WEAPONS, RARITIES, waveComposition, tryReload, rotateWeaponForKill, setMap, spawnPlayerPieces, dmDeath, respawnDMPlayer, PROGRESS, SKINS, grantProgress, updateProgressUI, skinDef, trackChallenge, destructibles, weatherSystems, worldAnim, eventLights, damageDestructible, destroyDestructible, cleanupPlayerAvatar, savePlayerName, addRemotePlayer, tryKnifeSwing, knifeStrike, isBackstab, KNIFE_DEFS, knifeModels,
-  MAP_NAMES, SETTINGS, DEFAULT_BINDS, BIND_LABELS, bindCode, bindDown, assignBind, friendlyKeyName, renderBindList, GUN_LADDER, FINAL_TIER_SCORE, equipLadderTier, syncLadderWeapon, equipGunSlot, equipKnifeSlot, tryKnifeSwing, knifeStrike, updateWeaponVisibility, knifeModels, solids, castWorld, hasLOS, resolvePenetration, updateEnemies, updatePlayer, isTeammate, setRemoteTeam, TEAM_COLORS, TEAM_NAMES, updateTeamHUD,
+  MAP_NAMES, SETTINGS, DEFAULT_BINDS, BIND_LABELS, bindCode, bindDown, assignBind, friendlyKeyName, renderBindList, GUN_LADDER, AUTO_LADDER, SHOTGUN_LADDER, FINAL_TIER_SCORE, AUTO_LIMIT, SHOTGUN_LIMIT, equipLadderTier, syncLadderWeapon, equipGunSlot, equipKnifeSlot, tryKnifeSwing, knifeStrike, updateWeaponVisibility, knifeModels, solids, castWorld, hasLOS, resolvePenetration, updateEnemies, updatePlayer, isTeammate, setRemoteTeam, TEAM_COLORS, TEAM_NAMES, updateTeamHUD, refreshProfile,
   get knifeSwingCt(){ return knifeSwingId; },
+  get _syncKey(){ return syncKey; },
   get inputLocked(){ return locked; },
   get knifeMode(){ return knifeMode; },
   get beatDigest(){ return BEAT.digestRuntime(BEAT_FNS) >>> 0; },

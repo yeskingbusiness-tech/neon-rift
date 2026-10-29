@@ -9,6 +9,6 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "javascript-obfuscator": "^4.1.1"
+    "javascript-obfuscator": "^4.2.2"
   }
 }
