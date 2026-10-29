@@ -2854,7 +2854,7 @@ function fireWeapon(){
     let hitEnemy = null, hitNetId = null, hitDestructible = null, hitDist = worldDist, headshot = false;
     const meshes = [];
     for (const e of enemies) if (!e.dead) meshes.push(e.group);
-    if (net.on) for (const rp of net.players.values()){ if (isTeammate(rp)) continue; meshes.push(rp.group); }
+    if (net.on) for (const rp of net.players.values()){ if (isTeammate(rp) || !rp.group.visible) continue; meshes.push(rp.group); }
     for (const d of destructibles) if (!d.broken) { meshes.push(d.mesh); if (d.glow) meshes.push(d.glow); }
     const hits = raycaster.intersectObjects(meshes, true);
     if (hits.length){
@@ -3049,7 +3049,7 @@ function stepHazards(dt){
         if (d <= hz.r){ spawnDamagePopup(e.group.position.clone().add(_psUp), Math.round(tick), false); damageEnemy(e, tick); }
       }
       if (net.on) for (const rp of net.players.values()){
-        if (isTeammate(rp)) continue;
+        if (isTeammate(rp) || !rp.group.visible) continue;
         const d = Math.hypot(rp.group.position.x - hz.pos.x, rp.group.position.z - hz.pos.z);
         if (d <= hz.r) netSend({ t:'hit', target:rp.id, dmg:Math.round(tick) });
       }
@@ -3143,7 +3143,7 @@ function explodePlayerShot(ps, point){
     damageEnemy(e, dmg);
   }
   if (net.on) for (const rp of net.players.values()){
-    if (isTeammate(rp)) continue;
+    if (isTeammate(rp) || !rp.group.visible) continue;
     const d = rp.group.position.distanceTo(pos); if (r && d > r + 0.4) continue;
     const direct = ps.direct === rp.id;
     if (!direct && !r) continue;
@@ -3224,6 +3224,7 @@ function stepPlayerShots(dt){
         if (segPointD2(from, to, _psC) < 1.5 * 1.5){ hitAt = _psC.clone(); break; }
       }
       if (!hitAt && net.on) for (const rp of net.players.values()){
+        if (!rp.group.visible) continue;
         _psC.set(rp.group.position.x, rp.group.position.y + 1.0, rp.group.position.z);
         if (segPointD2(from, to, _psC) < 1.4 * 1.4){ hitAt = _psC.clone(); break; }
       }
@@ -3237,7 +3238,7 @@ function stepPlayerShots(dt){
         if (segPointD2(from, to, center) < 1.5 * 1.5){ hitAt = center; ps.direct = e; window.__dbgPsHit = { tx:+center.x.toFixed(2), tz:+center.z.toFixed(2) }; break; }
       }
       if (!hitAt && net.on) for (const rp of net.players.values()){
-        if (isTeammate(rp)) continue;
+        if (isTeammate(rp) || !rp.group.visible) continue;
         _psC.set(rp.group.position.x, rp.group.position.y + 1.0, rp.group.position.z);
         const center = _psC.clone();
         if (segPointD2(from, to, center) < 1.4 * 1.4){ hitAt = center; ps.direct = rp.id; break; }
@@ -3382,7 +3383,7 @@ function explodeAt(pos){
   }
   // hurt rival players in deathmatch
   if (net.on) for (const [pid, rp] of net.players){
-    if (isTeammate(rp)) continue;
+    if (isTeammate(rp) || !rp.group.visible) continue;
     const d = rp.group.position.distanceTo(pos);
     if (d < R) netSend({ t:'hit', target:pid, dmg:Math.round(120 * (1 - d/R)) });
   }
@@ -5936,6 +5937,7 @@ function drawMinimap(){
     } else { $('minimapWrap')?.classList.remove('reveal'); }
   }
   for (const rp of net.players.values()){
+    if (!rp.group.visible) continue;
     const [x,z] = toMap(rp.group.position.x, rp.group.position.z);
     const isRevealed = revealId && rp.id===revealId;
     if(isRevealed){
