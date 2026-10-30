@@ -53,17 +53,17 @@
   .quickStats div { border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.035); padding:14px 12px; text-align:center; }
   .quickStats b { display:block; color:#fff; font-size:30px; font-family:Consolas,monospace; text-shadow:0 0 12px rgba(44,242,255,.55); }
   .quickStats span { display:block; color:#8fa3bd; font-size:10px; letter-spacing:3px; text-transform:uppercase; margin-top:4px; }
-  .updateLog { margin-top:22px; border:1px solid rgba(44,242,255,.18); background:linear-gradient(180deg, rgba(44,242,255,.06), rgba(0,0,0,.18)); padding:14px 16px 12px; backdrop-filter:blur(3px); box-shadow:inset 0 0 20px rgba(44,242,255,.04); }
-  .updateLogHead { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
-  .updateLogTitle { font-size:10px; letter-spacing:4px; color:var(--cyan); display:flex; align-items:center; gap:8px; text-transform:uppercase; }
-  .updateLogTitle:before { content:""; width:7px; height:7px; border-radius:50%; background:var(--cyan); box-shadow:0 0 10px var(--cyan); flex:0 0 auto; }
-  .updateLogVer { font:9px Consolas,monospace; letter-spacing:2px; color:rgba(44,242,255,.7); border:1px solid rgba(44,242,255,.22); background:rgba(44,242,255,.08); padding:3px 7px; }
-  .updateLog ul { list-style:none; padding:0; margin:0; display:grid; gap:7px; }
-  .updateLog li { position:relative; padding-left:16px; color:#c4d4e8; font-size:11px; letter-spacing:.8px; line-height:1.6; text-transform:uppercase; }
-  .updateLog li:before { content:"▸"; position:absolute; left:0; top:0; color:var(--cyan); font-size:10px; line-height:1.6; text-shadow:0 0 8px rgba(44,242,255,.6); }
-  .updateLog li b { color:#fff; font-weight:800; }
+  .updateLog { margin-top:24px; border:1px solid rgba(44,242,255,.22); background:linear-gradient(180deg, rgba(44,242,255,.08), rgba(0,0,0,.2)); padding:20px 22px 18px; backdrop-filter:blur(4px); box-shadow:inset 0 0 26px rgba(44,242,255,.06), 0 8px 32px rgba(0,0,0,.35); min-height:148px; }
+  .updateLogHead { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:14px; }
+  .updateLogTitle { font-size:13px; letter-spacing:5px; color:var(--cyan); display:flex; align-items:center; gap:10px; text-transform:uppercase; font-weight:800; }
+  .updateLogTitle:before { content:""; width:9px; height:9px; border-radius:50%; background:var(--cyan); box-shadow:0 0 12px var(--cyan); flex:0 0 auto; }
+  .updateLogVer { font:11px Consolas,monospace; letter-spacing:2.5px; color:rgba(44,242,255,.85); border:1px solid rgba(44,242,255,.28); background:rgba(44,242,255,.1); padding:5px 10px; font-weight:700; }
+  .updateLog ul { list-style:none; padding:0; margin:0; display:grid; gap:10px; }
+  .updateLog li { position:relative; padding-left:20px; color:#d0ddf0; font-size:13.5px; letter-spacing:.9px; line-height:1.65; text-transform:uppercase; }
+  .updateLog li:before { content:"▸"; position:absolute; left:0; top:0; color:var(--cyan); font-size:12px; line-height:1.65; text-shadow:0 0 10px rgba(44,242,255,.7); }
+  .updateLog li b { color:#fff; font-weight:900; }
   .updateLog li em { color:var(--orange); font-style:normal; }
-  .updateLog li small { color:#8fa3bd; font-size:10px; letter-spacing:1px; }
+  .updateLog li small { color:#8fa3bd; font-size:11px; letter-spacing:1px; }
   .playPanel { padding:28px; clip-path:polygon(22px 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%, 0 22px);
     overflow-y:auto; overflow-x:hidden; max-height:calc(100vh - 108px); scrollbar-width:thin; scrollbar-color:rgba(44,242,255,.38) transparent; }
   .playPanel::-webkit-scrollbar { width:6px; }
@@ -637,7 +637,7 @@ body.mut-dark { filter:contrast(1.1) brightness(.85); }
   </div>
 
   <div id="objective"></div>
-  <div id="buildInfo">v2.0 — 30 OCT — BUILD __BUILD__</div>
+  <div id="buildInfo">v2.3 — 30 OCT — BUILD __BUILD__</div>
   <div id="deathRecap" class="hidden"><div id="deathText"></div><small id="deathSub"></small></div>
 </div>
 
@@ -696,19 +696,12 @@ body.mut-dark { filter:contrast(1.1) brightness(.85); }
       <div class="updateLog">
         <div class="updateLogHead">
           <div class="updateLogTitle">UPDATE LOG</div>
-          <div class="updateLogVer">v2.0 — 30 OCT 2026</div>
+          <div class="updateLogVer">v2.3 — 30 OCT 2026</div>
         </div>
         <ul>
-          <li><b>VOTING REVAMP</b> — NEW · rebuilt overlay · 3-map ballot &amp; 4-mode ballot in 2×2 grid, live bars + timer fill</li>
+          <li><b>VOTING REVAMP</b> — NEW · rebuilt overlay · 3-map ballot &amp; 4-mode ballot in 2×2 grid, live vote bars + timer fill</li>
           <li><b>TARGET</b> — NEW · hunt your assigned target · first to 10, new target on each kill</li>
           <li><b>MUSKET ONLY</b> — NEW · LEADLINE &amp; PULSE musket ladder · first to 10</li>
-          <li><b>SNIPERS ONLY</b> — gray vote · snipers only · first to 15 · final ATLAS ROCKET</li>
-          <li><b>JUGGERNAUT</b> — 500HP VORTEX infinite ammo · hunters random every kill</li>
-          <li><b>ONE SHOT</b> — white vote · 1-bullet mag · 1 HP instakill · first to 20</li>
-          <li><b>AUTOMATICS</b> — first to 20 · final LEADLINE MUSKET</li>
-          <li><b>SHOTGUNS</b> — first to 20 · final SNOWBALL SLINGER</li>
-          <li><b>DEATH RECAP</b> — 2s killcam · “killed by X with Y”</li>
-          <li><b>TEAM FIX</b> — Red vs Blue keeps correct teams after vote</li>
         </ul>
       </div>
     </section>
@@ -861,7 +854,7 @@ document.addEventListener('DOMContentLoaded', function(){
   });
 });
 </script>
-<script>window.GAME_BUILD="__BUILD__"; window.GAME_VERSION="v2.0 — 30 OCT 2026";</script>
+<script>window.GAME_BUILD="__BUILD__"; window.GAME_VERSION="v2.3 — 30 OCT 2026";</script>
 <script src="./shared/beat.js?v=__BUILD__"></script>
 <script type="module" src="./game.js?v=__BUILD__"></script>
 </body>
