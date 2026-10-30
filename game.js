@@ -4151,7 +4151,7 @@ function updatePickups(dt, now){
 const net = { on:false, ws:null, id:0, players:new Map(), sendT:0, lastHitBy:0, lastHitWeapon:0, lastHitKnife:false, lastHitHs:false, revealId:null,
   scores:[], limit:30, round:1, currentMap:'FORGE', voteChoices:[], voteCounts:{}, voteEndsAt:0, voteEndsLocal:0, votePhase:'map', voteActive:false, roundOver:false, pendingMap:'',
   spectateId:0, spectateT:0, myScore:-1,
-  dmMode:'ffa', myTeam:0, teamTotals:{ red:0, blue:0 }, __voteSecs:-1,
+  dmMode:'ffa', myTeam:0, teamTotals:{ red:0, blue:0 }, __voteSecs:-1, __voteTotalAtStart:6000,
   beatSalt:0, myName:'', deathPos:null, profileLinked:false,
   infected:false, infectionEndAt:0, infectedIds:new Set(),
   isJuggernaut:false, juggernautId:0, juggHp:500, targetId:0, targetName:'' };   // predeclared — the object is sealed at load (no late Property additions allowed)

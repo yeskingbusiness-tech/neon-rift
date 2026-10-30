@@ -370,7 +370,7 @@ body.mut-dark { filter:contrast(1.1) brightness(.85); }
   /* choices grids */
   #voteChoices { display:grid; gap:12px; align-content:start; }
   #voteChoices.mapChoices { grid-template-columns:repeat(3, 1fr); }
-  #voteChoices.modeChoices { grid-template-columns:repeat(4, 1fr); }
+  #voteChoices.modeChoices { grid-template-columns:repeat(2, 1fr); }
   .voteBtn { position:relative; cursor:pointer; display:flex; flex-direction:column; text-align:left; overflow:hidden;
     min-height:142px; padding:0; color:#eafcff; background:rgba(44,242,255,.05); border:1px solid rgba(44,242,255,.32);
     text-transform:uppercase; letter-spacing:1px; transition:transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease; }
@@ -392,11 +392,11 @@ body.mut-dark { filter:contrast(1.1) brightness(.85); }
   .voteBar { height:4px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.06); overflow:hidden; }
   .voteBar i { display:block; height:100%; width:0%; background:linear-gradient(90deg, var(--cyan), var(--orange)); transition:width .4s ease; }
   .voteBtn.selected .voteBar i { background:var(--orange); }
-  /* mode cards — compact but readable at 4-across */
-  .voteModeBtn { min-height:138px; }
-  .voteModeBtn .voteBody { padding-top:10px; }
-  .voteModeBtn b { font-size:13px; letter-spacing:2px; line-height:1.15; }
-  .voteModeBtn .voteDesc { font-size:8.5px; letter-spacing:1.4px; line-height:1.5; }
+  /* mode cards — 2x2 big cards */
+  .voteModeBtn { min-height:168px; }
+  .voteModeBtn .voteBody { padding-top:14px; }
+  .voteModeBtn b { font-size:17px; letter-spacing:2.5px; line-height:1.15; }
+  .voteModeBtn .voteDesc { font-size:10px; letter-spacing:1.5px; line-height:1.55; }
   .voteModeBtn:before { content:""; position:absolute; left:0; right:0; top:0; height:3px; opacity:.95; }
   .voteModeBtn.vmFFA:before { background:linear-gradient(90deg, transparent, rgba(44,242,255,.9), transparent); }
   .voteModeBtn.vmFFA { border-color:rgba(44,242,255,.45); } .voteModeBtn.vmFFA b { color:#8ef7ff; }
