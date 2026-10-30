@@ -5592,7 +5592,7 @@ function weaponIconFor(wIdx){
   return '🔫';
 }
 function killIcon(m){
-  if(m && m.names && m.names.k && isOwnerName(m.names.k)) return '<span class="kfIcon" style="color:#ff3b57;text-shadow:0 0 8px rgba(255,59,87,.9)">♔</span>';
+  if(m && m.names && m.names.k && isOwnerName(m.names.k)) return '<span class="kfIcon" style="color:#ff3b57;text-shadow:0 0 5px rgba(255,59,87,.65)">♔</span>';
   if(m.bs) return '<span class="kfIcon" style="color:#ff4d4d">💀</span>';
   if(m.knife) return '<span class="kfIcon">⚔</span>';
   if(m.hs) return '<span class="kfIcon" style="color:#ffd040">⌖</span>';
