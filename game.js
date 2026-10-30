@@ -4573,7 +4573,7 @@ function addRemotePlayer(id, name, skinId='rift', team=0){
   const group = buildEnemyMesh(avatarTypeForSkin(skinId));
   cleanupPlayerAvatar(group);
   group.traverse(o => { o.userData.netId = id; });
-  const tag = makeNameSprite(isOwnerName(name) ? '♔ '+name : name || 'PLAYER', isOwnerName(name) ? '#ff3b57' : '#2cf2ff');
+  const tag = makeNameSprite(isOwnerName(name) ? '♔ '+name : name || 'PLAYER', isOwnerName(name) ? '#ffffff' : '#2cf2ff');
   tag.position.y = 2.45; group.add(tag);
   const weaponRoot = new THREE.Group();
   weaponRoot.position.set(0.08, 1.24, -0.54);
@@ -4605,7 +4605,7 @@ function setRemoteTeam(rp, team){
   // redraw the nametag tinted by team (or back to cyan when squads dissolve)
   if ((rp.team && net.dmMode === 'team' && rp.team !== prev) || (!rp.team && prev)){
     rp.group.remove(rp.tag);
-    rp.tag = makeNameSprite(isOwnerName(rp.name) ? '♔ '+rp.name : rp.name, isOwnerName(rp.name) ? '#ff3b57' : rp.team ? TEAM_COLORS[rp.team] : '#2cf2ff');
+    rp.tag = makeNameSprite(isOwnerName(rp.name) ? '♔ '+rp.name : rp.name, isOwnerName(rp.name) ? '#ffffff' : rp.team ? TEAM_COLORS[rp.team] : '#2cf2ff');
     rp.tag.position.y = 2.45; rp.group.add(rp.tag);
   }
 }
@@ -4842,7 +4842,7 @@ function connectNet(){
         if (typeof updateChallengeUI === 'function') updateChallengeUI();
         break;
       case 'join': addRemotePlayer(m.id, m.name, m.skin || 'rift', m.team || 0); addKillFeed(null, `<b>${m.name}</b> JOINED THE MATCH${fmtTeamTag(m.team) ? ' — ' + fmtTeamTag(m.team) : ''}`); updateTopHUD(); break;
-      case 'name': { const rp = net.players.get(m.id); if (rp){ rp.name = m.name; rp.group.remove(rp.tag); rp.tag = makeNameSprite(isOwnerName(m.name) ? '♔ '+m.name : m.name, isOwnerName(m.name) ? '#ff3b57' : net.dmMode === 'team' && rp.team ? TEAM_COLORS[rp.team] : '#2cf2ff'); rp.tag.position.y = 2.45; rp.group.add(rp.tag); } break; }
+      case 'name': { const rp = net.players.get(m.id); if (rp){ rp.name = m.name; rp.group.remove(rp.tag); rp.tag = makeNameSprite(isOwnerName(m.name) ? '♔ '+m.name : m.name, isOwnerName(m.name) ? '#ffffff' : net.dmMode === 'team' && rp.team ? TEAM_COLORS[rp.team] : '#2cf2ff'); rp.tag.position.y = 2.45; rp.group.add(rp.tag); } break; }
       case 'skin': { const rp = net.players.get(m.id); if (rp) setRemoteSkin(rp, m.skin || 'rift'); break; }
       case 'leave': { const rp = net.players.get(m.id); if (rp) addKillFeed(null, `<b>${rp.name}</b> LEFT`); removeRemotePlayer(m.id); updateTopHUD(); break; }
       case 'state': { const rp = net.players.get(m.id) || addRemotePlayer(m.id, 'PLAYER'); applyNetState(rp, m.s); break; }
@@ -5592,7 +5592,7 @@ function weaponIconFor(wIdx){
   return '🔫';
 }
 function killIcon(m){
-  if(m && m.names && m.names.k && isOwnerName(m.names.k)) return '<span class="kfIcon" style="color:#ff3b57;text-shadow:1px 0 0 #000, -1px 0 0 #000, 0 1px 0 #000, 0 -1px 0 #000, 0 0 3px rgba(0,0,0,.85)">♔</span>';
+  if(m && m.names && m.names.k && isOwnerName(m.names.k)) return '<span class="kfIcon" style="color:#ffffff;text-shadow:1px 0 0 #000, -1px 0 0 #000, 0 1px 0 #000, 0 -1px 0 #000, 0 0 3px rgba(0,0,0,.85), 0 0 5px rgba(255,255,255,.2)">♔</span>';
   if(m.bs) return '<span class="kfIcon" style="color:#ff4d4d">💀</span>';
   if(m.knife) return '<span class="kfIcon">⚔</span>';
   if(m.hs) return '<span class="kfIcon" style="color:#ffd040">⌖</span>';
