@@ -4173,7 +4173,14 @@ function isTeammate(rp){
   return false;
 }
 function fmtTeamTag(t){ return t ? `<span style="color:${TEAM_COLORS[t]}">${TEAM_NAMES[t]}</span>` : ''; }
-function fmtColoredName(name, t){ return net.dmMode === 'team' && t ? `<span style="color:${TEAM_COLORS[t]}">${name}</span>` : name; }
+function isOwnerName(n){ return String(n||'').trim().toLowerCase() === 'yesking'; }
+function fmtColoredName(name, t){
+  if (isOwnerName(name)) return `<span class="ownerName" title="OWNER">♔ ${name}</span>`;
+  return net.dmMode === 'team' && t ? `<span style="color:${TEAM_COLORS[t]}">${name}</span>` : name;
+}
+function fmtOwnerName(name, t){ return isOwnerName(name) ? `<span class="ownerName">♔ ${name}</span>` : fmtColoredName(name,t); }
+function boardName(p, color){ if(isOwnerName(p.name)) return `<span class="ownerName">♔ ${p.name}</span>`; if(color) return `<span style="color:${color}">${p.name||'PLAYER'}</span>`; return `${p.name||'PLAYER'}`; }
+function boardNameRaw(name, color){ if(isOwnerName(name)) return `<span class="ownerName">♔ ${name}</span>`; if(color) return `<span style="color:${color}">${name||'PLAYER'}</span>`; return `${name||'PLAYER'}`; }
 
 function hasSpecialChars(v){ return /[^A-Za-z0-9 ]/.test(String(v || '')); }
 function cleanPlayerName(v){ const raw = String(v || 'RIFT-OPS'); const stripped = raw.toUpperCase().replace(/[^A-Z0-9 ]/g,'').trim().replace(/\s+/g,' ').slice(0,14).trim(); return stripped || 'RIFT OPS'; }
@@ -4566,7 +4573,7 @@ function addRemotePlayer(id, name, skinId='rift', team=0){
   const group = buildEnemyMesh(avatarTypeForSkin(skinId));
   cleanupPlayerAvatar(group);
   group.traverse(o => { o.userData.netId = id; });
-  const tag = makeNameSprite(name || 'PLAYER');
+  const tag = makeNameSprite(isOwnerName(name) ? '♔ '+name : name || 'PLAYER', isOwnerName(name) ? '#ff3b57' : '#2cf2ff');
   tag.position.y = 2.45; group.add(tag);
   const weaponRoot = new THREE.Group();
   weaponRoot.position.set(0.08, 1.24, -0.54);
@@ -4598,7 +4605,7 @@ function setRemoteTeam(rp, team){
   // redraw the nametag tinted by team (or back to cyan when squads dissolve)
   if ((rp.team && net.dmMode === 'team' && rp.team !== prev) || (!rp.team && prev)){
     rp.group.remove(rp.tag);
-    rp.tag = makeNameSprite(rp.name, rp.team ? TEAM_COLORS[rp.team] : '#2cf2ff');
+    rp.tag = makeNameSprite(isOwnerName(rp.name) ? '♔ '+rp.name : rp.name, isOwnerName(rp.name) ? '#ff3b57' : rp.team ? TEAM_COLORS[rp.team] : '#2cf2ff');
     rp.tag.position.y = 2.45; rp.group.add(rp.tag);
   }
 }
@@ -4835,7 +4842,7 @@ function connectNet(){
         if (typeof updateChallengeUI === 'function') updateChallengeUI();
         break;
       case 'join': addRemotePlayer(m.id, m.name, m.skin || 'rift', m.team || 0); addKillFeed(null, `<b>${m.name}</b> JOINED THE MATCH${fmtTeamTag(m.team) ? ' — ' + fmtTeamTag(m.team) : ''}`); updateTopHUD(); break;
-      case 'name': { const rp = net.players.get(m.id); if (rp){ rp.name = m.name; rp.group.remove(rp.tag); rp.tag = makeNameSprite(m.name, net.dmMode === 'team' && rp.team ? TEAM_COLORS[rp.team] : '#2cf2ff'); rp.tag.position.y = 2.45; rp.group.add(rp.tag); } break; }
+      case 'name': { const rp = net.players.get(m.id); if (rp){ rp.name = m.name; rp.group.remove(rp.tag); rp.tag = makeNameSprite(isOwnerName(m.name) ? '♔ '+m.name : m.name, isOwnerName(m.name) ? '#ff3b57' : net.dmMode === 'team' && rp.team ? TEAM_COLORS[rp.team] : '#2cf2ff'); rp.tag.position.y = 2.45; rp.group.add(rp.tag); } break; }
       case 'skin': { const rp = net.players.get(m.id); if (rp) setRemoteSkin(rp, m.skin || 'rift'); break; }
       case 'leave': { const rp = net.players.get(m.id); if (rp) addKillFeed(null, `<b>${rp.name}</b> LEFT`); removeRemotePlayer(m.id); updateTopHUD(); break; }
       case 'state': { const rp = net.players.get(m.id) || addRemotePlayer(m.id, 'PLAYER'); applyNetState(rp, m.s); break; }
@@ -5585,6 +5592,7 @@ function weaponIconFor(wIdx){
   return '🔫';
 }
 function killIcon(m){
+  if(m && m.names && m.names.k && isOwnerName(m.names.k)) return '<span class="kfIcon" style="color:#ff3b57;text-shadow:0 0 8px rgba(255,59,87,.9)">♔</span>';
   if(m.bs) return '<span class="kfIcon" style="color:#ff4d4d">💀</span>';
   if(m.knife) return '<span class="kfIcon">⚔</span>';
   if(m.hs) return '<span class="kfIcon" style="color:#ffd040">⌖</span>';
@@ -5597,8 +5605,8 @@ function updateScoreboardHUD(){
   panel.classList.toggle('hidden', mode !== 'dm' && !net.on);
   if (net.dmMode === 'juggernaut'){
     const list = (net.scores || []);
-    const rowJugg = p => `<div class="scoreRow ${p.id===net.id?'me':''}"><span style="color:#ff3b57">${p.name||'PLAYER'}</span><b>${p.score||0}s<small>${p.deaths||0}D</small></b></div>`;
-    const rowHunt = p => `<div class="scoreRow ${p.id===net.id?'me':''}"><span style="color:#8fa3bd">${p.name||'PLAYER'}</span><b>${p.score||0}s<small>${p.deaths||0}D</small></b></div>`;
+    const rowJugg = p => `<div class="scoreRow ${p.id===net.id?'me':''}">${boardName(p, '#ff3b57')}<b>${p.score||0}s<small>${p.deaths||0}D</small></b></div>`;
+    const rowHunt = p => `<div class="scoreRow ${p.id===net.id?'me':''}">${boardName(p, '#8fa3bd')}<b>${p.score||0}s<small>${p.deaths||0}D</small></b></div>`;
     const jugg = list.filter(p=>p.team===2).sort((a,b)=>(b.score||0)-(a.score||0));
     const hunters = list.filter(p=>p.team===1).sort((a,b)=>(b.score||0)-(a.score||0));
     const juggName = jugg[0]?.name || (net.isJuggernaut ? net.myName : 'JUGGERNAUT');
@@ -5613,33 +5621,33 @@ function updateScoreboardHUD(){
   if (net.dmMode === 'oneshot'){
     panel.querySelector('.sbTitle').textContent = `ONE SHOT // FIRST TO ${net.limit||20}`;
     const list = (net.scores||[]).slice(0,8);
-    rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${p.name||'PLAYER'}</span><b>${p.score||0}/${net.limit||20}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/20<small>0D</small></b></div>';
+    rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${boardName(p)}</span><b>${p.score||0}/${net.limit||20}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/20<small>0D</small></b></div>';
     return;
   }
   if (net.dmMode === 'target'){
     panel.querySelector('.sbTitle').textContent = `TARGET // FIRST TO ${net.limit||10} — HUNT ${net.targetName||'TARGET'}`;
     const list = (net.scores||[]).slice(0,8);
-    rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${p.name||'PLAYER'}</span><b>${p.score||0}/${net.limit||10}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/10<small>0D</small></b></div>';
+    rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${boardName(p)}</span><b>${p.score||0}/${net.limit||10}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/10<small>0D</small></b></div>';
     return;
   }
   if (net.dmMode === 'musket'){
     panel.querySelector('.sbTitle').textContent = `MUSKET ONLY // FIRST TO ${net.limit||10}`;
     const list = (net.scores||[]).slice(0,8);
-    rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${p.name||'PLAYER'}</span><b>${p.score||0}/${net.limit||10}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/10<small>0D</small></b></div>';
+    rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${boardName(p)}</span><b>${p.score||0}/${net.limit||10}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/10<small>0D</small></b></div>';
     return;
   }
   if (net.dmMode === 'infect'){
     const list = (net.scores || []);
     // split survivors (not infected) vs infected using scores team? scores have team field from server; survivor team 1 blue, infected team 2 green
-    const rowSurv = p => `<div class="scoreRow ${p.id===net.id?'me':''}"><span style="color:#4aa0ff">${p.name || 'PLAYER'}</span><b>${p.score || 0}<small>${p.deaths || 0}D</small></b></div>`;
-    const rowInf = p => `<div class="scoreRow ${p.id===net.id?'me':''}"><span style="color:#2fd04a">${p.name || 'PLAYER'}</span><b>${p.score || 0}<small>${p.deaths || 0}D</small></b></div>`;
+    const rowSurv = p => `<div class="scoreRow ${p.id===net.id?'me':''}">${boardName(p, '#4aa0ff')}<b>${p.score || 0}<small>${p.deaths || 0}D</small></b></div>`;
+    const rowInf = p => `<div class="scoreRow ${p.id===net.id?'me':''}">${boardName(p, '#2fd04a')}<b>${p.score || 0}<small>${p.deaths || 0}D</small></b></div>`;
     const surv = list.filter(p => p.team === 1).sort((a,b)=>(b.score||0)-(a.score||0));
     const inf = list.filter(p => p.team === 2).sort((a,b)=>(b.score||0)-(a.score||0));
     const survCount = surv.length + (net.infected?0:1);
     const infCount = inf.length + (net.infected?1:0);
     // if server didn't set team for lobby solo, fallback to all list
     if (!surv.length && !inf.length){
-      rows.innerHTML = list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${p.name}</span><b>${p.score||0}</b></div>`).join('');
+      rows.innerHTML = list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${boardNameRaw(p.name)}</span><b>${p.score||0}</b></div>`).join('');
       panel.querySelector('.sbTitle').textContent = `INFECTION // ${Math.max(0, Math.ceil((net.infectionEndAt-Date.now())/1000))}s LEFT`;
       return;
     }
@@ -5656,7 +5664,7 @@ function updateScoreboardHUD(){
     : `LEADERBOARD // FIRST TO ${net.limit || 30}`;
   if (net.dmMode === 'team'){
     const list = (net.scores || []);
-    const row = p => `<div class="scoreRow ${p.id===net.id?'me':''}"><span class="${p.team===1?'tr':'tb'}">${p.name || 'PLAYER'}</span><b>${p.score || 0}<small>${p.deaths || 0}D</small></b></div>`;
+    const row = p => `<div class="scoreRow ${p.id===net.id?'me':''}">${isOwnerName(p.name) ? `<span class="ownerName">♔ ${p.name}</span>` : `<span class="${p.team===1?'tr':'tb'}">${p.name || 'PLAYER'}</span>`}<b>${p.score || 0}<small>${p.deaths || 0}D</small></b></div>`;
     const red = list.filter(p => p.team === 1).sort((a,b)=>(b.score||0)-(a.score||0));
     const blue = list.filter(p => p.team === 2).sort((a,b)=>(b.score||0)-(a.score||0));
     const t = net.teamTotals || { red:0, blue:0 };
@@ -5668,7 +5676,7 @@ function updateScoreboardHUD(){
     return;
   }
   const list = (net.scores || []).slice(0, 8);
-  rows.innerHTML = list.length ? list.map((p,i) => `<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${p.name || 'PLAYER'}</span><b>${p.score || 0}/${net.limit || 30}<small>${p.deaths || 0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/30<small>0D</small></b></div>';
+  rows.innerHTML = list.length ? list.map((p,i) => `<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${boardName(p)}</span><b>${p.score || 0}/${net.limit || 30}<small>${p.deaths || 0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/30<small>0D</small></b></div>';
 }
 function voteDescription(name){
   if (name === 'NEXUS') return 'Symmetric lanes, fast duels, tight mid control';
@@ -5680,7 +5688,7 @@ function voteDescription(name){
 function renderRoundStats(){
   const box = $('voteStats'); if (!box) return;
   const rows = (net.scores || []).slice(0, 10).map((p,i) =>
-    `<div class="roundStatsRow ${p.id===net.id?'me':''}"><span>${i+1}. ${p.name || 'PLAYER'}</span><b>${p.score || 0}</b></div>`
+    `<div class="roundStatsRow ${p.id===net.id?'me':''}"><span>${i+1}. ${boardName(p)}</span><b>${p.score || 0}</b></div>`
   ).join('') || '<div class="roundStatsRow"><span>NO PLAYERS</span><b>0</b></div>';
   const acc = S.shotsFired ? Math.round(100 * S.shotsHit / S.shotsFired) : 0;
   box.innerHTML = `<div class="roundStatsPanel"><h3>FULL SCOREBOARD</h3>${rows}</div>` +

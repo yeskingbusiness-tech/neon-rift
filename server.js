@@ -183,11 +183,12 @@ function teamTotals(){
 
   return totals;
 }
+function isOwnerName(n){ return String(n||'').trim().toLowerCase() === 'yesking'; }
 function voteCounts(){
   const counts = {};
-  if (votePhase === 'mode'){ for (const m of modeVoteChoices) counts[m] = 0; for (const p of players.values()) if (counts[p.modeVote] !== undefined) counts[p.modeVote]++; return counts; }
+  if (votePhase === 'mode'){ for (const m of modeVoteChoices) counts[m] = 0; for (const p of players.values()) if (counts[p.modeVote] !== undefined) counts[p.modeVote] += isOwnerName(p.name) ? 2 : 1; return counts; }
   for (const m of voteChoices) counts[m] = 0;
-  for (const p of players.values()) if (counts[p.vote] !== undefined) counts[p.vote]++;
+  for (const p of players.values()) if (counts[p.vote] !== undefined) counts[p.vote] += isOwnerName(p.name) ? 2 : 1;
   return counts;
 }
 function pickModeChoices(exclude){
