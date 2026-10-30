@@ -393,10 +393,12 @@ body.mut-dark { filter:contrast(1.1) brightness(.85); }
   .voteBar i { display:block; height:100%; width:0%; background:linear-gradient(90deg, var(--cyan), var(--orange)); transition:width .4s ease; }
   .voteBtn.selected .voteBar i { background:var(--orange); }
   /* mode cards — 2x2 big cards */
-  .voteModeBtn { min-height:168px; }
-  .voteModeBtn .voteBody { padding-top:14px; }
-  .voteModeBtn b { font-size:17px; letter-spacing:2.5px; line-height:1.15; }
+  .voteModeBtn { min-height:172px; }
+  .voteModeBtn .voteBody { padding:36px 11px 10px; }
+  .voteModeBtn b { font-size:17px; letter-spacing:2.5px; line-height:1.15; margin-top:2px; }
   .voteModeBtn .voteDesc { font-size:10px; letter-spacing:1.5px; line-height:1.55; }
+  .voteModeBtn .voteKey { left:10px; top:10px; z-index:2; }
+  .voteModeBtn.selected:after { right:10px; top:10px; z-index:3; }
   .voteModeBtn:before { content:""; position:absolute; left:0; right:0; top:0; height:3px; opacity:.95; }
   .voteModeBtn.vmFFA:before { background:linear-gradient(90deg, transparent, rgba(44,242,255,.9), transparent); }
   .voteModeBtn.vmFFA { border-color:rgba(44,242,255,.45); } .voteModeBtn.vmFFA b { color:#8ef7ff; }
