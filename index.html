@@ -286,9 +286,9 @@ body.mut-dark { filter:contrast(1.1) brightness(.85); }
   #nadeRow b { color:#8fe08a; font-size:13px; }
   #arsenalRow b { color:var(--cyan); font-size:13px; }
 
-  #scoreboardPanel { position:absolute; top:224px; right:22px; width:190px; padding:9px 10px; }
-  #scoreboardPanel .sbTitle { font-size:9px; letter-spacing:3px; color:var(--cyan); margin-bottom:6px; text-align:center; }
-  .scoreRow { display:flex; justify-content:space-between; gap:8px; font:11px Consolas,monospace; color:#b9cbe2; padding:2px 3px; border-bottom:1px solid rgba(255,255,255,.05); }
+  #scoreboardPanel { position:absolute; top:220px; right:20px; width:214px; padding:11px 12px; }
+  #scoreboardPanel .sbTitle { font-size:10px; letter-spacing:3px; color:var(--cyan); margin-bottom:7px; text-align:center; }
+  .scoreRow { display:flex; justify-content:space-between; gap:10px; font:12.5px Consolas,monospace; color:#b9cbe2; padding:3px 5px; border-bottom:1px solid rgba(255,255,255,.06); }
   .scoreRow.me { color:#fff; background:rgba(44,242,255,.12); box-shadow:inset 2px 0 0 var(--cyan); }
   .scoreRow b { color:var(--orange); }
   .scoreRow.tr span, .scoreRow.tb span { font-weight:700; }
@@ -298,8 +298,8 @@ body.mut-dark { filter:contrast(1.1) brightness(.85); }
   .scoreRow.sbTeamHdr.tr { color:#ff5040; } .scoreRow.sbTeamHdr.tb { color:#4aa0ff; }
   .scoreRow.sbTeamHdr span { color:inherit; letter-spacing:2px; }
   .scoreRow.sbTeamHdr b { color:inherit; }
-  .ownerName { color:#ff3b57 !important; -webkit-text-stroke:0.6px #fff; text-shadow:0 0 4px rgba(255,59,87,.65), 0 0 8px rgba(255,255,255,.32); font-weight:900; animation:ownerPulse 1.3s ease-in-out infinite; }
-  @keyframes ownerPulse { 0%,100%{ filter:brightness(1) drop-shadow(0 0 3px rgba(255,59,87,.45)); } 50%{ filter:brightness(1.15) drop-shadow(0 0 6px rgba(255,59,87,.8)); transform:scale(1.02); } }
+  .ownerName { color:#ff3b57 !important; -webkit-text-stroke:0.85px #0a0e18; text-shadow: 1px 0 0 #000, -1px 0 0 #000, 0 1px 0 #000, 0 -1px 0 #000, 0 0 3px rgba(0,0,0,.85), 0 0 5px rgba(255,59,87,.38); font-weight:900; animation:ownerPulse 1.3s ease-in-out infinite; }
+  @keyframes ownerPulse { 0%,100%{ filter:brightness(1) drop-shadow(0 0 2px rgba(0,0,0,.55)); } 50%{ filter:brightness(1.10) drop-shadow(0 0 4px rgba(255,59,87,.55)); transform:scale(1.015); } }
   #teamChip { position:absolute; top:64px; left:50%; transform:translateX(-50%); padding:6px 16px; text-align:center;
     font:700 13px Consolas,monospace; letter-spacing:2px; color:#dfeefc; white-space:nowrap; }
   #teamChip i { color:#5b7191; font-style:normal; margin:0 8px; }
