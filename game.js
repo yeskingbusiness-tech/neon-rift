@@ -4179,8 +4179,8 @@ function fmtColoredName(name, t){
   return net.dmMode === 'team' && t ? `<span style="color:${TEAM_COLORS[t]}">${name}</span>` : name;
 }
 function fmtOwnerName(name, t){ return isOwnerName(name) ? `<span class="ownerName">♔ ${name}</span>` : fmtColoredName(name,t); }
-function boardName(p, color){ if(isOwnerName(p.name)) return `<span class="ownerName">♔ ${p.name}</span>`; if(color) return `<span style="color:${color}">${p.name||'PLAYER'}</span>`; return `${p.name||'PLAYER'}`; }
-function boardNameRaw(name, color){ if(isOwnerName(name)) return `<span class="ownerName">♔ ${name}</span>`; if(color) return `<span style="color:${color}">${name||'PLAYER'}</span>`; return `${name||'PLAYER'}`; }
+function boardName(p, color){ if(isOwnerName(p.name)) return `<span class="ownerName">${p.name}</span>`; if(color) return `<span style="color:${color}">${p.name||'PLAYER'}</span>`; return `${p.name||'PLAYER'}`; }
+function boardNameRaw(name, color){ if(isOwnerName(name)) return `<span class="ownerName">${name}</span>`; if(color) return `<span style="color:${color}">${name||'PLAYER'}</span>`; return `${name||'PLAYER'}`; }
 
 function hasSpecialChars(v){ return /[^A-Za-z0-9 ]/.test(String(v || '')); }
 function cleanPlayerName(v){ const raw = String(v || 'RIFT-OPS'); const stripped = raw.toUpperCase().replace(/[^A-Z0-9 ]/g,'').trim().replace(/\s+/g,' ').slice(0,14).trim(); return stripped || 'RIFT OPS'; }
@@ -5664,7 +5664,7 @@ function updateScoreboardHUD(){
     : `LEADERBOARD // FIRST TO ${net.limit || 30}`;
   if (net.dmMode === 'team'){
     const list = (net.scores || []);
-    const row = p => `<div class="scoreRow ${p.id===net.id?'me':''}">${isOwnerName(p.name) ? `<span class="ownerName">♔ ${p.name}</span>` : `<span class="${p.team===1?'tr':'tb'}">${p.name || 'PLAYER'}</span>`}<b>${p.score || 0}<small>${p.deaths || 0}D</small></b></div>`;
+    const row = p => `<div class="scoreRow ${p.id===net.id?'me':''}">${isOwnerName(p.name) ? `<span class="ownerName">${p.name}</span>` : `<span class="${p.team===1?'tr':'tb'}">${p.name || 'PLAYER'}</span>`}<b>${p.score || 0}<small>${p.deaths || 0}D</small></b></div>`;
     const red = list.filter(p => p.team === 1).sort((a,b)=>(b.score||0)-(a.score||0));
     const blue = list.filter(p => p.team === 2).sort((a,b)=>(b.score||0)-(a.score||0));
     const t = net.teamTotals || { red:0, blue:0 };
