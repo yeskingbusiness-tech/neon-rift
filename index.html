@@ -310,60 +310,131 @@ body.mut-dark { filter:contrast(1.1) brightness(.85); }
   #spectate.show { opacity:1; }
   #spectate b { color:var(--red); }
 
-  #voteOverlay { position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; pointer-events:auto;
-    background:radial-gradient(ellipse at center, rgba(4,8,16,.78), rgba(0,0,0,.92)); color:#dfe9f5; text-align:center; }
-  #voteBox { width:min(760px, 92vw); padding:28px; border:1px solid rgba(44,242,255,.35); background:linear-gradient(180deg, rgba(10,16,28,.88), rgba(4,7,12,.88)); box-shadow:0 0 40px rgba(44,242,255,.18); }
-  #voteTitle { font-size:34px; font-weight:900; letter-spacing:10px; color:#fff; text-shadow:0 0 18px var(--cyan); margin-bottom:8px; }
-  #voteWinner { font-size:12px; letter-spacing:4px; color:var(--orange); margin-bottom:18px; text-transform:uppercase; }
-  #voteStats { display:grid; grid-template-columns:1.15fr .85fr; gap:16px; margin:14px 0 18px; text-align:left; }
-  .roundStatsPanel { border:1px solid rgba(44,242,255,.24); background:rgba(255,255,255,.035); padding:12px; }
-  .roundStatsPanel h3 { margin:0 0 8px; font-size:10px; letter-spacing:4px; color:var(--cyan); }
-  .roundStatsRow { display:flex; justify-content:space-between; padding:5px 6px; border-bottom:1px solid rgba(255,255,255,.07); font:12px Consolas,monospace; color:#cfe1f5; }
+    /* ===== VOTE OVERLAY — REBUILT 2026-10-30 · 3-map / 4-mode ballot ===== */
+  #voteOverlay { position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; padding:18px;
+    pointer-events:auto; color:#dfe9f5; text-align:center;
+    background:radial-gradient(ellipse 120% 90% at 50% 8%, rgba(44,242,255,.13), transparent 55%),
+              radial-gradient(ellipse 100% 80% at 50% 100%, rgba(255,154,60,.09), transparent 60%),
+              linear-gradient(180deg, rgba(4,8,16,.88), rgba(0,0,0,.94));
+    backdrop-filter:blur(14px) saturate(1.1); }
+  #voteOverlay.hidden { display:none; }
+  #voteOverlay:before { content:""; position:absolute; inset:0; pointer-events:none; opacity:.22;
+    background:linear-gradient(90deg, transparent, rgba(44,242,255,.18), transparent),
+              repeating-linear-gradient(0deg, rgba(255,255,255,.04) 0 1px, transparent 1px 3px); mix-blend-mode:screen; }
+  #voteBox { position:relative; z-index:1; width:min(1100px, 96vw); max-height:96vh; overflow:auto; scrollbar-width:thin;
+    padding:0; border:1px solid rgba(44,242,255,.32);
+    background:linear-gradient(180deg, rgba(11,18,32,.96), rgba(5,10,18,.98));
+    box-shadow:0 0 0 1px rgba(44,242,255,.08) inset, 0 24px 80px rgba(0,0,0,.65), 0 0 56px rgba(44,242,255,.14);
+    clip-path:polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px); }
+  #voteBox::-webkit-scrollbar { width:6px; } #voteBox::-webkit-scrollbar-thumb { background:rgba(44,242,255,.3); }
+  /* header bar */
+  .voteHeader { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+    padding:14px 22px 12px; border-bottom:1px solid rgba(44,242,255,.14);
+    background:linear-gradient(90deg, rgba(44,242,255,.07), transparent 55%, rgba(255,154,60,.05)); }
+  .voteBrand { display:flex; align-items:baseline; gap:10px; font:700 11px Consolas,monospace; letter-spacing:3px; text-transform:uppercase; }
+  .voteBrand .vbLogo { color:#fff; letter-spacing:6px; font-size:12px; text-shadow:0 0 10px rgba(44,242,255,.6); }
+  .voteBrand .vbSub { color:var(--cyan); opacity:.85; letter-spacing:3px; }
+  .voteBrand .vbDivider { color:rgba(255,255,255,.2); font-weight:400; }
+  .voteSteps { display:flex; align-items:center; gap:8px; }
+  .voteStep { display:flex; align-items:center; gap:7px; padding:6px 11px; font:700 10px Consolas,monospace; letter-spacing:2.5px;
+    border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.04); color:#8fa3bd; text-transform:uppercase; }
+  .voteStep b { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; font-size:10px;
+    border:1px solid currentColor; background:rgba(255,255,255,.06); }
+  .voteStep.active { color:#fff; border-color:rgba(44,242,255,.55); background:rgba(44,242,255,.14); box-shadow:0 0 14px rgba(44,242,255,.22); }
+  .voteStep.active b { color:var(--cyan); border-color:var(--cyan); background:rgba(44,242,255,.18); }
+  .voteStep.done { color:#8fe08a; border-color:rgba(143,224,138,.45); background:rgba(143,224,138,.1); }
+  .voteStep.done b { color:#8fe08a; border-color:#8fe08a; }
+  .voteStepConnector { width:18px; height:1px; background:rgba(255,255,255,.12); }
+  .voteStepConnector.on { background:linear-gradient(90deg, var(--cyan), var(--orange)); opacity:.8; }
+  /* timer */
+  .voteTimerWrap { display:flex; align-items:center; gap:10px; min-width:170px; justify-content:flex-end; }
+  .voteTimer { font:700 11px Consolas,monospace; letter-spacing:3px; color:#cfe1f5; white-space:nowrap; }
+  .voteTimer b { color:var(--cyan); font-size:14px; }
+  .voteTimerBar { width:86px; height:4px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.08); overflow:hidden; }
+  .voteTimerBar i { display:block; height:100%; width:100%; background:linear-gradient(90deg, var(--cyan), var(--orange)); transform-origin:left; transition:width .35s linear; }
+  /* title block */
+  #voteTitle { margin:0; padding:18px 22px 0; font-size:30px; font-weight:950; letter-spacing:10px; color:#fff; text-transform:uppercase;
+    text-shadow:0 0 18px rgba(44,242,255,.55); line-height:1; }
+  #voteWinner { padding:6px 22px 14px; font-size:11px; letter-spacing:4px; color:var(--orange); text-transform:uppercase; opacity:.95; }
+  #voteWinner:empty { display:none; }
+  /* main layout: stats + choices */
+  .voteMain { display:grid; grid-template-columns:280px 1fr; gap:16px; padding:0 22px 18px; text-align:left; }
+  #voteStats { display:flex; flex-direction:column; gap:10px; }
+  .roundStatsPanel { border:1px solid rgba(44,242,255,.2); background:linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.02)); padding:12px; }
+  .roundStatsPanel h3 { margin:0 0 8px; font-size:9px; letter-spacing:4px; color:var(--cyan); text-transform:uppercase; }
+  .roundStatsRow { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 6px; border-bottom:1px solid rgba(255,255,255,.06); font:11px Consolas,monospace; color:#cfe1f5; }
   .roundStatsRow.me { background:rgba(44,242,255,.12); box-shadow:inset 2px 0 0 var(--cyan); color:#fff; }
   .roundStatsRow b { color:var(--orange); }
-  .personalStats { font:12px Consolas,monospace; color:#cfe1f5; line-height:1.85; }
+  .personalStats { font:11px Consolas,monospace; color:#cfe1f5; line-height:1.8; }
   .personalStats b { color:#fff; }
-  #voteChoices { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
-  .voteBtn { cursor:pointer; padding:14px 10px; min-height:120px; color:#eafcff; background:rgba(44,242,255,.06); border:1px solid rgba(44,242,255,.35); text-transform:uppercase; letter-spacing:4px; }
-  .voteBtn:hover, .voteBtn.selected { background:rgba(255,154,60,.18); border-color:var(--orange); box-shadow:0 0 22px rgba(255,154,60,.28); }
-  .voteThumb { display:block; width:100%; aspect-ratio:32/19; object-fit:cover; margin-bottom:12px; border:1px solid rgba(44,242,255,.3); box-shadow:0 0 14px rgba(44,242,255,.15); background:#060b13; }
-  .voteBtn:hover .voteThumb, .voteBtn.selected .voteThumb { border-color:var(--orange); box-shadow:0 0 18px rgba(255,154,60,.3); }
-  .voteBtn b { display:block; font-size:20px; margin-bottom:10px; color:#fff; }
-  .voteBtn span { display:block; font-size:11px; color:#8fa3bd; letter-spacing:2px; }
-  #voteTimer { margin-top:18px; font-size:11px; letter-spacing:4px; color:#8fa3bd; }
-  /* mode ballot: two big cards instead of map thumbnails */
-  .voteModeBtn b { font-size:24px; margin-top:14px; }
-  .voteModeBtn.vmFFA { border-color:rgba(44,242,255,.5); }
-  .voteModeBtn.vmFFA b { color:#8ef7ff; }
-  .voteModeBtn.vmTEAM::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px;
-    background:linear-gradient(90deg, #ff5040 50%, #4aa0ff 50%); }
+  /* choices grids */
+  #voteChoices { display:grid; gap:12px; align-content:start; }
+  #voteChoices.mapChoices { grid-template-columns:repeat(3, 1fr); }
+  #voteChoices.modeChoices { grid-template-columns:repeat(4, 1fr); }
+  .voteBtn { position:relative; cursor:pointer; display:flex; flex-direction:column; text-align:left; overflow:hidden;
+    min-height:142px; padding:0; color:#eafcff; background:rgba(44,242,255,.05); border:1px solid rgba(44,242,255,.32);
+    text-transform:uppercase; letter-spacing:1px; transition:transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+  .voteBtn:hover { transform:translateY(-2px); border-color:rgba(255,154,60,.5); background:rgba(255,154,60,.1); box-shadow:0 10px 28px rgba(0,0,0,.35), 0 0 18px rgba(255,154,60,.18); }
+  .voteBtn.selected { border-color:var(--orange); background:rgba(255,154,60,.16); box-shadow:0 0 0 1px var(--orange) inset, 0 0 24px rgba(255,154,60,.32); transform:translateY(-1px); }
+  .voteBtn.selected:after { content:"✓"; position:absolute; right:8px; top:8px; width:20px; height:20px; display:grid; place-items:center;
+    font:700 11px Consolas,monospace; color:#fff; background:var(--orange); border:1px solid rgba(255,255,255,.4); box-shadow:0 0 10px rgba(255,154,60,.5); }
+  .voteThumbWrap { position:relative; flex-shrink:0; }
+  .voteThumb { display:block; width:100%; aspect-ratio:16/9; object-fit:cover; border-bottom:1px solid rgba(44,242,255,.2); background:#060b13; }
+  .voteBtn:hover .voteThumb, .voteBtn.selected .voteThumb { border-color:var(--orange); }
+  .voteKey { position:absolute; left:8px; top:8px; min-width:22px; height:22px; padding:0 5px; display:grid; place-items:center;
+    font:700 11px Consolas,monospace; color:#fff; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.35); backdrop-filter:blur(4px); }
+  .voteBody { padding:11px 11px 10px; flex:1; display:flex; flex-direction:column; gap:6px; }
+  .voteBtn b { font-size:15px; letter-spacing:3px; color:#fff; line-height:1.1; margin:0; }
+  .voteBtn .voteDesc { font-size:9px; letter-spacing:1.6px; color:#8fa3bd; line-height:1.55; text-transform:uppercase; }
+  .voteFoot { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:auto; padding-top:8px; border-top:1px solid rgba(255,255,255,.07); }
+  .voteCount { font:700 10px Consolas,monospace; letter-spacing:1.5px; color:var(--cyan); }
+  .voteCount.hot { color:var(--orange); text-shadow:0 0 8px rgba(255,154,60,.4); }
+  .voteBar { height:4px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.06); overflow:hidden; }
+  .voteBar i { display:block; height:100%; width:0%; background:linear-gradient(90deg, var(--cyan), var(--orange)); transition:width .4s ease; }
+  .voteBtn.selected .voteBar i { background:var(--orange); }
+  /* mode cards — compact but readable at 4-across */
+  .voteModeBtn { min-height:138px; }
+  .voteModeBtn .voteBody { padding-top:10px; }
+  .voteModeBtn b { font-size:13px; letter-spacing:2px; line-height:1.15; }
+  .voteModeBtn .voteDesc { font-size:8.5px; letter-spacing:1.4px; line-height:1.5; }
+  .voteModeBtn:before { content:""; position:absolute; left:0; right:0; top:0; height:3px; opacity:.95; }
+  .voteModeBtn.vmFFA:before { background:linear-gradient(90deg, transparent, rgba(44,242,255,.9), transparent); }
+  .voteModeBtn.vmFFA { border-color:rgba(44,242,255,.45); } .voteModeBtn.vmFFA b { color:#8ef7ff; }
+  .voteModeBtn.vmTEAM:before { background:linear-gradient(90deg, #ff5040 50%, #4aa0ff 50%); }
   .voteModeBtn.vmTEAM b { background:linear-gradient(90deg, #ff7d6e 0 50%, #79bcff 50% 100%); -webkit-background-clip:text; background-clip:text; color:transparent; }
-  .voteModeBtn.vmKNIFE::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, transparent, rgba(255,208,64,.85), transparent); }
-  .voteModeBtn.vmKNIFE b { color:#ffe680; text-shadow:0 0 12px rgba(255,208,64,.55); }
-  .voteModeBtn.vmINFECT::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, rgba(47,208,74,.2), rgba(47,208,74,.85), rgba(47,208,74,.2)); }
-  .voteModeBtn.vmINFECT b { color:#2fd04a; text-shadow:0 0 12px rgba(47,208,74,.5); }
-  .voteModeBtn.vmAUTO { border-color:rgba(255,154,60,.55); }
-  .voteModeBtn.vmAUTO::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, transparent, rgba(255,154,60,.85), transparent); }
-  .voteModeBtn.vmAUTO b { color:#ffb86e; text-shadow:0 0 12px rgba(255,154,60,.55); }
-  .voteModeBtn.vmSHOTGUN { border-color:rgba(186,104,255,.55); }
-  .voteModeBtn.vmSHOTGUN::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, transparent, rgba(186,104,255,.85), transparent); }
-  .voteModeBtn.vmSHOTGUN b { color:#c99bff; text-shadow:0 0 12px rgba(186,104,255,.55); }
-  .voteModeBtn.vmSNIPER { border-color:rgba(150,160,175,.75); background:rgba(150,160,175,.07); }
-  .voteModeBtn.vmSNIPER::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, transparent, rgba(150,160,175,.9), transparent); }
-  .voteModeBtn.vmSNIPER b { color:#9aa3b5; text-shadow:0 0 12px rgba(180,190,210,.55); }
-  .voteModeBtn.vmONESHOT { border-color:rgba(255,255,255,.85); background:rgba(255,255,255,.04); }
-  .voteModeBtn.vmONESHOT::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, transparent, rgba(255,255,255,.95), transparent); }
-  .voteModeBtn.vmONESHOT b { color:#ffffff; text-shadow:0 0 14px rgba(255,255,255,.65); }
-  .voteModeBtn.vmJUGG { border-color:rgba(255,59,87,.65); }
-  .voteModeBtn.vmJUGG::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, rgba(100,0,0,.9), rgba(255,59,87,.95), rgba(100,0,0,.9)); }
-  .voteModeBtn.vmJUGG b { color:#ff3b57; text-shadow:0 0 14px rgba(255,59,87,.7); }
-  .voteModeBtn.vmTARGET { border-color:rgba(255,80,60,.70); }
-  .voteModeBtn.vmTARGET::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, rgba(80,0,0,.9), rgba(255,80,60,.95), rgba(80,0,0,.9)); }
-  .voteModeBtn.vmTARGET b { color:#ff5040; text-shadow:0 0 14px rgba(255,80,60,.7); }
-  .voteModeBtn.vmMUSKET { border-color:rgba(180,140,80,.70); }
-  .voteModeBtn.vmMUSKET::before { content:""; display:block; height:6px; margin:-14px -10px 12px -10px; background:linear-gradient(90deg, rgba(60,40,10,.9), rgba(210,170,90,.95), rgba(60,40,10,.9)); }
-  .voteModeBtn.vmMUSKET b { color:#d2aa5a; text-shadow:0 0 14px rgba(210,170,90,.7); }
-  .voteModeBtn:hover b, .voteModeBtn.selected b { text-shadow:0 0 16px rgba(255,255,255,.35); }
+  .voteModeBtn.vmKNIFE:before { background:linear-gradient(90deg, transparent, rgba(255,208,64,.9), transparent); }
+  .voteModeBtn.vmKNIFE b { color:#ffe680; text-shadow:0 0 10px rgba(255,208,64,.5); }
+  .voteModeBtn.vmINFECT:before { background:linear-gradient(90deg, rgba(47,208,74,.2), rgba(47,208,74,.95), rgba(47,208,74,.2)); }
+  .voteModeBtn.vmINFECT b { color:#2fd04a; }
+  .voteModeBtn.vmAUTO:before { background:linear-gradient(90deg, transparent, rgba(255,154,60,.9), transparent); }
+  .voteModeBtn.vmAUTO { border-color:rgba(255,154,60,.5); } .voteModeBtn.vmAUTO b { color:#ffb86e; }
+  .voteModeBtn.vmSHOTGUN:before { background:linear-gradient(90deg, transparent, rgba(186,104,255,.9), transparent); }
+  .voteModeBtn.vmSHOTGUN { border-color:rgba(186,104,255,.5); } .voteModeBtn.vmSHOTGUN b { color:#c99bff; }
+  .voteModeBtn.vmSNIPER:before { background:linear-gradient(90deg, transparent, rgba(150,160,175,.95), transparent); }
+  .voteModeBtn.vmSNIPER { border-color:rgba(150,160,175,.65); background:rgba(150,160,175,.06); } .voteModeBtn.vmSNIPER b { color:#9aa3b5; }
+  .voteModeBtn.vmONESHOT:before { background:linear-gradient(90deg, transparent, rgba(255,255,255,.95), transparent); }
+  .voteModeBtn.vmONESHOT { border-color:rgba(255,255,255,.75); background:rgba(255,255,255,.04); } .voteModeBtn.vmONESHOT b { color:#fff; }
+  .voteModeBtn.vmJUGG:before { background:linear-gradient(90deg, rgba(100,0,0,.9), rgba(255,59,87,.95), rgba(100,0,0,.9)); }
+  .voteModeBtn.vmJUGG { border-color:rgba(255,59,87,.62); } .voteModeBtn.vmJUGG b { color:#ff3b57; }
+  .voteModeBtn.vmTARGET:before { background:linear-gradient(90deg, rgba(80,0,0,.9), rgba(255,80,60,.95), rgba(80,0,0,.9)); }
+  .voteModeBtn.vmTARGET { border-color:rgba(255,80,60,.65); } .voteModeBtn.vmTARGET b { color:#ff5040; }
+  .voteModeBtn.vmMUSKET:before { background:linear-gradient(90deg, rgba(60,40,10,.9), rgba(210,170,90,.95), rgba(60,40,10,.9)); }
+  .voteModeBtn.vmMUSKET { border-color:rgba(180,140,80,.65); } .voteModeBtn.vmMUSKET b { color:#d2aa5a; }
+  .voteHint { padding:10px 22px 16px; font:10px Consolas,monospace; letter-spacing:3px; color:#8fa3bd; text-transform:uppercase; border-top:1px solid rgba(255,255,255,.06); background:rgba(0,0,0,.18); }
+  .voteHint b { color:#fff; }
+  /* responsive */
+  @media (max-width:980px){
+    .voteMain { grid-template-columns:1fr; }
+    #voteChoices.modeChoices { grid-template-columns:repeat(2, 1fr); }
+    #voteChoices.mapChoices { grid-template-columns:repeat(3, 1fr); }
+  }
+  @media (max-width:640px){
+    #voteTitle { font-size:22px; letter-spacing:6px; }
+    #voteChoices.mapChoices { grid-template-columns:1fr; }
+    #voteChoices.modeChoices { grid-template-columns:1fr 1fr; }
+    .voteHeader { padding:12px 14px; }
+    .voteMain { padding:0 14px 14px; }
+  }
 
   /* sandbox picker */
   .sbRow { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:4px; }
@@ -585,11 +656,18 @@ body.mut-dark { filter:contrast(1.1) brightness(.85); }
 
 <div id="voteOverlay" class="hidden">
   <div id="voteBox">
+    <div class="voteHeader">
+      <div class="voteBrand"><span class="vbLogo">NEON RIFT</span><span class="vbSub">BLACKOUT</span><span class="vbDivider">·</span><span class="vbSub" style="opacity:.65;">INTERMISSION</span></div>
+      <div id="voteSteps" class="voteSteps"></div>
+      <div class="voteTimerWrap"><span id="voteTimer" class="voteTimer">00s</span><span class="voteTimerBar"><i id="voteTimerFill"></i></span></div>
+    </div>
     <div id="voteTitle">MAP VOTE</div>
     <div id="voteWinner">ROUND COMPLETE</div>
-    <div id="voteStats"></div>
-    <div id="voteChoices"></div>
-    <div id="voteTimer">VOTE WITH MOUSE OR KEYS 1–3</div>
+    <div class="voteMain">
+      <div id="voteStats"></div>
+      <div id="voteChoices"></div>
+    </div>
+    <div id="voteHint" class="voteHint">CLICK A CARD OR PRESS <b>1–3</b> · MAPS KEEP 3 CHOICES · MODES OFFER 4</div>
   </div>
 </div>
 

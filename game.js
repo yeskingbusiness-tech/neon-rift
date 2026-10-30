@@ -1146,7 +1146,7 @@ addEventListener('keydown', e => {
     return;
   }
   if (e.code === bindCode('ads')) e.preventDefault();         // keep CTRL from triggering browser shortcuts while aiming
-  if (net.voteActive && ['Digit1','Digit2','Digit3'].includes(e.code)){
+  if (net.voteActive && ['Digit1','Digit2','Digit3','Digit4'].includes(e.code)){
     const idx = Number(e.code.slice(-1)) - 1;
     castMapVote(net.voteChoices[idx]);
     return;
@@ -5704,6 +5704,14 @@ const MODE_CARD = {
   TARGET:{ title:'TARGET',       sub:'hunt your assigned target — kill them to score and get a new target · first to 10', cls:'vmTARGET' },
   MUSKET:{ title:'MUSKET ONLY',  sub:'muskets only — LEADLINE & PULSE musket ladder · first to 10', cls:'vmMUSKET' },
 };
+function renderVoteSteps(){
+  const el = $('voteSteps'); if (!el) return;
+  const phase = net.votePhase || 'map';
+  const mapDone = phase === 'mode';
+  el.innerHTML = `<span class="voteStep ${phase==='map' ? 'active' : 'done'}"><b>1</b> MAP</span>` +
+    `<span class="voteStepConnector ${mapDone ? 'on' : ''}"></span>` +
+    `<span class="voteStep ${phase==='mode' ? 'active' : ''}"><b>2</b> MODE</span>`;
+}
 function enterVoteMode(paused=true){
   net.voteActive = true;
   S.paused = true; locked = false; mouseL = mouseR = false; canvas.style.cursor = 'crosshair';
@@ -5714,47 +5722,63 @@ function showMapVote(winner, choices, counts={}, endsLocal=0){
   enterVoteMode();
   net.votePhase = 'map'; net.voteChoices = choices; net.voteCounts = counts;
   if (endsLocal) net.voteEndsLocal = endsLocal;
-  $('voteWinner').textContent = (winner === 'STARTING MAP') ? 'VOTE STARTING MAP' : `${winner} WINS — VOTE NEXT MAP`;
-  renderRoundStats();
-  const box = $('voteChoices'); box.innerHTML = '';
+  $('voteTitle').textContent = 'MAP VOTE';
+  $('voteWinner').textContent = (winner === 'STARTING MAP') ? 'SEASON OPENER — PICK THE ARENA' : `${winner} TAKES THE ROUND — CHOOSE THE NEXT ARENA`;
+  renderVoteSteps(); renderRoundStats();
+  const box = $('voteChoices'); box.innerHTML = ''; box.className = 'mapChoices';
+  const hint = $('voteHint'); if (hint) hint.innerHTML = 'CLICK A CARD OR PRESS <b>1–3</b> &nbsp;·&nbsp; 3 MAPS · NEXT: 4 MODES';
   choices.forEach((m,i) => {
     const btn = document.createElement('button'); btn.className = 'voteBtn'; btn.dataset.map = m;
-    btn.innerHTML = `<img class="voteThumb" src="${thumbFor(m)}" alt="${m}" onerror="this.remove()"><b>${i+1}. ${m}</b><span>${voteDescription(m)}</span><span class="voteCount">${counts[m] || 0} VOTES</span>`;
+    btn.innerHTML = `<span class="voteThumbWrap"><img class="voteThumb" src="${thumbFor(m)}" alt="${m}" onerror="this.style.display=\'none\'"><span class="voteKey">${i+1}</span></span>` +
+      `<span class="voteBody"><b>${m}</b><span class="voteDesc">${voteDescription(m)}</span>` +
+      `<span class="voteFoot"><span class="voteCount">${counts[m] || 0} VOTES</span><span style="font:9px Consolas,monospace;color:#6e86a8;">${i+1}/3</span></span>` +
+      `<span class="voteBar"><i class="vFill"></i></span></span>`;
     btn.onclick = () => castMapVote(m);
     box.appendChild(btn);
   });
-  net.__voteSecs = -1; updateVoteCounts();
+  net.__voteSecs = -1; net.__voteTotalAtStart = endsLocal ? Math.max(1000, endsLocal - Date.now()) : 6000; updateVoteCounts();
 }
 function showModeVote(mapName, counts={}, endsLocal=0){
   enterVoteMode();
-  net.votePhase = 'mode'; net.pendingMap = mapName || net.pendingMap; 
-  // server drives choices — map uses voteChoices already set via roundOver/modeVote handlers
-  // if not set (direct), fallback to 3 of pool
-  if (!net.voteChoices || !net.voteChoices.length) net.voteChoices = ['FFA','TEAM','KNIFE','AUTO','SHOTGUN'];
+  net.votePhase = 'mode'; net.pendingMap = mapName || net.pendingMap;
+  if (!net.voteChoices || !net.voteChoices.length) net.voteChoices = ['FFA','TEAM','KNIFE','INFECT'];
   net.voteCounts = counts;
   if (endsLocal) net.voteEndsLocal = endsLocal;
-  $('voteWinner').textContent = `${(mapName || 'MAP').toUpperCase()} LOCKED — VOTE THE MODE`;
-  renderRoundStats();
-  const box = $('voteChoices'); box.innerHTML = '';
-  (net.voteChoices || []).forEach((m,i) => {
+  $('voteTitle').textContent = 'MODE VOTE';
+  $('voteWinner').textContent = `${(mapName || net.pendingMap || 'MAP').toUpperCase()} LOCKED — HOW DO YOU WANT TO FIGHT?`;
+  renderVoteSteps(); renderRoundStats();
+  const box = $('voteChoices'); box.innerHTML = ''; box.className = 'modeChoices';
+  const hint = $('voteHint'); if (hint) hint.innerHTML = 'CLICK A CARD OR PRESS <b>1–4</b> &nbsp;·&nbsp; 4 MODES · FIRST TO VOTE WINS TIES';
+  (net.voteChoices || []).slice(0,4).forEach((m,i) => {
     const c = MODE_CARD[m] || MODE_CARD['FFA'];
     const btn = document.createElement('button'); btn.className = 'voteBtn voteModeBtn ' + c.cls; btn.dataset.map = m;
-    btn.innerHTML = `<b>${i+1}. ${c.title}</b><span>${c.sub}</span><span class="voteCount">${counts[m] || 0} VOTES</span>`;
+    btn.innerHTML = `<span class="voteKey">${i+1}</span><span class="voteBody"><b>${c.title}</b><span class="voteDesc">${c.sub}</span>` +
+      `<span class="voteFoot"><span class="voteCount">${counts[m] || 0} VOTES</span><span style="font:9px Consolas,monospace;color:#6e86a8;">${i+1}/4</span></span>` +
+      `<span class="voteBar"><i class="vFill"></i></span></span>`;
     btn.onclick = () => castMapVote(m);
     box.appendChild(btn);
   });
-  net.__voteSecs = -1; updateVoteCounts();
+  net.__voteSecs = -1; net.__voteTotalAtStart = endsLocal ? Math.max(1000, endsLocal - Date.now()) : 6000; updateVoteCounts();
 }
 function updateVoteCounts(){
   const counts = net.voteCounts || {};
+  let total = 0; for (const k in counts) total += (counts[k]||0);
+  let maxVotes = 0; for (const k in counts) maxVotes = Math.max(maxVotes, counts[k]||0);
   for (const btn of document.querySelectorAll('.voteBtn')){
     const m = btn.dataset.map;
-    const c = btn.querySelector('.voteCount'); if (c && counts[m] !== undefined) c.textContent = `${counts[m]} VOTES`;
+    const v = counts[m] || 0;
+    const c = btn.querySelector('.voteCount'); if (c) { c.textContent = `${v} VOTES`; c.classList.toggle('hot', v>0 && v===maxVotes && total>0); }
+    const bar = btn.querySelector('.voteBar i'); if (bar) bar.style.width = total ? `${Math.round(100*v/total)}%` : '0%';
   }
   const secs = Math.max(0, Math.ceil(((net.voteEndsLocal || 0) - Date.now()) / 1000));
+  const totalMs = net.__voteTotalAtStart || 6000;
+  const remMs = Math.max(0, (net.voteEndsLocal||0) - Date.now());
+  const fill = $('voteTimerFill'); if (fill) fill.style.width = totalMs ? `${Math.max(0, Math.min(100, 100*remMs/totalMs))}%` : '100%';
   if (secs !== net.__voteSecs){
     net.__voteSecs = secs;
-    $('voteTimer').textContent = net.votePhase === 'mode' ? `MODE VOTE — MOUSE OR KEYS 1–3 · ${secs}s` : `MAP VOTE — MOUSE OR KEYS 1–3 · ${secs}s`;
+    const keyHint = net.votePhase === 'mode' ? '1–4' : '1–3';
+    const label = net.votePhase === 'mode' ? 'MODE VOTE' : 'MAP VOTE';
+    $('voteTimer').innerHTML = `${label} <span style="opacity:.5;">·</span> KEYS ${keyHint} &nbsp;<b>${secs}s</b>`;
   }
 }
 function hideMapVote(){

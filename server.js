@@ -192,9 +192,9 @@ function voteCounts(){
 }
 function pickModeChoices(exclude){
   const pool = MODE_POOL.filter(m => m !== exclude);
-  while (pool.length < 3) pool.push(...MODE_POOL);
+  while (pool.length < 4) pool.push(...MODE_POOL);
   const choices = [];
-  while (choices.length < Math.min(3, MODE_POOL.length)){
+  while (choices.length < Math.min(4, MODE_POOL.length)){
     const idx = Math.floor(Math.random() * pool.length);
     const m = pool.splice(idx, 1)[0];
     if (!choices.includes(m)) choices.push(m);
@@ -271,7 +271,7 @@ function closeVotePhase(){
   if (votePhase === 'map'){                       // map settled → same lobby now picks the mode
     pendingMap = chooseVoteWinner();
     votePhase = 'mode';
-    // 3 random modes, rotating like maps
+    // 4 random modes, rotating like maps
     modeVoteChoices = pickModeChoices(gameMode ? gameMode.toUpperCase() : null);
     voteEndsAt = Date.now() + 6000;
     scheduleVoteEnd();
