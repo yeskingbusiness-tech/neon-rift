@@ -2326,7 +2326,7 @@ function currentModeLimit(){ if (isKnifeFight()) return 15; if (isShotgunMode())
 function currentLadderRound(){ if (isAutoMode()) return AUTO_ROUND; if (isShotgunMode()) return SHOTGUN_ROUND; if (isSniperMode()) return SNIPER_ROUND; if (isOneShot()) return PISTOL_ROUND; if (isMusketMode()) return MUSKET_ROUND; return LADDER_ROUND; }
 function finalTierScore(){ return isKnifeFight() ? 14 : isNoGoldenMode() ? Infinity : FINAL_TIER_SCORE; }  // knife fight goes golden one stab early; auto/shotgun/oneshot/jugg never golden
 function knifeGolden(){ return mode === 'dm' && !isInfect() && !isJugg() && !isNoGoldenMode() && (net.myScore || 0) >= finalTierScore(); }
-function knifeLocked(){ return isKnifeFight() || knifeGolden() || (isInfect() && net.infected) || (isJugg() && false) || isOneShot(); }       // final tier or knife fight: blades only — zombies locked to knife — one-shot disables knife entirely
+function knifeLocked(){ return isKnifeFight() || knifeGolden() || (isInfect() && net.infected) || (isJugg() && false) || isOneShot() || isSniperMode() || isMusketMode(); }       // final tier or knife fight: blades only — zombies locked to knife — one-shot/sniper/musket disables knife entirely
 function currentKnifeDef(){ return KNIFE_DEFS[knifeGolden() ? 1 : 0]; }
 function juggHpFor(n){ n = Math.max(1, n|0); const hp = 200 + n * 50; return Math.max(200, Math.min(hp, 1000)); }
 function currentJuggHp(){ if (net.juggHp && typeof net.juggHp === 'number' && net.juggHp > 0) return net.juggHp|0; const cnt = (net.scores?.length || (net.players.size + 1) || 5); return juggHpFor(cnt); }
@@ -2382,6 +2382,8 @@ function equipGunSlot(){
 function equipKnifeSlot(){
   if (knifeMode) return;
   if (isOneShot()){ addKillFeed(null, '<b style="color:#ffd040">ONE SHOT</b> — KNIFE DISABLED · PISTOLS ONLY'); return; }
+  if (isSniperMode()){ addKillFeed(null, '<b style="color:#8fa3bd">SNIPERS ONLY</b> — KNIFE DISABLED · SNIPERS ONLY'); return; }
+  if (isMusketMode()){ addKillFeed(null, '<b style="color:#d2aa5a">MUSKET ONLY</b> — KNIFE DISABLED · MUSKETS ONLY'); return; }
   knifeMode = 1; mouseR = false; adsT = 0;
   switchT = Math.max(switchT, 0.2);
   updateWeaponVisibility(); updateAmmoHUD(); SFX.reloadBolt();
@@ -3347,6 +3349,8 @@ function spawnPlayerPieces(pos, color=0x2c6eff){
 const grenadesLive = [];
 function throwGrenade(){
   if (isOneShot()){ addKillFeed(null, '<b style="color:#ffd040">ONE SHOT</b> — GRENADES DISABLED'); return; }
+  if (isSniperMode()){ addKillFeed(null, '<b style="color:#8fa3bd">SNIPERS ONLY</b> — GRENADES DISABLED'); return; }
+  if (isMusketMode()){ addKillFeed(null, '<b style="color:#d2aa5a">MUSKET ONLY</b> — GRENADES DISABLED'); return; }
   if (!S.started || S.paused || S.dead || player.grenades <= 0) return;
   if (knifeLocked()){ addKillFeed(null, isKnifeFight() ? 'KNIFE FIGHT — <b>BLADES ONLY</b>' : 'FINAL TIER — <b style="color:#ffd040">GOLDEN SHANK</b> ONLY'); return; }
   player.grenades--;
@@ -5698,11 +5702,11 @@ const MODE_CARD = {
   INFECT:{ title:'INFECTION',    sub:'1:30 to survive — blue survivors vs green swarm, zombies only knife, late joins are infected', cls:'vmINFECT' },
   AUTO:  { title:'AUTOMATICS',   sub:'automatic guns only — first to 20 kills, random ladder, final is LEADLINE MUSKET, no golden knife', cls:'vmAUTO' },
   SHOTGUN:{ title:'SHOTGUNS',    sub:'shotguns only — first to 20 kills, random ladder, final is SNOWBALL SLINGER, no golden knife', cls:'vmSHOTGUN' },
-  SNIPER:{ title:'SNIPERS ONLY', sub:'snipers only — first to 15 kills, random ladder, final is ATLAS ROCKET, no golden knife', cls:'vmSNIPER' },
+  SNIPER:{ title:'SNIPERS ONLY', sub:'snipers only — first to 15 kills, random ladder, final is ATLAS ROCKET, no knife/grenades, no golden knife', cls:'vmSNIPER' },
   ONESHOT:{ title:'ONE SHOT',    sub:'pistols only — 1 bullet mag · infinite ammo · 1 HP instakill · no knife/grenades · first to 20', cls:'vmONESHOT' },
   JUGG:  { title:'JUGGERNAUT',   sub:'200+50HP/player minigun juggernaut vs hunters — kill him to become him, +1s per kill, score = time, first to 60', cls:'vmJUGG' },
   TARGET:{ title:'TARGET',       sub:'hunt your assigned target — kill them to score and get a new target · first to 10', cls:'vmTARGET' },
-  MUSKET:{ title:'MUSKET ONLY',  sub:'muskets only — LEADLINE & PULSE musket ladder · first to 10', cls:'vmMUSKET' },
+  MUSKET:{ title:'MUSKET ONLY',  sub:'muskets only — LEADLINE & PULSE musket ladder · first to 10, no knife/grenades', cls:'vmMUSKET' },
 };
 function renderVoteSteps(){
   const el = $('voteSteps'); if (!el) return;
@@ -5796,9 +5800,9 @@ function updateAmmoHUD(){
   // infection zombies locked to knife
   if (isInfect() && net.infected && !knifeMode){ knifeMode = 1; updateWeaponVisibility(); }
   if (isInfect() && net.infected && !knifeLocked()){ /* force */ }
-  // one-shot enforcement: no knife, no grenades, 1 HP
-  if (isOneShot() && knifeMode){ knifeMode=0; updateWeaponVisibility(); }
-  if (isOneShot()) player.grenades = 0;
+  // one-shot/sniper/musket enforcement: no knife, no grenades (sniper/musket keep normal HP; one-shot is 1 HP)
+  if ((isOneShot() || isSniperMode() || isMusketMode()) && knifeMode){ knifeMode=0; updateWeaponVisibility(); }
+  if (isOneShot() || isSniperMode() || isMusketMode()) player.grenades = 0;
   // juggernaut enforcement: must hold VORTEX MINIGUN with infinite ammo
   if (isJugg() && net.isJuggernaut && weaponIndex !== JUGG_MG_INDEX && JUGG_MG_INDEX>=0 && !knifeMode){
     // force correct minigun if we drifted (e.g. after hunter rotation)
@@ -5859,7 +5863,7 @@ function updateAmmoHUD(){
   if (av) av.textContent = mode === 'dm'
     ? (isKnifeFight() ? `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 15)} / ${net.limit || 15}` : isOneShot() ? `ONE SHOT ${Math.min((net.myScore || 0) + 1, net.limit || 20)} / ${net.limit || 20}` : isJugg() ? `${net.isJuggernaut?'JUGGERNAUT':'HUNTER'} ${net.myScore || 0} / ${net.limit || 60}s` : isTarget() ? `TARGET — ${net.targetName ? 'HUNT '+net.targetName : 'ASSIGNED'} ${net.myScore||0}/${net.limit||10}` : isMusketMode() ? `MUSKET ${Math.min((net.myScore||0)+1, net.limit||10)} / ${net.limit||10}` : `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 30)} / ${net.limit || 30}`)
     : `${weaponIndex+1} / ${WEAPONS.length}`;
-  $('nadeVal').textContent = isOneShot() ? '— DISABLED' : '×' + player.grenades;
+  $('nadeVal').textContent = (isOneShot() || isSniperMode() || isMusketMode()) ? '— DISABLED' : '×' + player.grenades;
   if (isOneShot() && !w.reloading && w.ammo===0) $('reloadHint').textContent = 'ONE SHOT — PRESS R TO RELOAD (1 BULLET)';
   else if (isJugg() && !net.isJuggernaut) $('reloadHint').textContent = 'HUNTER — KILL JUGGERNAUT TO BECOME IT';
   else $('reloadHint').textContent = w.reloading > 0 ? `RELOADING ${Math.round(reloadProgress(w)*100)}%` : (w.ammo === 0 ? 'PRESS R TO RELOAD' : (isOneShot() ? 'PISTOLS ONLY — 1 BULLET — 1 HP — INSTAKILL' : ''));
