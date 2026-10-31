@@ -200,6 +200,7 @@ function applyRuntimeSettings(){
   camera.fov = SETTINGS.fov;
   camera.updateProjectionMatrix();
   if (master) master.gain.value = SETTINGS.volume;
+  try { if (typeof syncMusketMusic==='function') syncMusketMusic(); } catch(e){}
 }
 
 addEventListener('resize', () => {
@@ -356,6 +357,39 @@ const SFX = {
   launch(){ playTone(150, 55, 0.14, 0.5, 'sine'); playNoise(0.14, 900, 0.6, 0.45, 'bandpass'); },
   plasma(){ playTone(1500, 320, 0.08, 0.22, 'sawtooth'); playNoise(0.06, 2600, 1.2, 0.18, 'highpass'); },
 };
+
+/* ================= MUSKET QUEEN MUSIC ================= */
+let musketMusic = null;
+function ensureMusketMusic(){
+  if (musketMusic) return musketMusic;
+  musketMusic = document.getElementById('musketMusic');
+  if (musketMusic){
+    musketMusic.loop = true;
+    musketMusic.preload = 'auto';
+    try { musketMusic.volume = Math.max(0, Math.min(1, (SETTINGS.volume ?? 0.55) * 0.85)); } catch(e){}
+  }
+  return musketMusic;
+}
+function syncMusketMusic(){
+  const el = ensureMusketMusic();
+  if (!el) return;
+  try { el.volume = Math.max(0, Math.min(1, (SETTINGS.volume ?? 0.55) * 0.85)); } catch(e){}
+  if (typeof isMusketMode === 'function' && isMusketMode()){
+    if (el.paused){
+      try { el.currentTime = 0; } catch(e){}
+      const p = el.play();
+      if (p && p.catch) p.catch(()=>{});
+    }
+  } else {
+    if (!el.paused){
+      try { el.pause(); el.currentTime = 0; } catch(e){}
+    }
+  }
+}
+// keep volume slider in sync with queen track
+document.addEventListener('DOMContentLoaded', ()=>{ ensureMusketMusic(); });
+// poll to auto-start/stop when muskets-only toggles (vote switches, solo/dm swaps)
+setInterval(()=>{ try { syncMusketMusic(); } catch(e){} }, 1200);
 
 /* ================= WORLD GEOMETRY ================= */
 const ARENA = 46;              // half-size of play area
@@ -1278,7 +1312,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Escape') pauseGame();
 });
 
-$('startBtn').addEventListener('click', () => { if (!passNameGate()) return; S.sandbox = false; mode = 'solo'; setMap(MAP_NAMES[(Math.random()*MAP_NAMES.length)|0]); savePlayerName(); showDeploySequence('solo'); startGame(); });
+$('startBtn').addEventListener('click', () => { if (!passNameGate()) return; S.sandbox = false; mode = 'solo'; try{ syncMusketMusic(); }catch(e){} setMap(MAP_NAMES[(Math.random()*MAP_NAMES.length)|0]); savePlayerName(); showDeploySequence('solo'); startGame(); });
 function requestLAN(){
   const el = $('callsign');
   const typed = String(el ? el.value : '').trim();          // LAN requires a callsign — no ghosting in as a default name
@@ -4719,9 +4753,10 @@ function connectNet(){
   try { ws = new WebSocket(proto + location.host); } catch (e){ addKillFeed(null, 'MULTIPLAYER UNAVAILABLE'); return; }
   net.ws = ws;
   ws.binaryType = 'arraybuffer';   // enemy position relays ride 23-byte frames, not JSON
-  ws.onopen = () => { net.on = true; net.dmMode = 'ffa'; net.myTeam = 0; net.teamTotals = { red:0, blue:0 }; const nm = netName(); netSend({ t:'hello', name:nm, skin:PROGRESS.skin, key: syncKey }); addKillFeed(null, 'CONNECTED — VOTE MAP & MODE'); };
+  ws.onopen = () => { net.on = true; net.dmMode = 'ffa'; net.myTeam = 0; net.teamTotals = { red:0, blue:0 }; const nm = netName(); netSend({ t:'hello', name:nm, skin:PROGRESS.skin, key: syncKey }); addKillFeed(null, 'CONNECTED — VOTE MAP & MODE'); try{ if(typeof syncMusketMusic==='function') syncMusketMusic(); }catch(e){} };
   ws.onerror = () => addKillFeed(null, 'LAN CONNECTION FAILED');
   ws.onclose = ev => {
+    try { const el=document.getElementById('musketMusic'); if(el&&!el.paused){ el.pause(); el.currentTime=0; } } catch(e){}
     if (net.on) addKillFeed(null, ev && ev.code === 4003 ? 'REMOVED BY ANTI-CHEAT' : ev && ev.code === 4004 ? 'KICKED FOR INACTIVITY' : 'DISCONNECTED FROM SERVER');
     if (ev && ev.code === 4003){ S.dead = false; showBanner('KICKED — ANTI-CHEAT'); }
     if (ev && ev.code === 4004){ S.dead = false; showBanner('KICKED — AFK'); }
@@ -5080,6 +5115,7 @@ function connectNet(){
         if (net.dmMode === 'infect' && net.infected) { knifeMode = 1; updateWeaponVisibility(); }
         if (net.dmMode === 'juggernaut' && net.isJuggernaut){ syncLadderWeapon(); updateAmmoHUD(); }
         SFX.roundStart(); showBanner('ROUND ' + net.round + (net.dmMode==='infect' ? (net.infected?' — INFECTED':' — SURVIVOR') : net.dmMode==='juggernaut' ? (net.isJuggernaut?' — JUGGERNAUT':' — HUNTER') : net.dmMode==='oneshot' ? ' — ONE SHOT' : net.dmMode==='target' ? ' — TARGET' : net.dmMode==='musket' ? ' — MUSKET ONLY' : ''));
+        try { if (typeof syncMusketMusic==='function') syncMusketMusic(); } catch(e){}
         updateScoreboardHUD(); updateTopHUD(); updateAmmoHUD(); updateHealthHUD();
         break;
       case 'infect': {
@@ -5725,6 +5761,7 @@ function renderVoteSteps(){
     `<span class="voteStep ${phase==='mode' ? 'active' : ''}"><b>2</b> MODE</span>`;
 }
 function enterVoteMode(paused=true){
+  try { if (typeof syncMusketMusic==='function') syncMusketMusic(); } catch(e){}
   net.voteActive = true;
   S.paused = true; locked = false; mouseL = mouseR = false; canvas.style.cursor = 'crosshair';
   try { document.exitPointerLock(); } catch(e){}
