@@ -406,8 +406,14 @@ body.mut-dark { filter:contrast(1.1) brightness(.85); }
   .voteModeBtn.vmFFA { border-color:rgba(44,242,255,.45); } .voteModeBtn.vmFFA b { color:#8ef7ff; }
   .voteModeBtn.vmTEAM:before { background:linear-gradient(90deg, #ff5040 50%, #4aa0ff 50%); }
   .voteModeBtn.vmTEAM b { background:linear-gradient(90deg, #ff7d6e 0 50%, #79bcff 50% 100%); -webkit-background-clip:text; background-clip:text; color:transparent; }
-  .voteModeBtn.vmKNIFE:before { background:linear-gradient(90deg, transparent, rgba(255,208,64,.9), transparent); }
-  .voteModeBtn.vmKNIFE b { color:#ffe680; text-shadow:0 0 10px rgba(255,208,64,.5); }
+  .voteModeBtn.vmEXECUTION:before { background:linear-gradient(90deg, rgba(255,107,107,.9), rgba(255,255,255,.95), rgba(255,107,107,.9)); }
+  .voteModeBtn.vmEXECUTION { border-color:rgba(255,107,107,.6); } .voteModeBtn.vmEXECUTION b { color:#fff; text-shadow:0 0 12px rgba(255,107,107,.6); }
+  .voteModeBtn.vmCHAOS:before { background:linear-gradient(90deg, rgba(120,40,200,.9), rgba(0,0,0,.95), rgba(120,40,200,.9)); }
+  .voteModeBtn.vmCHAOS { border-color:rgba(138,77,255,.6); background:rgba(20,0,40,.25); } .voteModeBtn.vmCHAOS b { color:#c9a0ff; text-shadow:0 0 10px rgba(138,77,255,.6); }
+  .voteModeBtn.vmLASTSTAND:before { background:linear-gradient(90deg, rgba(125,255,138,.9), rgba(180,20,20,.9), rgba(125,255,138,.9)); }
+  .voteModeBtn.vmLASTSTAND { border-color:rgba(125,255,138,.5); } .voteModeBtn.vmLASTSTAND b { background:linear-gradient(90deg, #7dff8a, #ff3b30); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .voteModeBtn.vmOVERDRIVE:before { background:linear-gradient(90deg, rgba(255,230,0,.9), rgba(40,120,255,.9), rgba(125,255,138,.9)); }
+  .voteModeBtn.vmOVERDRIVE { border-color:rgba(255,230,0,.6); } .voteModeBtn.vmOVERDRIVE b { background:linear-gradient(90deg, #ffe600, #2c8cff, #7dff8a); -webkit-background-clip:text; background-clip:text; color:transparent; }
   .voteModeBtn.vmINFECT:before { background:linear-gradient(90deg, rgba(47,208,74,.2), rgba(47,208,74,.95), rgba(47,208,74,.2)); }
   .voteModeBtn.vmINFECT b { color:#2fd04a; }
   .voteModeBtn.vmAUTO:before { background:linear-gradient(90deg, transparent, rgba(255,154,60,.9), transparent); }
@@ -420,8 +426,7 @@ body.mut-dark { filter:contrast(1.1) brightness(.85); }
   .voteModeBtn.vmONESHOT { border-color:rgba(255,255,255,.75); background:rgba(255,255,255,.04); } .voteModeBtn.vmONESHOT b { color:#fff; }
   .voteModeBtn.vmJUGG:before { background:linear-gradient(90deg, rgba(100,0,0,.9), rgba(255,59,87,.95), rgba(100,0,0,.9)); }
   .voteModeBtn.vmJUGG { border-color:rgba(255,59,87,.62); } .voteModeBtn.vmJUGG b { color:#ff3b57; }
-  .voteModeBtn.vmTARGET:before { background:linear-gradient(90deg, rgba(80,0,0,.9), rgba(255,80,60,.95), rgba(80,0,0,.9)); }
-  .voteModeBtn.vmTARGET { border-color:rgba(255,80,60,.65); } .voteModeBtn.vmTARGET b { color:#ff5040; }
+
   .voteModeBtn.vmMUSKET:before { background:linear-gradient(90deg, rgba(60,40,10,.9), rgba(210,170,90,.95), rgba(60,40,10,.9)); }
   .voteModeBtn.vmMUSKET { border-color:rgba(180,140,80,.65); } .voteModeBtn.vmMUSKET b { color:#d2aa5a; }
   .voteHint { padding:10px 22px 16px; font:10px Consolas,monospace; letter-spacing:3px; color:#8fa3bd; text-transform:uppercase; border-top:1px solid rgba(255,255,255,.06); background:rgba(0,0,0,.18); }
@@ -737,7 +742,7 @@ body.mut-dark { filter:contrast(1.1) brightness(.85); }
 
       <button class="btn modeBtn" id="startBtn"><span>Solo</span><small>endless — escalating horde</small></button>
       <button class="btn modeBtn" id="sandboxBtn"><span>Sandbox</span><small>any gun · any map · spawn anything</small></button>
-      <button class="btn red modeBtn" id="mpBtn"><span>LAN MATCH</span><small>FFA · TEAM · KNIFE · INFECTION · AUTOMATICS · SHOTGUNS · SNIPERS · ONE SHOT · JUGGERNAUT · TARGET · MUSKET ONLY</small></button>
+      <button class="btn red modeBtn" id="mpBtn"><span>LAN MATCH</span><small>FFA · TEAM · EXECUTION · INFECTION · AUTOMATICS · SHOTGUNS · SNIPERS · ONE SHOT · JUGGERNAUT · MUSKET ONLY · CHAOS · LAST STAND · OVERDRIVE</small></button>
       <button class="btn menuSecondary" id="skinsBtn">Character Skins</button>
       <button class="btn menuSecondary" id="settingsBtn">Settings</button>
 

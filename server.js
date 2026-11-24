@@ -97,19 +97,24 @@ let nextId = 1;
 const players = new Map();   // id -> { ws, name, state, score, deaths, vote, modeVote, team }
 
 const ROUND_LIMIT = 30;
-const KNIFE_LIMIT = 15;                                // KNIFE FIGHT: first to 15 stabs — golden shank from 14, no demotions
+const EXECUTION_LIMIT = 15;                            // EXECUTION: blades only — first to 15 stabs — golden shank from 14, no demotions
 const AUTO_LIMIT = 20;                                 // AUTOMATICS: auto-only FFA first to 20 — final is LEADLINE MUSKET
 const SHOTGUN_LIMIT = 20;                              // SHOTGUNS: shotguns-only first to 20 — final is SNOWBALL SLINGER
 const SNIPER_LIMIT = 15;                               // SNIPERS: snipers-only first to 15 — final is ATLAS ROCKET
 const ONESHOT_LIMIT = 20;                              // ONE SHOT: pistols only, 1-bullet mag, infinite reserve, first to 20
 const JUGG_LIMIT = 60;                                 // JUGGERNAUT: score = seconds as Juggernaut, first to 60
-const TARGET_LIMIT = 10;                               // TARGET: hunt your assigned target — first to 10 assigned kills
 const MUSKET_LIMIT = 10;                               // MUSKET: muskets only — first to 10
+const CHAOS_LIMIT = 20;                                // CHAOS: random modifiers every 30s — first to 20
+const LASTSTAND_LIMIT = 10;                            // LAST STAND: one life, last alive wins — supernova only
+const OVERDRIVE_LIMIT = 15;                            // OVERDRIVE: +50% speed/fire rate — first to 15
 const INFECT_DURATION = 90000;                         // 1:30 survivors must hold
-function limitNow(){ if (gameMode === 'knife') return KNIFE_LIMIT; if (gameMode === 'shotgun') return SHOTGUN_LIMIT; if (gameMode === 'sniper') return SNIPER_LIMIT; if (gameMode === 'auto') return AUTO_LIMIT; if (gameMode === 'oneshot') return ONESHOT_LIMIT; if (gameMode === 'juggernaut') return JUGG_LIMIT; if (gameMode === 'target') return TARGET_LIMIT; if (gameMode === 'musket') return MUSKET_LIMIT; if (gameMode === 'infect') return 0; return ROUND_LIMIT; }
+// legacy alias
+const KNIFE_LIMIT = EXECUTION_LIMIT;
+const TARGET_LIMIT = 10;
+function limitNow(){ if (gameMode === 'execution' || gameMode === 'knife') return EXECUTION_LIMIT; if (gameMode === 'shotgun') return SHOTGUN_LIMIT; if (gameMode === 'sniper') return SNIPER_LIMIT; if (gameMode === 'auto') return AUTO_LIMIT; if (gameMode === 'oneshot') return ONESHOT_LIMIT; if (gameMode === 'juggernaut') return JUGG_LIMIT; if (gameMode === 'musket') return MUSKET_LIMIT; if (gameMode === 'chaos') return CHAOS_LIMIT; if (gameMode === 'laststand') return LASTSTAND_LIMIT; if (gameMode === 'overdrive') return OVERDRIVE_LIMIT; if (gameMode === 'infect') return 0; return ROUND_LIMIT; }
 const MAPS = ['FORGE', 'NEXUS', 'DUSK YARD', 'COLD STORAGE', 'RIFT DOCKS'];
-const MODE_POOL = ['FFA', 'TEAM', 'KNIFE', 'INFECT', 'AUTO', 'SHOTGUN', 'SNIPER', 'ONESHOT', 'JUGG', 'TARGET', 'MUSKET'];
-const MODE_NAMES = { FFA:'FREE FOR ALL', TEAM:'RED v BLUE', KNIFE:'KNIFE FIGHT', INFECT:'INFECTION', AUTO:'AUTOMATICS', SHOTGUN:'SHOTGUNS', SNIPER:'SNIPERS ONLY', ONESHOT:'ONE SHOT', JUGG:'JUGGERNAUT', TARGET:'TARGET', MUSKET:'MUSKET ONLY' };
+const MODE_POOL = ['FFA', 'TEAM', 'EXECUTION', 'INFECT', 'AUTO', 'SHOTGUN', 'SNIPER', 'ONESHOT', 'JUGG', 'MUSKET', 'CHAOS', 'LASTSTAND', 'OVERDRIVE'];
+const MODE_NAMES = { FFA:'FREE FOR ALL', TEAM:'RED v BLUE', EXECUTION:'EXECUTION', KNIFE:'EXECUTION', INFECT:'INFECTION', AUTO:'AUTOMATICS', SHOTGUN:'SHOTGUNS', SNIPER:'SNIPERS ONLY', ONESHOT:'ONE SHOT', JUGG:'JUGGERNAUT', MUSKET:'MUSKET ONLY', CHAOS:'CHAOS', LASTSTAND:'LAST STAND', OVERDRIVE:'OVERDRIVE' };
 let gameMode = 'ffa';           // decided by the lobby's mode vote before every round
 const TEAM_NAMES = ['', 'RED TEAM', 'BLUE TEAM', '', 'SURVIVORS', 'INFECTED', 'HUNTERS', 'JUGGERNAUT'];
 let infectionEndAt = 0;
@@ -284,15 +289,17 @@ function closeVotePhase(){
   // mode decided → lock it in, (re)balance squads if it's teams, then kick off the round
   const votedMode = chooseVoteWinner();
   if (votedMode === 'TEAM') gameMode = 'team';
-  else if (votedMode === 'KNIFE') gameMode = 'knife';
+  else if (votedMode === 'EXECUTION' || votedMode === 'KNIFE') gameMode = 'execution';
   else if (votedMode === 'INFECT') gameMode = 'infect';
   else if (votedMode === 'AUTO') gameMode = 'auto';
   else if (votedMode === 'SHOTGUN') gameMode = 'shotgun';
   else if (votedMode === 'SNIPER') gameMode = 'sniper';
   else if (votedMode === 'ONESHOT') gameMode = 'oneshot';
   else if (votedMode === 'JUGG') gameMode = 'juggernaut';
-  else if (votedMode === 'TARGET') gameMode = 'target';
   else if (votedMode === 'MUSKET') gameMode = 'musket';
+  else if (votedMode === 'CHAOS') gameMode = 'chaos';
+  else if (votedMode === 'LASTSTAND') gameMode = 'laststand';
+  else if (votedMode === 'OVERDRIVE') gameMode = 'overdrive';
   else gameMode = 'ffa';
   votePhase = null; voteChoices = []; voteEndsAt = 0;
   if (gameMode === 'team'){
@@ -434,10 +441,25 @@ function startRound(map){
     if (juggScoreTimer){ clearInterval(juggScoreTimer); juggScoreTimer = null; }
     juggernautId = 0;
   }
-  // TARGET: assign a random target for each hunter
-  if (gameMode === 'target'){
-    for (const [pid] of players) assignTargetFor(pid);
-    console.log(`[target] assigned targets for ${players.size} players`);
+  // CHAOS: periodic modifier broadcast
+  if (gameMode === 'chaos'){
+    if (global.chaosTimer) clearInterval(global.chaosTimer);
+    const mods=['LOW GRAVITY','DOUBLE DAMAGE','SPEED SURGE','GLASS CANNON'];
+    let idx=0;
+    broadcast({ t:'chaos', mod:mods[idx] });
+    global.chaosTimer=setInterval(()=>{
+      if (!roundActive || gameMode !== 'chaos'){ clearInterval(global.chaosTimer); global.chaosTimer=null; return; }
+      idx=(idx+1)%mods.length;
+      broadcast({ t:'chaos', mod:mods[idx] });
+      console.log(`[chaos] modifier ${mods[idx]}`);
+    }, 30000);
+  } else {
+    if (global.chaosTimer){ clearInterval(global.chaosTimer); global.chaosTimer=null; }
+  }
+  // LAST STAND: one life tracking
+  if (gameMode === 'laststand'){
+    for (const pl of players.values()){ pl.alive=true; pl.eliminated=false; }
+    console.log(`[laststand] ${players.size} players alive, supernova only`);
   }
   const ladderSeed = (Math.random() * 0x7fffffff) | 0;   // one deck-shuffle per round, dealt to everyone equally
   // include infection/jugg state in roundStart for clients
@@ -749,22 +771,7 @@ wss.on('connection', (ws, req) => {
           broadcastScore();
           break;
         }
-        // TARGET: only kills on your assigned target count
-        if (roundActive && gameMode === 'target'){
-          p.deaths = (p.deaths || 0) + 1;
-          let targetKill = false;
-          if (killer && killerId !== id && killer.targetId === id){
-            killer.score = (killer.score || 0) + 1;
-            targetKill = true;
-            assignTargetFor(killerId);
-          }
-          const tKnife = !!p.lastHitKnife; const tBs = !!p.lastHitBackstab;
-          p.lastHitKnife = false; p.lastHitBackstab = false; p.lastHitFrom = 0; p.dmgLog = new Map();
-          broadcast({ t:'kill', victim:id, by:killerId, assist:0, knife:tKnife, bs:tBs, hs:!!p.lastHitHs, w:(p.lastHitWeapon|0), demoted:false, names:{ v:p.name, k:killer ? killer.name : 'ARENA', a:null }, kteam:killer?killer.team:0, vteam:p.team, ateam:0, scores:scoreList(), limit:limitNow(), mode:gameMode, totals:teamTotals(), targetKill });
-          broadcastScore();
-          if (targetKill && killer && killer.score >= TARGET_LIMIT) finishRound(killerId);
-          break;
-        }
+        // TARGET removed — legacy execution now
         // MUSKET: muskets only, first to 10 — no demotions
         if (roundActive && gameMode === 'musket'){
           p.deaths = (p.deaths || 0) + 1;
@@ -781,12 +788,62 @@ wss.on('connection', (ws, req) => {
           if (killer && killer.score >= MUSKET_LIMIT) finishRound(killerId);
           break;
         }
+        // CHAOS: first to 20, modifiers already broadcast
+        if (roundActive && gameMode === 'chaos'){
+          p.deaths = (p.deaths || 0) + 1;
+          if (killer && killerId !== id) killer.score = (killer.score||0)+1;
+          p.lastHitKnife=false; p.lastHitBackstab=false; p.lastHitFrom=0; p.dmgLog=new Map();
+          broadcast({ t:'kill', victim:id, by:killerId, assist:0, knife:false, bs:false, hs:!!p.lastHitHs, w:(p.lastHitWeapon|0), demoted:false, names:{ v:p.name, k:killer?killer.name:'ARENA', a:null }, kteam:killer?killer.team:0, vteam:p.team, ateam:0, scores:scoreList(), limit:limitNow(), mode:gameMode, totals:teamTotals() });
+          broadcastScore();
+          if (killer && killer.score >= CHAOS_LIMIT) finishRound(killerId);
+          break;
+        }
+        // LAST STAND: one life, last alive wins
+        if (roundActive && gameMode === 'laststand'){
+          p.deaths = (p.deaths || 0) + 1;
+          p.alive=false; p.eliminated=true;
+          if (killer && killerId !== id) killer.score=(killer.score||0)+1;
+          p.lastHitKnife=false; p.lastHitBackstab=false; p.lastHitFrom=0; p.dmgLog=new Map();
+          broadcast({ t:'kill', victim:id, by:killerId, assist:0, knife:false, bs:false, hs:!!p.lastHitHs, w:(p.lastHitWeapon|0), demoted:false, names:{ v:p.name, k:killer?killer.name:'ARENA', a:null }, kteam:killer?killer.team:0, vteam:p.team, ateam:0, scores:scoreList(), limit:limitNow(), mode:gameMode, totals:teamTotals() });
+          broadcastScore();
+          const alive=[...players.values()].filter(q=>q.alive!==false);
+          if (alive.length <= 1){
+            const winner=alive[0] || killer;
+            if (winner) finishRound(winner.id || killerId);
+          }
+          break;
+        }
+        // OVERDRIVE: +50% speed/fire, first to 15
+        if (roundActive && gameMode === 'overdrive'){
+          p.deaths = (p.deaths || 0) + 1;
+          if (killer && killerId !== id) killer.score=(killer.score||0)+1;
+          p.lastHitKnife=false; p.lastHitBackstab=false; p.lastHitFrom=0; p.dmgLog=new Map();
+          broadcast({ t:'kill', victim:id, by:killerId, assist:0, knife:false, bs:false, hs:!!p.lastHitHs, w:(p.lastHitWeapon|0), demoted:false, names:{ v:p.name, k:killer?killer.name:'ARENA', a:null }, kteam:killer?killer.team:0, vteam:p.team, ateam:0, scores:scoreList(), limit:limitNow(), mode:gameMode, totals:teamTotals() });
+          broadcastScore();
+          if (killer && killer.score >= OVERDRIVE_LIMIT) finishRound(killerId);
+          break;
+        }
+        // EXECUTION: blades only, first to 15 — no demotions
+        if (roundActive && (gameMode === 'execution' || gameMode === 'knife')){
+          p.deaths = (p.deaths || 0) + 1;
+          let knifeKillE=false, backstabE=false;
+          if (killer && killerId !== id){
+            knifeKillE = !!(p.lastHitFrom === killerId && p.lastHitKnife && (Date.now() - (p.lastHitAt||0)) < 2500);
+            backstabE = knifeKillE && !!p.lastHitBackstab;
+            killer.score = (killer.score || 0) + 1;
+          }
+          p.lastHitKnife=false; p.lastHitBackstab=false; p.lastHitFrom=0; p.dmgLog=new Map();
+          broadcast({ t:'kill', victim:id, by:killerId, assist:0, knife:knifeKillE, bs:backstabE, hs:!!p.lastHitHs, w:(p.lastHitWeapon|0), demoted:false, names:{ v:p.name, k:killer?killer.name:'ARENA', a:null }, kteam:killer?killer.team:0, vteam:p.team, ateam:0, scores:scoreList(), limit:limitNow(), mode:gameMode, totals:teamTotals() });
+          broadcastScore();
+          if (killer && killer.score >= EXECUTION_LIMIT) finishRound(killerId);
+          break;
+        }
         let knifeKill = false, backstab = false, demoted = false, assistId = 0;
         if (roundActive){
           p.deaths = (p.deaths || 0) + 1;
           knifeKill = !!(killer && killerId !== id && p.lastHitFrom === killerId && p.lastHitKnife && (Date.now() - (p.lastHitAt || 0)) < 2500);
           backstab = knifeKill && !!p.lastHitBackstab;
-          if (knifeKill && p.score > 0 && gameMode !== 'knife' && gameMode !== 'target' && gameMode !== 'musket'){ p.score -= 1; demoted = true; }   // shanked: lose a point, drop a gun tier (never below 0). KNIFE FIGHT: points are sacred, no demotions
+          if (knifeKill && p.score > 0 && gameMode !== 'execution' && gameMode !== 'knife' && gameMode !== 'laststand' && gameMode !== 'musket'){ p.score -= 1; demoted = true; }   // shanked: lose a point, drop a gun tier (never below 0). EXECUTION: points are sacred, no demotions
           if (killer && killerId !== id) killer.score = (killer.score || 0) + 1;
           // ASSIST — TEAM MODE ONLY, and ONLY inside the killer's own squad: the most recent same-team
           // damager who didn't finish the kill still gets a point. Claim lapses 5s after your last hit

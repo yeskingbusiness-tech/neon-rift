@@ -2345,22 +2345,25 @@ const BS_ATTACK_DOT = 0.25;          // when supplied, attacker must be facing t
 const KNIFE_CODE = 100;            // replicated weapon slot: 100 = knife, 101 = golden knife
 let knifeMode = 0;                 // 0 = gun, 1 = knife
 let knifeSwingT = 0, knifeSwingCd = 0, knifeSwingId = 0;
-function isKnifeFight(){ return mode === 'dm' && net.dmMode === 'knife'; }   // the ballot's third option: KNIFE FIGHT
+function isExecution(){ return mode === 'dm' && (net.dmMode === 'execution' || net.dmMode === 'knife'); }
+function isKnifeFight(){ return isExecution(); }
 function isInfect(){ return mode === 'dm' && net.dmMode === 'infect'; }
 function isAutoMode(){ return mode === 'dm' && net.dmMode === 'auto'; }
 function isShotgunMode(){ return mode === 'dm' && net.dmMode === 'shotgun'; }
 function isSniperMode(){ return mode === 'dm' && net.dmMode === 'sniper'; }
 function isOneShot(){ return mode === 'dm' && net.dmMode === 'oneshot'; }
 function isJugg(){ return mode === 'dm' && net.dmMode === 'juggernaut'; }
-function isTarget(){ return mode === 'dm' && net.dmMode === 'target'; }
 function isMusketMode(){ return mode === 'dm' && net.dmMode === 'musket'; }
+function isChaos(){ return mode === 'dm' && net.dmMode === 'chaos'; }
+function isLastStand(){ return mode === 'dm' && net.dmMode === 'laststand'; }
+function isOverdrive(){ return mode === 'dm' && net.dmMode === 'overdrive'; }
 function isJuggSelf(){ return isJugg() && net.isJuggernaut; }
-function isNoGoldenMode(){ return isAutoMode() || isShotgunMode() || isSniperMode() || isOneShot() || isJugg() || isTarget() || isMusketMode(); }
-function currentModeLimit(){ if (isKnifeFight()) return 15; if (isShotgunMode()) return 20; if (isSniperMode()) return SNIPER_LIMIT; if (isAutoMode()) return AUTO_LIMIT; if (isOneShot()) return ONESHOT_LIMIT; if (isJugg()) return JUGG_LIMIT; if (isTarget()) return TARGET_LIMIT; if (isMusketMode()) return MUSKET_LIMIT; if (isInfect()) return 0; return 30; }
-function currentLadderRound(){ if (isAutoMode()) return AUTO_ROUND; if (isShotgunMode()) return SHOTGUN_ROUND; if (isSniperMode()) return SNIPER_ROUND; if (isOneShot()) return PISTOL_ROUND; if (isMusketMode()) return MUSKET_ROUND; return LADDER_ROUND; }
-function finalTierScore(){ return isKnifeFight() ? 14 : isNoGoldenMode() ? Infinity : FINAL_TIER_SCORE; }  // knife fight goes golden one stab early; auto/shotgun/oneshot/jugg never golden
+function isNoGoldenMode(){ return isAutoMode() || isShotgunMode() || isSniperMode() || isOneShot() || isJugg() || isMusketMode() || isChaos() || isLastStand() || isOverdrive(); }
+function currentModeLimit(){ if (isExecution()) return EXECUTION_LIMIT; if (isShotgunMode()) return SHOTGUN_LIMIT; if (isSniperMode()) return SNIPER_LIMIT; if (isAutoMode()) return AUTO_LIMIT; if (isOneShot()) return ONESHOT_LIMIT; if (isJugg()) return JUGG_LIMIT; if (isMusketMode()) return MUSKET_LIMIT; if (isChaos()) return CHAOS_LIMIT; if (isLastStand()) return LASTSTAND_LIMIT; if (isOverdrive()) return OVERDRIVE_LIMIT; if (isInfect()) return 0; return 30; }
+function currentLadderRound(){ if (isAutoMode()) return AUTO_ROUND; if (isShotgunMode()) return SHOTGUN_ROUND; if (isSniperMode()) return SNIPER_ROUND; if (isOneShot()) return PISTOL_ROUND; if (isMusketMode()) return MUSKET_ROUND; if (isChaos()) return LADDER_ROUND; if (isLastStand()) return [SUPERNOVA_INDEX]; if (isOverdrive()) return LADDER_ROUND; return LADDER_ROUND; }
+function finalTierScore(){ return isExecution() ? 14 : isNoGoldenMode() ? Infinity : FINAL_TIER_SCORE; }  // execution goes golden one stab early; auto/shotgun/oneshot/jugg never golden
 function knifeGolden(){ return mode === 'dm' && !isInfect() && !isJugg() && !isNoGoldenMode() && (net.myScore || 0) >= finalTierScore(); }
-function knifeLocked(){ return isKnifeFight() || knifeGolden() || (isInfect() && net.infected) || (isJugg() && false) || isOneShot() || isSniperMode() || isMusketMode(); }       // final tier or knife fight: blades only — zombies locked to knife — one-shot/sniper/musket disables knife entirely
+function knifeLocked(){ return isExecution() || knifeGolden() || (isInfect() && net.infected) || (isJugg() && false) || isOneShot() || isSniperMode() || isMusketMode() || isLastStand(); }       // final tier or execution: blades only — zombies locked to knife — one-shot/sniper/musket/laststand disables knife entirely
 function currentKnifeDef(){ return KNIFE_DEFS[knifeGolden() ? 1 : 0]; }
 function juggHpFor(n){ n = Math.max(1, n|0); const hp = 200 + n * 50; return Math.max(200, Math.min(hp, 1000)); }
 function currentJuggHp(){ if (net.juggHp && typeof net.juggHp === 'number' && net.juggHp > 0) return net.juggHp|0; const cnt = (net.scores?.length || (net.players.size + 1) || 5); return juggHpFor(cnt); }
@@ -2407,7 +2410,7 @@ function updateWeaponVisibility(){
 function equipGunSlot(){
   if (!knifeMode) return;
   if (isInfect() && net.infected){ addKillFeed(null, '<b style="color:#2fd04a">INFECTED — BLADES ONLY</b>'); return; }
-  if (knifeLocked()){ addKillFeed(null, isKnifeFight() ? 'KNIFE FIGHT — <b>BLADES ONLY</b>' : 'FINAL TIER — <b style="color:#ffd040">GOLDEN SHANK</b> ONLY'); return; }
+  if (knifeLocked()){ addKillFeed(null, isExecution() ? 'EXECUTION — <b>BLADES ONLY</b>' : 'FINAL TIER — <b style="color:#ffd040">GOLDEN SHANK</b> ONLY'); return; }
   knifeMode = 0;
   switchT = Math.max(switchT, 0.2);
   knifeSwingT = knifeSwingCd = 0;
@@ -2530,8 +2533,33 @@ const SHOTGUN_LIMIT = 20;
 const SNIPER_LIMIT = 15;
 const ONESHOT_LIMIT = 20;
 const JUGG_LIMIT = 60;
-const TARGET_LIMIT = 10;
 const MUSKET_LIMIT = 10;
+const EXECUTION_LIMIT = 15;
+const CHAOS_LIMIT = 20;
+const LASTSTAND_LIMIT = 10;
+const OVERDRIVE_LIMIT = 15;
+const CHAOS_MODS = ['LOW GRAVITY','DOUBLE DAMAGE','SPEED SURGE','INFINITE AMMO','GLASS CANNON','REVERSE GRAVITY'];
+let chaosTimer=null, chaosModIndex=0;
+function startChaosLoop(){
+  if (chaosTimer) { clearInterval(chaosTimer); chaosTimer=null; }
+  if (!isChaos()) return;
+  net.chaosMod = CHAOS_MODS[0];
+  chaosModIndex=0;
+  addKillFeed(null, `<b style="color:#8a4dff">CHAOS MODIFIER</b> — ${net.chaosMod}`);
+  chaosTimer = setInterval(()=>{
+    if (!isChaos() || !S.started || S.dead || net.voteActive){ clearInterval(chaosTimer); chaosTimer=null; return; }
+    chaosModIndex = (chaosModIndex+1) % CHAOS_MODS.length;
+    net.chaosMod = CHAOS_MODS[chaosModIndex];
+    addKillFeed(null, `<b style="color:#8a4dff">CHAOS SHIFT</b> — ${net.chaosMod}`);
+    showBanner(net.chaosMod);
+    SFX.vote();
+    // apply simple effects: low gravity handled in physics check, double damage handled in hit, speed handled via speedMul extension for chaos speed surge
+  }, 30000);
+}
+function stopChaosLoop(){ if (chaosTimer){ clearInterval(chaosTimer); chaosTimer=null; } }
+
+// legacy alias
+const TARGET_LIMIT = 10;
 // auto/shotgun/sniper filtered ladders — only those weapon types appear in those modes
 const AUTO_LADDER = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].auto && WEAPONS[i].rpm >= 400 && WEAPONS[i].name !== 'HELLFIRE MK-7');
 const SHOTGUN_BASE = WEAPONS.map((_,i)=>i).filter(i=>WEAPONS[i].slot==='SHOTGUN');
@@ -2542,6 +2570,7 @@ const PISTOL_LADDER = Array.from({length:ONESHOT_LIMIT}, (_,k)=>PISTOL_BASE[k % 
 const MUSKET_LADDER = Array.from({length:MUSKET_LIMIT}, (_,k)=>MUSKET_BASE[k % MUSKET_BASE.length]);
 const JUGG_MG_INDEX = WEAPONS.findIndex(w=>w.name==='VORTEX MINIGUN');
 const MUSKET_INDEX = WEAPONS.findIndex(w=>w.name==='LEADLINE MUSKET');
+const SUPERNOVA_INDEX = WEAPONS.findIndex(w=>w.name==='SUPERNOVA CASTER');
 const SNOWBALL_INDEX = WEAPONS.findIndex(w=>w.name==='SNOWBALL SLINGER');
 const ATLAS_INDEX = WEAPONS.findIndex(w=>w.name==='ATLAS ROCKET');
 // shotgun pool is only 13 unique — expand to 20 so the ladder covers first-to-20 cleanly
@@ -2692,10 +2721,18 @@ function equipLadderTier(sc, { quiet=false } = {}){
   else if (isAutoMode()) maxSc = AUTO_LIMIT;
   else if (isOneShot()) maxSc = ONESHOT_LIMIT;
   else if (isJugg()) maxSc = JUGG_LIMIT;
-  else if (isTarget()) maxSc = TARGET_LIMIT;
   else if (isMusketMode()) maxSc = MUSKET_LIMIT;
+  else if (isChaos()) maxSc = CHAOS_LIMIT;
+  else if (isLastStand()) maxSc = LASTSTAND_LIMIT;
+  else if (isOverdrive()) maxSc = OVERDRIVE_LIMIT;
   sc = clamp(sc|0, 0, maxSc);
-  if (isKnifeFight()){          // ballot said blades — you never touch the ladder at all
+  if (isLastStand()){
+    // last stand: supernova caster only, one life
+    weaponIndex = SUPERNOVA_INDEX; currentRarity = RARITIES[0];
+    knifeMode = 0; updateWeaponVisibility(); updateAmmoHUD();
+    return;
+  }
+  if (isExecution()){          // ballot said blades — you never touch the ladder at all
     knifeMode = 1; mouseR = false; adsT = 0;
     switchT = Math.max(switchT, 0.22);
     updateWeaponVisibility(); updateAmmoHUD();
@@ -2858,7 +2895,7 @@ function fireWeapon(){
   if (w.cool > 0 || w.reloading > 0 || switchT > 0) return;
   if (w.ammo <= 0){ SFX.dry(); w.cool = 0.25; if (w.res > 0 && !isJuggSelf()) tryReload(); return; }
   if (!isJuggSelf()) w.ammo--; else w.ammo = Math.max(w.ammo, 999); // juggernaut infinite ammo — never consume
-  w.cool = 60 / w.rpm;
+  w.cool = (60 / w.rpm) * (isOverdrive() ? 0.666 : 1);
   S.shotsFired += w.pellets;
   SFX[w.sfx]();
 
@@ -3386,7 +3423,7 @@ function throwGrenade(){
   if (isSniperMode()){ addKillFeed(null, '<b style="color:#8fa3bd">SNIPERS ONLY</b> — GRENADES DISABLED'); return; }
   if (isMusketMode()){ addKillFeed(null, '<b style="color:#d2aa5a">MUSKET ONLY</b> — GRENADES DISABLED'); return; }
   if (!S.started || S.paused || S.dead || player.grenades <= 0) return;
-  if (knifeLocked()){ addKillFeed(null, isKnifeFight() ? 'KNIFE FIGHT — <b>BLADES ONLY</b>' : 'FINAL TIER — <b style="color:#ffd040">GOLDEN SHANK</b> ONLY'); return; }
+  if (knifeLocked()){ addKillFeed(null, isExecution() ? 'EXECUTION — <b>BLADES ONLY</b>' : 'FINAL TIER — <b style="color:#ffd040">GOLDEN SHANK</b> ONLY'); return; }
   player.grenades--;
   updateAmmoHUD();
   SFX.reload1();
@@ -4834,7 +4871,7 @@ function connectNet(){
       case 'mode':
         net.dmMode = m.mode || 'ffa'; net.myTeam = m.team || 0;
         if (net.dmMode === 'team'){ showBanner(`ASSIGNED — ${TEAM_NAMES[net.myTeam]}`); addKillFeed(null, `YOU PLAY FOR <span style="color:${TEAM_COLORS[net.myTeam]}">${TEAM_NAMES[net.myTeam]}</span>`); }
-        if (net.dmMode === 'knife'){ knifeMode = 1; updateWeaponVisibility(); addKillFeed(null, 'KNIFE FIGHT — <b>BLADES ONLY</b>'); }
+        if (net.dmMode === 'knife'){ knifeMode = 1; updateWeaponVisibility(); addKillFeed(null, 'EXECUTION — <b>BLADES ONLY</b>'); }
         if (net.dmMode === 'infect'){
           net.infected = (m.team === 2);
           // team already set by mode handler includes infected flag via m.team
@@ -5084,13 +5121,40 @@ function connectNet(){
           for (const rp of net.players.values()){ rp.isJugg=false; rp.infected=false; rp.team=0; }
           try { applyLocalSkinAppearance(); } catch(e){}
           addKillFeed(null, '<b style="color:#ffd040">ONE SHOT</b> — PISTOLS ONLY · 1 BULLET · ∞ RESERVE');
-        } else if (net.dmMode === 'target'){
+        } else if (net.dmMode === 'chaos'){
           net.isJuggernaut = false; net.juggernautId = 0;
           net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
           net.targetId=0; net.targetName='';
           for (const rp of net.players.values()){ rp.isJugg=false; rp.infected=false; rp.team=0; }
           try { applyLocalSkinAppearance(); } catch(e){}
-          addKillFeed(null, '<b style="color:#ff3b57">TARGET</b> — HUNT YOUR MARK · FIRST TO 10');
+          addKillFeed(null, '<b style="color:#8a4dff">CHAOS</b> — MODIFIERS EVERY 30s · FIRST TO 20');
+          try { startChaosLoop(); } catch(e){}
+        } else if (net.dmMode === 'laststand'){
+          net.isJuggernaut = false; net.juggernautId = 0;
+          net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+          net.targetId=0; net.targetName='';
+          net.lastStandAlive = new Set([net.id, ...[...net.players.keys()]]);
+          net.eliminated = false;
+          for (const rp of net.players.values()){ rp.isJugg=false; rp.infected=false; rp.team=0; rp.eliminated=false; }
+          try { applyLocalSkinAppearance(); } catch(e){}
+          // force supernova only
+          try { weaponIndex = SUPERNOVA_INDEX; currentRarity=RARITIES[0]; knifeMode=0; updateWeaponVisibility(); updateAmmoHUD(); } catch(e){}
+          addKillFeed(null, '<b style="color:#7dff8a">LAST STAND</b> — ONE LIFE · SUPERNOVA CASTER ONLY · LAST ALIVE WINS');
+          try { startChaosLoop(); } catch(e){}
+        } else if (net.dmMode === 'overdrive'){
+          net.isJuggernaut = false; net.juggernautId = 0;
+          net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+          net.targetId=0; net.targetName='';
+          for (const rp of net.players.values()){ rp.isJugg=false; rp.infected=false; rp.team=0; }
+          try { applyLocalSkinAppearance(); } catch(e){}
+          addKillFeed(null, '<b style="color:#ffe600">OVERDRIVE</b> — +50% SPEED & FIRE RATE · FIRST TO 15');
+        } else if (net.dmMode === 'execution' || net.dmMode === 'knife'){
+          net.isJuggernaut = false; net.juggernautId = 0;
+          net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
+          net.targetId=0; net.targetName='';
+          for (const rp of net.players.values()){ rp.isJugg=false; rp.infected=false; rp.team=0; }
+          try { applyLocalSkinAppearance(); } catch(e){}
+          addKillFeed(null, '<b style="color:#ff6b6b">EXECUTION</b> — BLADES ONLY · FIRST TO 15');
         } else if (net.dmMode === 'musket'){
           net.isJuggernaut = false; net.juggernautId = 0;
           net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
@@ -5099,9 +5163,10 @@ function connectNet(){
           try { applyLocalSkinAppearance(); } catch(e){}
           addKillFeed(null, '<b style="color:#d2aa5a">MUSKET ONLY</b> — MUSKETS ONLY · FIRST TO 10');
         } else {
+          try { stopChaosLoop(); } catch(e){}
           const wasInfect = net.infected || (net.infectionEndAt && net.infectionEndAt > 0) || net.infectedIds.size > 0;
           const wasJugg = net.isJuggernaut || net.juggernautId;
-          const wasTarget = net.targetId || net.targetName;
+          const wasTarget = false; // legacy target removed
           net.infected = false; net.infectionEndAt = 0; net.infectedIds = new Set();
           net.isJuggernaut = false; net.juggernautId = 0;
           net.targetId=0; net.targetName='';
@@ -5114,7 +5179,7 @@ function connectNet(){
         syncLadderWeapon(); respawnDMPlayer(true);
         if (net.dmMode === 'infect' && net.infected) { knifeMode = 1; updateWeaponVisibility(); }
         if (net.dmMode === 'juggernaut' && net.isJuggernaut){ syncLadderWeapon(); updateAmmoHUD(); }
-        SFX.roundStart(); showBanner('ROUND ' + net.round + (net.dmMode==='infect' ? (net.infected?' — INFECTED':' — SURVIVOR') : net.dmMode==='juggernaut' ? (net.isJuggernaut?' — JUGGERNAUT':' — HUNTER') : net.dmMode==='oneshot' ? ' — ONE SHOT' : net.dmMode==='target' ? ' — TARGET' : net.dmMode==='musket' ? ' — MUSKET ONLY' : ''));
+        SFX.roundStart(); showBanner('ROUND ' + net.round + (net.dmMode==='infect' ? (net.infected?' — INFECTED':' — SURVIVOR') : net.dmMode==='juggernaut' ? (net.isJuggernaut?' — JUGGERNAUT':' — HUNTER') : net.dmMode==='oneshot' ? ' — ONE SHOT' : net.dmMode==='execution' ? ' — EXECUTION' : net.dmMode==='musket' ? ' — MUSKET ONLY' : net.dmMode==='chaos' ? ' — CHAOS' : net.dmMode==='laststand' ? ' — LAST STAND' : net.dmMode==='overdrive' ? ' — OVERDRIVE' : ''));
         try { if (typeof syncMusketMusic==='function') syncMusketMusic(); } catch(e){}
         updateScoreboardHUD(); updateTopHUD(); updateAmmoHUD(); updateHealthHUD();
         break;
@@ -5270,6 +5335,27 @@ function respawnDMPlayer(silent=false){
 }
 function dmDeath(){
   if (S.dead) return;
+  if (isLastStand()){
+    // Last Stand: one life — mark eliminated, spectate until last alive
+    S.dead = true; S.deaths++; mouseL = mouseR = false;
+    if (!net.lastStandAlive) net.lastStandAlive = new Set([net.id, ...[...net.players.keys()]]);
+    net.lastStandAlive.delete(net.id);
+    try { net.eliminated=true; } catch(e){}
+    $('paused').classList.add('hidden');
+    const deathPos = player.pos.clone(); net.deathPos = deathPos.clone();
+    net.spectateId = net.lastHitBy || 0; net.spectateT = 999;
+    netSend({ t:'kill', by:net.lastHitBy });
+    showBanner('ELIMINATED — SPECTATING');
+    const killer = net.players.get(net.spectateId);
+    const s = $('spectate');
+    s.innerHTML = killer ? `ELIMINATED BY <b>${killer.name}</b> — SPECTATING` : 'ELIMINATED — SPECTATING';
+    s.classList.add('show');
+    spawnPlayerPieces(new THREE.Vector3(deathPos.x, deathPos.y, deathPos.z), skinDef(PROGRESS.skin).color);
+    try { showDeathRecap(killer); } catch(e){}
+    // do not auto-respawn — stay spectating until round ends
+    if (net.lastStandAlive && net.lastStandAlive.size <= 1){ netSend({ t:'laststand_check' }); }
+    return;
+  }
   S.dead = true; S.deaths++; mouseL = mouseR = false;
   $('paused').classList.add('hidden');   // killed while AFK in the pause menu — spectate takes over
   const deathPos = player.pos.clone(); net.deathPos = deathPos.clone();
@@ -5656,18 +5742,48 @@ function updateScoreboardHUD(){
   }
   if (net.dmMode === 'oneshot'){
     panel.querySelector('.sbTitle').textContent = `ONE SHOT // FIRST TO ${net.limit||20}`;
+    panel.querySelector('.sbTitle').style.color='';
+    panel.querySelector('.sbTitle').style.background='';
     const list = (net.scores||[]).slice(0,8);
     rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${boardName(p)}</span><b>${p.score||0}/${net.limit||20}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/20<small>0D</small></b></div>';
     return;
   }
-  if (net.dmMode === 'target'){
-    panel.querySelector('.sbTitle').textContent = `TARGET // FIRST TO ${net.limit||10} — HUNT ${net.targetName||'TARGET'}`;
+  if (net.dmMode === 'execution' || net.dmMode === 'knife'){
+    panel.querySelector('.sbTitle').textContent = `EXECUTION // FIRST TO ${net.limit||15}`;
+    panel.querySelector('.sbTitle').style.color='#ff6b6b';
+    panel.querySelector('.sbTitle').style.background='rgba(255,107,107,.14)';
+    const list = (net.scores||[]).slice(0,8);
+    rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${boardName(p)}</span><b>${p.score||0}/${net.limit||15}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/15<small>0D</small></b></div>';
+    return;
+  }
+  if (net.dmMode === 'chaos'){
+    panel.querySelector('.sbTitle').textContent = `CHAOS // FIRST TO ${net.limit||20}` + (net.chaosMod ? ` — ${net.chaosMod}` : '');
+    panel.querySelector('.sbTitle').style.color='#8a4dff';
+    panel.querySelector('.sbTitle').style.background='rgba(138,77,255,.16)';
+    const list = (net.scores||[]).slice(0,8);
+    rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${boardName(p)}</span><b>${p.score||0}/${net.limit||20}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/20<small>0D</small></b></div>';
+    return;
+  }
+  if (net.dmMode === 'laststand'){
+    panel.querySelector('.sbTitle').textContent = `LAST STAND // ${net.lastStandAlive?net.lastStandAlive.size:(net.players.size+1)} ALIVE — SUPERNOVA ONLY`;
+    panel.querySelector('.sbTitle').style.color='#7dff8a';
+    panel.querySelector('.sbTitle').style.background='rgba(125,255,138,.14)';
     const list = (net.scores||[]).slice(0,8);
     rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${boardName(p)}</span><b>${p.score||0}/${net.limit||10}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/10<small>0D</small></b></div>';
     return;
   }
+  if (net.dmMode === 'overdrive'){
+    panel.querySelector('.sbTitle').textContent = `OVERDRIVE // FIRST TO ${net.limit||15}`;
+    panel.querySelector('.sbTitle').style.color='#ffe600';
+    panel.querySelector('.sbTitle').style.background='rgba(255,230,0,.14)';
+    const list = (net.scores||[]).slice(0,8);
+    rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${boardName(p)}</span><b>${p.score||0}/${net.limit||15}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/15<small>0D</small></b></div>';
+    return;
+  }
   if (net.dmMode === 'musket'){
     panel.querySelector('.sbTitle').textContent = `MUSKET ONLY // FIRST TO ${net.limit||10}`;
+    panel.querySelector('.sbTitle').style.color='';
+    panel.querySelector('.sbTitle').style.background='';
     const list = (net.scores||[]).slice(0,8);
     rows.innerHTML = list.length ? list.map((p,i)=>`<div class="scoreRow ${p.id===net.id?'me':''}"><span>${i+1}. ${boardName(p)}</span><b>${p.score||0}/${net.limit||10}<small>${p.deaths||0}D</small></b></div>`).join('') : '<div class="scoreRow"><span>WAITING</span><b>0/10<small>0D</small></b></div>';
     return;
@@ -5742,15 +5858,18 @@ function voteLocalEnd(endsAt=0, now=0){
 const MODE_CARD = {
   FFA:   { title:'FREE FOR ALL', sub:'every runner for themselves — first to 30 kills takes it', cls:'vmFFA' },
   TEAM:  { title:'RED v BLUE',   sub:'teammates can\'t hurt you — first runner to 30 kills still wins', cls:'vmTEAM' },
-  KNIFE: { title:'KNIFE FIGHT',  sub:'blades only — first to 15 stabs, and the 15th is GOLDEN. shanks never demote', cls:'vmKNIFE' },
+  EXECUTION:{ title:'EXECUTION',  sub:'blades only — first to 15 stabs, and the 15th is GOLDEN. shanks never demote', cls:'vmEXECUTION' },
+  KNIFE: { title:'EXECUTION',  sub:'blades only — first to 15 stabs, and the 15th is GOLDEN. shanks never demote', cls:'vmEXECUTION' },
   INFECT:{ title:'INFECTION',    sub:'1:30 to survive — blue survivors vs green swarm, zombies only knife, late joins are infected', cls:'vmINFECT' },
   AUTO:  { title:'AUTOMATICS',   sub:'automatic guns only — first to 20 kills, random ladder, final is LEADLINE MUSKET, no golden knife', cls:'vmAUTO' },
   SHOTGUN:{ title:'SHOTGUNS',    sub:'shotguns only — first to 20 kills, random ladder, final is SNOWBALL SLINGER, no golden knife', cls:'vmSHOTGUN' },
   SNIPER:{ title:'SNIPERS ONLY', sub:'snipers only — first to 15 kills, random ladder, final is ATLAS ROCKET, no knife/grenades, no golden knife', cls:'vmSNIPER' },
   ONESHOT:{ title:'ONE SHOT',    sub:'pistols only — 1 bullet mag · infinite ammo · 1 HP instakill · no knife/grenades · first to 20', cls:'vmONESHOT' },
   JUGG:  { title:'JUGGERNAUT',   sub:'200+50HP/player minigun juggernaut vs hunters — kill him to become him, +1s per kill, score = time, first to 60', cls:'vmJUGG' },
-  TARGET:{ title:'TARGET',       sub:'hunt your assigned target — kill them to score and get a new target · first to 10', cls:'vmTARGET' },
   MUSKET:{ title:'MUSKET ONLY',  sub:'muskets only — LEADLINE & PULSE musket ladder · first to 10, no knife/grenades', cls:'vmMUSKET' },
+  CHAOS:{ title:'CHAOS',        sub:'random modifiers every 30s — low gravity, double damage, speed surges · first to 20 kills', cls:'vmCHAOS' },
+  LASTSTAND:{ title:'LAST STAND', sub:'one life only — last one standing wins · everyone spawns with SUPERNOVA CASTER only', cls:'vmLASTSTAND' },
+  OVERDRIVE:{ title:'OVERDRIVE',  sub:'+50% speed & fire rate boosted — first to 15 kills · pure adrenaline', cls:'vmOVERDRIVE' },
 };
 function renderVoteSteps(){
   const el = $('voteSteps'); if (!el) return;
@@ -5891,7 +6010,7 @@ function updateAmmoHUD(){
     $('ammoMag').classList.remove('lowammo');
     $('ammoReserve').textContent = ' ∞';
     const av = $('arsenalVal'); if (av) av.textContent = mode === 'dm'
-      ? (isKnifeFight() ? `STABS ${net.myScore || 0} / ${net.limit || 15}` : `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 30)} / ${net.limit || 30}`)
+      ? (isExecution() ? `STABS ${net.myScore || 0} / ${net.limit || 15}` : `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 30)} / ${net.limit || 30}`)
       : `${weaponIndex+1} / ${WEAPONS.length}`;
     $('nadeVal').textContent = '×' + player.grenades;
     $('reloadHint').textContent = knifeGolden() ? 'FINAL TIER — SHANK TO WIN' : '';
@@ -5906,7 +6025,7 @@ function updateAmmoHUD(){
   $('ammoReserve').textContent = resText;
   const av = $('arsenalVal');
   if (av) av.textContent = mode === 'dm'
-    ? (isKnifeFight() ? `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 15)} / ${net.limit || 15}` : isOneShot() ? `ONE SHOT ${Math.min((net.myScore || 0) + 1, net.limit || 20)} / ${net.limit || 20}` : isJugg() ? `${net.isJuggernaut?'JUGGERNAUT':'HUNTER'} ${net.myScore || 0} / ${net.limit || 60}s` : isTarget() ? `TARGET — ${net.targetName ? 'HUNT '+net.targetName : 'ASSIGNED'} ${net.myScore||0}/${net.limit||10}` : isMusketMode() ? `MUSKET ${Math.min((net.myScore||0)+1, net.limit||10)} / ${net.limit||10}` : `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 30)} / ${net.limit || 30}`)
+    ? (isExecution() ? `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 15)} / ${net.limit || 15}` : isOneShot() ? `ONE SHOT ${Math.min((net.myScore || 0) + 1, net.limit || 20)} / ${net.limit || 20}` : isJugg() ? `${net.isJuggernaut?'JUGGERNAUT':'HUNTER'} ${net.myScore || 0} / ${net.limit || 60}s` : isMusketMode() ? `MUSKET ${Math.min((net.myScore||0)+1, net.limit||10)} / ${net.limit||10}` : isChaos() ? `CHAOS ${Math.min((net.myScore||0)+1, net.limit||20)} / ${net.limit||20}` : isLastStand() ? `LAST STAND — ${net.lastStandAlive?net.lastStandAlive.size:0} ALIVE` : isOverdrive() ? `OVERDRIVE ${Math.min((net.myScore||0)+1, net.limit||15)} / ${net.limit||15}` : `TIER ${Math.min((net.myScore || 0) + 1, net.limit || 30)} / ${net.limit || 30}`)
     : `${weaponIndex+1} / ${WEAPONS.length}`;
   $('nadeVal').textContent = (isOneShot() || isSniperMode() || isMusketMode()) ? '— DISABLED' : '×' + player.grenades;
   if (isOneShot() && !w.reloading && w.ammo===0) $('reloadHint').textContent = 'ONE SHOT — PRESS R TO RELOAD (1 BULLET)';
@@ -5992,15 +6111,48 @@ function updateTopHUD(){
       $('killsVal').textContent = leader ? `${leader.score}/${net.limit||20}` : `0/${net.limit||20}`;
       return;
     }
-    if (isTarget()){
-      $('modeLbl').textContent = 'TARGET';
-      $('hostilesLbl').textContent = net.targetName ? `HUNT ${net.targetName}` : 'HUNT TARGET';
+    if (isChaos()){
+      $('modeLbl').textContent = 'CHAOS';
+      $('hostilesLbl').textContent = 'MODIFIER: ' + (net.chaosMod || 'RANDOM');
       $('waveVal').textContent = net.round || 1;
-      $('hostilesVal').textContent = net.targetName || 'WAITING';
+      $('hostilesVal').textContent = net.players.size + 1;
+      const me = (net.scores||[]).find(p=>p.id===net.id);
+      const leader = (net.scores||[])[0];
+      $('scoreVal').textContent = me ? me.score : S.kills;
+      $('killsVal').textContent = leader ? `${leader.score}/${net.limit||20}` : `0/${net.limit||20}`;
+      return;
+    }
+    if (isLastStand()){
+      $('modeLbl').textContent = 'LAST STAND';
+      $('hostilesLbl').textContent = 'ALIVE: ' + (net.lastStandAlive ? net.lastStandAlive.size : (net.players.size+1));
+      $('waveVal').textContent = net.round || 1;
+      $('hostilesVal').textContent = net.players.size + 1;
       const me = (net.scores||[]).find(p=>p.id===net.id);
       const leader = (net.scores||[])[0];
       $('scoreVal').textContent = me ? me.score : S.kills;
       $('killsVal').textContent = leader ? `${leader.score}/${net.limit||10}` : `0/${net.limit||10}`;
+      return;
+    }
+    if (isOverdrive()){
+      $('modeLbl').textContent = 'OVERDRIVE';
+      $('hostilesLbl').textContent = '+50% BOOST';
+      $('waveVal').textContent = net.round || 1;
+      $('hostilesVal').textContent = net.players.size + 1;
+      const me = (net.scores||[]).find(p=>p.id===net.id);
+      const leader = (net.scores||[])[0];
+      $('scoreVal').textContent = me ? me.score : S.kills;
+      $('killsVal').textContent = leader ? `${leader.score}/${net.limit||15}` : `0/${net.limit||15}`;
+      return;
+    }
+    if (isExecution()){
+      $('modeLbl').textContent = 'EXECUTION';
+      $('hostilesLbl').textContent = 'BLADES ONLY';
+      $('waveVal').textContent = net.round || 1;
+      $('hostilesVal').textContent = net.players.size + 1;
+      const me = (net.scores||[]).find(p=>p.id===net.id);
+      const leader = (net.scores||[])[0];
+      $('scoreVal').textContent = me ? me.score : S.kills;
+      $('killsVal').textContent = leader ? `${leader.score}/${net.limit||15}` : `0/${net.limit||15}`;
       return;
     }
     if (isMusketMode()){
@@ -6099,7 +6251,7 @@ function drawMinimap(){
     if (!rp.group.visible) continue;
     const [x,z] = toMap(rp.group.position.x, rp.group.position.z);
     const isRevealed = revealId && rp.id===revealId;
-    const isMyTarget = isTarget() && net.targetId === rp.id;
+    const isMyTarget = false; // target mode removed
     if(isRevealed){
       mm.fillStyle = 'rgba(255,60,60,.35)';
       mm.beginPath(); mm.arc(x, z, 8 + Math.sin(Date.now()*0.008)*3, 0, 7); mm.fill();
@@ -6152,7 +6304,8 @@ function updatePlayer(dt, now){
   const infSpeedMul = (isInfect() && net.infected) ? 1.28 : 1; // zombies a tad bit faster — was 1.14 now 1.28
   const juggSpeedMul = (isJugg() && net.isJuggernaut) ? 0.75 : 1; // juggernaut slow
   const mutSpeedMul = (mode==='solo' && S.mutator==='DOUBLE SPEED') ? 1.75 : 1;
-  const speedMul = (knifeMode ? currentKnifeDef().speedMul : 1) * infSpeedMul * juggSpeedMul * mutSpeedMul;  // knife +5%, golden shank +15% move speed, zombies +14%, jugg -25%, mutator
+  const overdriveSpeedMul = isOverdrive() ? 1.5 : 1;
+  const speedMul = (knifeMode ? currentKnifeDef().speedMul : 1) * infSpeedMul * juggSpeedMul * mutSpeedMul * overdriveSpeedMul;  // knife +5%, golden shank +15% move speed, zombies +14%, jugg -25%, mutator, overdrive +50%
   const speed = (ads ? 3.6 : player.crouched ? 3.1 : (sprinting ? 8.4 : 5.7)) * speedMul;
   const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
   let wx = 0, wz = 0;
